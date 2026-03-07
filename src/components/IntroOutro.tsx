@@ -1,0 +1,405 @@
+import React, { useState, useEffect } from "react";
+import { Project } from "../types";
+import { 
+  generateText, 
+  generateImage, 
+  generateVideo, 
+  pollVideoOperation,
+  getGenAI
+} from "../services/geminiService";
+import { 
+  Loader2, 
+  Sparkles, 
+  Image as ImageIcon, 
+  Video, 
+  Type, 
+  Music, 
+  Clapperboard,
+  CheckCircle2,
+  AlertCircle,
+  PlayCircle,
+  X,
+  ZoomIn,
+  Users
+} from "lucide-react";
+import ProgressBar from "./ProgressBar";
+import { ImageModal } from "./ImageModal";
+
+interface IntroOutroProps {
+  project: Project;
+  setProject: React.Dispatch<React.SetStateAction<Project>>;
+}
+
+const INTRO_TYPES = [
+  { id: "cinematic", name: "Título Cinemático", description: "Título épico com iluminação dramática e fumo." },
+  { id: "minimalist", name: "Minimalista Moderno", description: "Design limpo, tipografia elegante e cores sólidas." },
+  { id: "retro", name: "Retro / Vintage", description: "Estilo anos 80, neon, grão de película e cores vibrantes." },
+  { id: "atmospheric", name: "Atmosférico / Mistério", description: "Ambiente sombrio, revelação lenta através de sombras." },
+];
+
+const OUTRO_TYPES = [
+  { id: "scrolling", name: "Créditos em Scroll", description: "Clássico scroll vertical de nomes sobre fundo preto." },
+  { id: "fade", name: "Fade to Black", description: "O título do filme aparece uma última vez antes de escurecer." },
+  { id: "cast", name: "Montagem do Elenco", description: "Imagens das personagens principais com os nomes dos atores." },
+  { id: "thankyou", name: "Mensagem de Agradecimento", description: "Uma nota pessoal de agradecimento ao público." },
+];
+
+export default function IntroOutro({ project, setProject }: IntroOutroProps) {
+  const [activeTab, setActiveTab] = useState<"intro" | "outro">("intro");
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
+
+  const intro = project.intro || { type: "cinematic", prompt: "" };
+  const outro = project.outro || { type: "scrolling", prompt: "" };
+
+  const currentData = activeTab === "intro" ? intro : outro;
+
+  const updateData = (updates: any) => {
+    setProject(prev => ({
+      ...prev,
+      [activeTab]: { ...prev[activeTab as "intro" | "outro"], ...updates }
+    }));
+  };
+
+  const handleGeneratePrompt = async () => {
+    setIsGeneratingPrompt(true);
+    setProgress(0);
+    try {
+      const typeInfo = (activeTab === "intro" ? INTRO_TYPES : OUTRO_TYPES).find(t => t.id === currentData.type);
+      
+      let extraInfo = "";
+      if (activeTab === "outro") {
+        extraInfo = `
+        Dados Adicionais para Créditos:
+        Empresa: ${project.outro?.company || "N/A"}
+        Realização: ${project.outro?.director || "N/A"}
+        Produção: ${project.outro?.producer || "N/A"}
+        `;
+      }
+
+      const prompt = `Cria um prompt detalhado para a geração de um ${activeTab === "intro" ? "Início (Intro)" : "Fim (Créditos)"} de um filme de animação.
+        Título do Filme: ${project.title}
+        Tipo de Filme: ${project.filmType}
+        Estilo Visual: ${project.filmStyle}
+        Tipo de ${activeTab === "intro" ? "Intro" : "Outro"}: ${typeInfo?.name} (${typeInfo?.description})
+        ${extraInfo}
+        
+        O prompt deve descrever visualmente a cena, a tipografia do texto "${activeTab === "intro" ? project.title : "FIM / CRÉDITOS"}", a iluminação, o movimento de câmara e a atmosfera.
+        Para os créditos, certifica-te que o prompt inclui a exibição dos nomes da Empresa, Realizador e Produtor de forma legível e estilizada de acordo com o tipo selecionado.
+        Responde apenas com o prompt em Inglês para ser usado numa ferramenta de geração de imagem/vídeo.`;
+      
+      const generatedPrompt = await generateText(prompt);
+      updateData({ prompt: generatedPrompt });
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar prompt.");
+    } finally {
+      setIsGeneratingPrompt(false);
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    if (!currentData.prompt) {
+      alert("Gera primeiro o prompt!");
+      return;
+    }
+    setIsGeneratingImage(true);
+    setProgress(0);
+    try {
+      const imageUrl = await generateImage(currentData.prompt, "16:9");
+      updateData({ imageUrl });
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar imagem.");
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!currentData.imageUrl) {
+      alert("Gera primeiro a imagem base!");
+      return;
+    }
+    setIsGeneratingVideo(true);
+    setProgress(0);
+    try {
+      // Check if API key is selected
+      const hasKey = await (window as any).aistudio?.hasSelectedApiKey?.();
+      if (!hasKey) {
+        if ((window as any).aistudio?.openSelectKey) {
+          await (window as any).aistudio.openSelectKey();
+        } else {
+          alert("Por favor, configura a tua Chave API Gemini primeiro.");
+          setIsGeneratingVideo(false);
+          return;
+        }
+      }
+
+      const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${activeTab === "intro" ? "epic orchestral music" : "gentle closing music"}, and professional transitions.`;
+      const operation = await generateVideo(videoPrompt, currentData.imageUrl);
+      
+      updateData({ videoOperationId: operation.name });
+      
+      const videoUrl = await pollVideoOperation(operation.name);
+      updateData({ videoUrl, videoOperationId: undefined });
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar vídeo.");
+      updateData({ videoOperationId: undefined });
+    } finally {
+      setIsGeneratingVideo(false);
+    }
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto p-8 space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-zinc-900 mb-2">Intro & Créditos</h2>
+          <p className="text-zinc-500">
+            Configura o início e o fim do teu filme com títulos e créditos profissionais.
+          </p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex bg-zinc-100 p-1 rounded-2xl w-fit">
+        <button
+          onClick={() => setActiveTab("intro")}
+          className={`px-8 py-2.5 rounded-xl font-bold transition-all ${
+            activeTab === "intro" ? "bg-white text-indigo-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          Início (Intro)
+        </button>
+        <button
+          onClick={() => setActiveTab("outro")}
+          className={`px-8 py-2.5 rounded-xl font-bold transition-all ${
+            activeTab === "outro" ? "bg-white text-indigo-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          Fim (Créditos)
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Configuration Panel */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
+            <div className="space-y-4">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                <Clapperboard className="w-4 h-4" />
+                Tipo de {activeTab === "intro" ? "Intro" : "Créditos"}
+              </label>
+              <div className="grid grid-cols-1 gap-3">
+                {(activeTab === "intro" ? INTRO_TYPES : OUTRO_TYPES).map((type) => (
+                  <button
+                    key={type.id}
+                    onClick={() => updateData({ type: type.id })}
+                    className={`text-left p-4 rounded-2xl border transition-all ${
+                      currentData.type === type.id
+                        ? "bg-indigo-50 border-indigo-200 ring-2 ring-indigo-500/10"
+                        : "bg-zinc-50 border-zinc-100 hover:border-zinc-200"
+                    }`}
+                  >
+                    <p className={`font-bold text-sm ${currentData.type === type.id ? "text-indigo-700" : "text-zinc-700"}`}>
+                      {type.name}
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                      {type.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                  <Type className="w-4 h-4" />
+                  Prompt Visual
+                </label>
+                <button
+                  onClick={handleGeneratePrompt}
+                  disabled={isGeneratingPrompt}
+                  className="text-xs text-indigo-600 font-bold hover:text-indigo-700 flex items-center gap-1 disabled:opacity-50"
+                >
+                  {isGeneratingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  Gerar com IA
+                </button>
+              </div>
+              <textarea
+                value={currentData.prompt}
+                onChange={(e) => updateData({ prompt: e.target.value })}
+                placeholder="Descreve como deve ser o visual..."
+                className="w-full h-32 bg-zinc-50 border border-zinc-200 rounded-2xl p-4 text-sm text-zinc-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all resize-none"
+              />
+            </div>
+
+            {activeTab === "outro" && (
+              <div className="space-y-4 pt-4 border-t border-zinc-100">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  Dados dos Créditos
+                </label>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Empresa</label>
+                    <input
+                      type="text"
+                      value={project.outro?.company || ""}
+                      onChange={(e) => updateData({ company: e.target.value })}
+                      placeholder="Nome da Produtora/Empresa"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Realização</label>
+                    <input
+                      type="text"
+                      value={project.outro?.director || ""}
+                      onChange={(e) => updateData({ director: e.target.value })}
+                      placeholder="Nome do Realizador"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Produção</label>
+                    <input
+                      type="text"
+                      value={project.outro?.producer || ""}
+                      onChange={(e) => updateData({ producer: e.target.value })}
+                      placeholder="Nome do Produtor"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Preview Panel */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-zinc-200 space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Image Generation */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+                    <ImageIcon className="w-5 h-5 text-indigo-600" />
+                    Keyframe Base
+                  </h3>
+                  <button
+                    onClick={handleGenerateImage}
+                    disabled={isGeneratingImage || !currentData.prompt}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isGeneratingImage ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Gerar Imagem
+                  </button>
+                </div>
+                <div className="aspect-video bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden flex items-center justify-center relative group">
+                  {currentData.imageUrl ? (
+                    <>
+                      <img src={currentData.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                        <button 
+                          onClick={() => setSelectedImage({ url: currentData.imageUrl!, title: activeTab === "intro" ? "Intro Keyframe" : "Credits Keyframe" })}
+                          className="p-2 bg-white rounded-full text-zinc-900 hover:scale-110 transition-transform"
+                        >
+                          <ZoomIn className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center p-6">
+                      <ImageIcon className="w-10 h-10 text-zinc-300 mx-auto mb-2" />
+                      <p className="text-xs text-zinc-400">Gera uma imagem para servir de base ao vídeo.</p>
+                    </div>
+                  )}
+                  {isGeneratingImage && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center p-6">
+                      <div className="w-full max-w-[200px]">
+                        <ProgressBar progress={progress} label="A gerar imagem..." modelName="Nanobana" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Video Generation */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+                    <Video className="w-5 h-5 text-emerald-600" />
+                    Vídeo Final
+                  </h3>
+                  <button
+                    onClick={handleGenerateVideo}
+                    disabled={isGeneratingVideo || !currentData.imageUrl || !!currentData.videoOperationId}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isGeneratingVideo || currentData.videoOperationId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Renderizar Vídeo
+                  </button>
+                </div>
+                <div className="aspect-video bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden flex items-center justify-center relative">
+                  {currentData.videoUrl ? (
+                    <video 
+                      src={currentData.videoUrl} 
+                      controls 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-center p-6">
+                      <Video className="w-10 h-10 text-zinc-300 mx-auto mb-2" />
+                      <p className="text-xs text-zinc-400">Renderiza o vídeo final com animação e música.</p>
+                    </div>
+                  )}
+                  {(isGeneratingVideo || currentData.videoOperationId) && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center p-6 text-center">
+                      <div className="w-full max-w-[240px] space-y-4">
+                        <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-zinc-900">A renderizar vídeo...</p>
+                          <p className="text-[10px] text-zinc-500">Isto pode demorar alguns minutos. Estamos a adicionar movimento e atmosfera.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Sound/Music Info */}
+            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 flex gap-4">
+              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+                <Music className="w-6 h-6 text-indigo-600" />
+              </div>
+              <div>
+                <h4 className="font-bold text-zinc-900 text-sm">Som e Música</h4>
+                <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
+                  O vídeo gerado incluirá uma banda sonora baseada no tipo de {activeTab === "intro" ? "intro" : "créditos"} selecionado. 
+                  Podes ajustar o prompt visual para influenciar o estilo musical sugerido.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {selectedImage && (
+        <ImageModal 
+          url={selectedImage.url} 
+          title={selectedImage.title} 
+          onClose={() => setSelectedImage(null)} 
+        />
+      )}
+    </div>
+  );
+}
