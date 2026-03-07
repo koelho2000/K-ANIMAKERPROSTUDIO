@@ -483,13 +483,15 @@ export default function Production({ project, setProject }: ProductionProps) {
 
       const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
 
-      // Check if API key is selected
-      const hasKey = await (window as any).aistudio?.hasSelectedApiKey?.();
-      if (!hasKey) {
+      // Check if API key is selected (system or manual)
+      const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
+      const hasSystemKey = await (window as any).aistudio?.hasSelectedApiKey?.();
+      
+      if (!hasManualKey && !hasSystemKey) {
         if ((window as any).aistudio?.openSelectKey) {
           await (window as any).aistudio.openSelectKey();
         } else {
-          alert("Por favor, configura a tua Chave API Gemini primeiro.");
+          alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
           return;
         }
       }

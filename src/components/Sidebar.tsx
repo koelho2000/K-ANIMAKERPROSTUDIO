@@ -16,13 +16,14 @@ import {
   Key,
 } from "lucide-react";
 import { Project } from "../types";
-import React, { useRef, useState } from "react";
+import { useRef, useState, useEffect, Dispatch, SetStateAction, ChangeEvent } from "react";
+import { ApiKeyModal } from "./ApiKeyModal";
 
 interface SidebarProps {
   currentStep: number;
   setStep: (step: number) => void;
   project: Project;
-  setProject: React.Dispatch<React.SetStateAction<Project>>;
+  setProject: Dispatch<SetStateAction<Project>>;
   hasUnsavedChanges?: boolean;
   onSave?: () => void;
   onStartMassProduction?: () => void;
@@ -54,9 +55,17 @@ export default function Sidebar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showUsagePopup, setShowUsagePopup] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [manualKey, setManualKey] = useState<string>(localStorage.getItem('GEMINI_API_KEY_MANUAL') || "");
 
-  React.useEffect(() => {
+  useEffect(() => {
     const checkKey = async () => {
+      const hasManual = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
+      if (hasManual) {
+        setHasApiKey(true);
+        return;
+      }
+
       if (window.aistudio?.hasSelectedApiKey) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
         setHasApiKey(hasKey);
@@ -67,6 +76,12 @@ export default function Sidebar({
     window.addEventListener('focus', checkKey);
     return () => window.removeEventListener('focus', checkKey);
   }, []);
+
+  const handleSaveManualKey = (key: string) => {
+    localStorage.setItem('GEMINI_API_KEY_MANUAL', key);
+    setManualKey(key);
+    setHasApiKey(!!key);
+  };
 
   const handleOpenKeySelector = async () => {
     if (window.aistudio?.openSelectKey) {
@@ -157,7 +172,7 @@ export default function Sidebar({
     if (onSave) onSave();
   };
 
-  const handleLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLoad = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -225,16 +240,30 @@ export default function Sidebar({
               <span className="flex h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
             )}
           </div>
-          <button
-            onClick={handleOpenKeySelector}
-            className={`w-full text-left px-2 py-1.5 rounded-md text-[10px] font-bold transition-all ${
-              hasApiKey 
-                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20" 
-                : "bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20"
-            }`}
-          >
-            {hasApiKey ? "Configurada" : "Configurar Chave"}
-          </button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={handleOpenKeySelector}
+              className={`text-center px-1 py-1.5 rounded-md text-[9px] font-bold transition-all ${
+                hasApiKey && !manualKey
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20" 
+                  : "bg-zinc-700/50 text-zinc-400 border border-zinc-600/50 hover:bg-zinc-700"
+              }`}
+              title="Selecionar chave do sistema"
+            >
+              Sistema
+            </button>
+            <button
+              onClick={() => setShowKeyModal(true)}
+              className={`text-center px-1 py-1.5 rounded-md text-[9px] font-bold transition-all ${
+                manualKey 
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20" 
+                  : "bg-zinc-700/50 text-zinc-400 border border-zinc-600/50 hover:bg-zinc-700"
+              }`}
+              title="Introduzir chave manualmente"
+            >
+              Manual
+            </button>
+          </div>
         </div>
 
         {/* Usage Stats Display */}
@@ -360,6 +389,13 @@ export default function Sidebar({
       <div className="p-2 text-[10px] text-zinc-500 text-center">
         v2.5.0 • Gemini & Veo
       </div>
+
+      <ApiKeyModal
+        isOpen={showKeyModal}
+        onClose={() => setShowKeyModal(false)}
+        onSave={handleSaveManualKey}
+        currentKey={manualKey}
+      />
     </div>
   );
 }

@@ -2,10 +2,16 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // Helper to get the AI instance with the selected API key
 export const getGenAI = () => {
-  // Try to get the selected key from the environment (injected by AI Studio)
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  // 1. Try to get from localStorage (manually entered by user)
+  const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
+  
+  // 2. Try to get from environment (injected by AI Studio)
+  const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  
+  const apiKey = manualKey || envKey;
+  
   if (!apiKey) {
-    throw new Error("API Key not found. Please select an API key.");
+    throw new Error("API Key not found. Please select an API key or enter it manually in Settings.");
   }
   return new GoogleGenAI({ apiKey });
 };

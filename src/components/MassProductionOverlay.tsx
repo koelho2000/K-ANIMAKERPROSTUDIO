@@ -383,15 +383,17 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
 
         let completed = 0;
         
-        // Check if API key is selected before starting video phase
-        const hasKey = await (window as any).aistudio?.hasSelectedApiKey?.();
-        if (!hasKey) {
+        // Check if API key is selected before starting video phase (system or manual)
+        const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
+        const hasSystemKey = await (window as any).aistudio?.hasSelectedApiKey?.();
+        
+        if (!hasManualKey && !hasSystemKey) {
           if ((window as any).aistudio?.openSelectKey) {
             addLog("Aguardando configuração de Chave API para vídeos...");
             await (window as any).aistudio.openSelectKey();
           } else {
             addLog("ERRO: Chave API não configurada.");
-            alert("Por favor, configura a tua Chave API Gemini primeiro.");
+            alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
             updateAutomation({ status: "idle" });
             return;
           }
