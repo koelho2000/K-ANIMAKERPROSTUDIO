@@ -416,7 +416,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           }));
 
           // Poll for result
-          const videoUrl = await pollVideoOperation(operation.name);
+          const videoUrl = await pollVideoOperation(operation);
           
           // Update final video URL
           setProject(prev => ({
@@ -444,7 +444,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           addLog("Renderizando vídeo para Intro...");
           const op = await generateVideo(project.intro.prompt, project.intro.imageUrl);
           addCost(COST_VIDEO);
-          const vUrl = await pollVideoOperation(op.name);
+          const vUrl = await pollVideoOperation(op);
           setProject(prev => ({ ...prev, intro: { ...prev.intro!, videoUrl: vUrl } }));
         }
         updateAutomation({ progress: 50 });
@@ -454,7 +454,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           addLog("Renderizando vídeo para Créditos...");
           const op = await generateVideo(project.outro.prompt, project.outro.imageUrl);
           addCost(COST_VIDEO);
-          const vUrl = await pollVideoOperation(op.name);
+          const vUrl = await pollVideoOperation(op);
           setProject(prev => ({ ...prev, outro: { ...prev.outro!, videoUrl: vUrl } }));
         }
         

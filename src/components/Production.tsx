@@ -518,7 +518,7 @@ export default function Production({ project, setProject }: ProductionProps) {
 
       // Start polling
       try {
-        const videoUrl = await pollVideoOperation(operation.name);
+        const videoUrl = await pollVideoOperation(operation);
 
         // Update with final video URL
         setProject(prev => ({

@@ -124,10 +124,16 @@ export const generateVideo = async (
   return operation;
 };
 
-export const pollVideoOperation = async (operationName: string) => {
+export const pollVideoOperation = async (operationOrName: any) => {
   const ai = getGenAI();
+  
+  // Ensure we have an operation object with a name
+  const operation = typeof operationOrName === 'string' 
+    ? { name: operationOrName } 
+    : operationOrName;
+
   let currentOperation = await ai.operations.getVideosOperation({
-    operation: { name: operationName } as any,
+    operation: operation,
   });
 
   while (!currentOperation.done) {
@@ -143,7 +149,11 @@ export const pollVideoOperation = async (operationName: string) => {
     throw new Error("Video generation failed or no URI returned.");
   }
 
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  // Use the same key logic as getGenAI for the fetch
+  const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
+  const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = manualKey || envKey;
+
   const response = await fetch(downloadLink, {
     method: "GET",
     headers: {

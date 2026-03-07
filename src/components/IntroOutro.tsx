@@ -146,7 +146,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       
       updateData({ videoOperationId: operation.name });
       
-      const videoUrl = await pollVideoOperation(operation.name);
+      const videoUrl = await pollVideoOperation(operation);
       updateData({ videoUrl, videoOperationId: undefined });
     } catch (error) {
       console.error(error);
