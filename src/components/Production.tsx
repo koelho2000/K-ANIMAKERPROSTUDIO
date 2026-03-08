@@ -4,6 +4,7 @@ import {
   generateImage,
   generateVideo,
   pollVideoOperation,
+  extendVideo,
   analyzeCoherence,
 } from "../services/geminiService";
 import {
@@ -20,6 +21,8 @@ import {
   ZoomIn,
   Trash2,
   Upload,
+  Download,
+  PlusCircle,
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
@@ -92,7 +95,7 @@ export default function Production({ project, setProject }: ProductionProps) {
     type: "start" | "end",
     silent = false,
     customPrompt?: string,
-  ) => {
+  ): Promise<{ imageUrl: string; prompt: string } | null> => {
     if (!silent) setGeneratingImageId(`${takeId}-${type}`);
     try {
       const scene = project.scenes.find((s) => s.id === sceneId);
@@ -142,7 +145,7 @@ export default function Production({ project, setProject }: ProductionProps) {
         Altamente detalhado, iluminação dramática, composição profissional.
       `;
       const imageUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
-      return imageUrl;
+      return { imageUrl, prompt };
     } catch (error) {
       console.error(error);
       if (!silent) alert("Erro ao gerar frame.");
@@ -273,8 +276,9 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       return;
     }
 
-    const imageUrl = await handleGenerateFrame(sceneId, takeId, type);
-    if (imageUrl) {
+    const result = await handleGenerateFrame(sceneId, takeId, type);
+    if (result) {
+      const { imageUrl, prompt } = result;
       const updatedScenes = project.scenes.map((s) => {
         if (s.id === sceneId) {
           return {
@@ -285,6 +289,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                     ...t,
                     [type === "start" ? "startFrameUrl" : "endFrameUrl"]:
                       imageUrl,
+                    [type === "start" ? "lastStartFramePrompt" : "lastEndFramePrompt"]: prompt,
                     updatedAt: Date.now(),
                   }
                 : t,
@@ -347,18 +352,20 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         
         // Generate start frame if missing
         if (!take.startFrameUrl) {
-          const startUrl = await handleGenerateFrame(sceneId, take.id, "start", true);
-          if (startUrl) {
-            updatedTakes[i].startFrameUrl = startUrl;
+          const result = await handleGenerateFrame(sceneId, take.id, "start", true);
+          if (result) {
+            updatedTakes[i].startFrameUrl = result.imageUrl;
+            updatedTakes[i].lastStartFramePrompt = result.prompt;
             updatedTakes[i].updatedAt = Date.now();
           }
         }
         
         // Generate end frame if missing
         if (!take.endFrameUrl) {
-          const endUrl = await handleGenerateFrame(sceneId, take.id, "end", true);
-          if (endUrl) {
-            updatedTakes[i].endFrameUrl = endUrl;
+          const result = await handleGenerateFrame(sceneId, take.id, "end", true);
+          if (result) {
+            updatedTakes[i].endFrameUrl = result.imageUrl;
+            updatedTakes[i].lastEndFramePrompt = result.prompt;
             updatedTakes[i].updatedAt = Date.now();
           }
         }
@@ -393,16 +400,18 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           setBulkProgress((processedTakes / totalTakes) * 100);
           const take = updatedTakes[j];
           if (!take.startFrameUrl) {
-            const startUrl = await handleGenerateFrame(scene.id, take.id, "start", true);
-            if (startUrl) {
-              updatedTakes[j].startFrameUrl = startUrl;
+            const result = await handleGenerateFrame(scene.id, take.id, "start", true);
+            if (result) {
+              updatedTakes[j].startFrameUrl = result.imageUrl;
+              updatedTakes[j].lastStartFramePrompt = result.prompt;
               updatedTakes[j].updatedAt = Date.now();
             }
           }
           if (!take.endFrameUrl) {
-            const endUrl = await handleGenerateFrame(scene.id, take.id, "end", true);
-            if (endUrl) {
-              updatedTakes[j].endFrameUrl = endUrl;
+            const result = await handleGenerateFrame(scene.id, take.id, "end", true);
+            if (result) {
+              updatedTakes[j].endFrameUrl = result.imageUrl;
+              updatedTakes[j].lastEndFramePrompt = result.prompt;
               updatedTakes[j].updatedAt = Date.now();
             }
           }
@@ -491,13 +500,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             project.aspectRatio
           );
 
-          // Update state with operation ID
+          // Update state with operation ID and prompt
           const updatedScenes = project.scenes.map((s) => {
             if (s.id === sceneId) {
               return {
                 ...s,
                 takes: s.takes.map((t) =>
-                  t.id === take.id ? { ...t, videoOperationId: operation.name } : t,
+                  t.id === take.id ? { ...t, videoOperationId: operation.name, lastVideoPrompt: prompt } : t,
                 ),
               };
             }
@@ -593,13 +602,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       );
       setVideoStatus("A aguardar renderização (2-5 min)...");
 
-      // Save operation name to state so we know it's generating
+      // Save operation name and prompt to state so we know it's generating
       const updatedScenes = project.scenes.map((s) => {
         if (s.id === sceneId) {
           return {
             ...s,
             takes: s.takes.map((t) =>
-              t.id === takeId ? { ...t, videoOperationId: operation.name } : t,
+              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: prompt } : t,
             ),
           };
         }
@@ -609,10 +618,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
 
       // Start polling
       try {
-        const videoUrl = await pollVideoOperation(operation);
+        const { videoUrl, videoObject } = await pollVideoOperation(operation);
         setVideoStatus("Vídeo pronto!");
 
-        // Update with final video URL
+        // Update with final video URL and object
         setProject(prev => ({
           ...prev,
           scenes: prev.scenes.map((s) => {
@@ -621,7 +630,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 ...s,
                 takes: s.takes.map((t) =>
                   t.id === takeId
-                    ? { ...t, videoUrl, videoOperationId: undefined }
+                    ? { ...t, videoUrl, videoObject, videoOperationId: undefined }
                     : t,
                 ),
               };
@@ -647,10 +656,101 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           })
         }));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("Erro ao gerar vídeo. Verifica a consola.");
+      alert(`Erro ao gerar vídeo: ${error.message || 'Verifica a consola.'}`);
 
+      // Clear operation id on error
+      const errorScenes = project.scenes.map((s) => {
+        if (s.id === sceneId) {
+          return {
+            ...s,
+            takes: s.takes.map((t) =>
+              t.id === takeId ? { ...t, videoOperationId: undefined } : t,
+            ),
+          };
+        }
+        return s;
+      });
+      setProject({ ...project, scenes: errorScenes });
+    } finally {
+      setGeneratingVideoId(null);
+    }
+  };
+
+  const handleExtendTake = async (sceneId: string, takeId: string) => {
+    const scene = project.scenes.find((s) => s.id === sceneId);
+    const take = scene?.takes.find((t) => t.id === takeId);
+    if (!scene || !take || !take.videoObject) {
+      alert("É necessário ter um vídeo gerado com o modelo VEO para o poder extender.");
+      return;
+    }
+
+    const extensionPrompt = prompt("Descreve o que acontece nos próximos 7 segundos (ex: a personagem continua a andar e sorri):");
+    if (!extensionPrompt) return;
+
+    setGeneratingVideoId(takeId);
+    setVideoStatus("A preparar extensão do vídeo...");
+    try {
+      // Check if API key is selected
+      const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
+      const hasSystemKey = await (window as any).aistudio?.hasSelectedApiKey?.();
+      
+      if (!hasManualKey && !hasSystemKey) {
+        if ((window as any).aistudio?.openSelectKey) {
+          await (window as any).aistudio.openSelectKey();
+        } else {
+          alert("Por favor, configura a tua Chave API Gemini primeiro.");
+          return;
+        }
+      }
+
+      const operation = await extendVideo(
+        extensionPrompt,
+        take.videoObject,
+        project.aspectRatio
+      );
+      setVideoStatus("A aguardar extensão (2-5 min)...");
+
+      // Save operation name
+      const updatedScenes = project.scenes.map((s) => {
+        if (s.id === sceneId) {
+          return {
+            ...s,
+            takes: s.takes.map((t) =>
+              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: (t.lastVideoPrompt || "") + " | EXTENSION: " + extensionPrompt } : t,
+            ),
+          };
+        }
+        return s;
+      });
+      setProject({ ...project, scenes: updatedScenes });
+
+      // Start polling
+      const { videoUrl, videoObject } = await pollVideoOperation(operation);
+      setVideoStatus("Extensão concluída!");
+
+      // Update with final video URL and object
+      setProject(prev => ({
+        ...prev,
+        scenes: prev.scenes.map((s) => {
+          if (s.id === sceneId) {
+            return {
+              ...s,
+              takes: s.takes.map((t) =>
+                t.id === takeId
+                  ? { ...t, videoUrl, videoObject, videoOperationId: undefined }
+                  : t,
+              ),
+            };
+          }
+          return s;
+        })
+      }));
+    } catch (error: any) {
+      console.error(error);
+      alert(`Erro ao extender vídeo: ${error.message || 'Verifica a consola.'}`);
+      
       // Clear operation id on error
       const errorScenes = project.scenes.map((s) => {
         if (s.id === sceneId) {
@@ -803,14 +903,18 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
 
       // Regenerate start frame if it exists
       let newStartFrameUrl = take.startFrameUrl;
+      let newStartFramePrompt = take.lastStartFramePrompt;
       if (take.startFrameUrl) {
-        newStartFrameUrl = await generateImage(basePrompt, project.aspectRatio, referenceImages);
+        newStartFramePrompt = basePrompt;
+        newStartFrameUrl = await generateImage(newStartFramePrompt, project.aspectRatio, referenceImages);
       }
 
       // Regenerate end frame if it exists
       let newEndFrameUrl = take.endFrameUrl;
+      let newEndFramePrompt = take.lastEndFramePrompt;
       if (take.endFrameUrl) {
-        newEndFrameUrl = await generateImage(basePrompt + " (End of action)", project.aspectRatio, referenceImages);
+        newEndFramePrompt = basePrompt + " (End of action)";
+        newEndFrameUrl = await generateImage(newEndFramePrompt, project.aspectRatio, referenceImages);
       }
 
       const updatedScenes = project.scenes.map((s) => {
@@ -823,6 +927,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                     ...t,
                     startFrameUrl: newStartFrameUrl,
                     endFrameUrl: newEndFrameUrl,
+                    lastStartFramePrompt: newStartFramePrompt,
+                    lastEndFramePrompt: newEndFramePrompt,
                     analysis: undefined, // Clear analysis after fix
                     updatedAt: Date.now(),
                   }
@@ -1246,6 +1352,16 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
+                          <a
+                            href={take.startFrameUrl}
+                            download={`take-${index + 1}-start-frame.png`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="absolute top-2 left-2 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20"
+                            title="Descarregar Frame Inicial"
+                          >
+                            <Download className="w-4 h-4" />
+                          </a>
                         </>
                       ) : (
                         <ImageIcon className="w-8 h-8 text-zinc-300" />
@@ -1324,6 +1440,16 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
+                          <a
+                            href={take.endFrameUrl}
+                            download={`take-${index + 1}-end-frame.png`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="absolute top-2 left-2 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20"
+                            title="Descarregar Frame Final"
+                          >
+                            <Download className="w-4 h-4" />
+                          </a>
                         </>
                       ) : (
                         <ImageIcon className="w-8 h-8 text-zinc-300" />
@@ -1396,15 +1522,48 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           )}
                           Renderizar Vídeo
                         </button>
+                        {take.videoUrl && take.videoObject && (
+                          <button
+                            onClick={() =>
+                              handleExtendTake(expandedSceneId!, take.id)
+                            }
+                            disabled={
+                              generatingVideoId === take.id ||
+                              !!take.videoOperationId
+                            }
+                            className="text-xs flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2 py-1 rounded font-medium transition-colors disabled:opacity-50"
+                            title="Extender vídeo em +7 segundos (Apenas VEO)"
+                          >
+                            {generatingVideoId === take.id ||
+                            take.videoOperationId ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <PlusCircle className="w-3 h-3" />
+                            )}
+                            Extender
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative group`}>
                       {take.videoUrl ? (
-                        <video
-                          src={take.videoUrl}
-                          controls
-                          className="w-full h-full object-cover"
-                        />
+                        <>
+                          <video
+                            src={take.videoUrl}
+                            controls
+                            className="w-full h-full object-cover"
+                          />
+                          <a
+                            href={take.videoUrl}
+                            download={`take-${index + 1}-video.mp4`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="absolute top-2 right-2 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20 flex items-center justify-center"
+                            title="Descarregar Vídeo"
+                          >
+                            <Download className="w-4 h-4" />
+                          </a>
+                        </>
                       ) : take.videoOperationId ? (
                         <div className="absolute inset-0 bg-zinc-900/90 flex flex-col items-center justify-center p-6 text-center">
                           <ProgressBar
@@ -1499,6 +1658,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                               ? {
                                   ...t,
                                   [type === "start" ? "startFrameUrl" : "endFrameUrl"]: imageUrl,
+                                  [type === "start" ? "lastStartFramePrompt" : "lastEndFramePrompt"]: prompt,
                                   updatedAt: Date.now(),
                                 }
                               : t,

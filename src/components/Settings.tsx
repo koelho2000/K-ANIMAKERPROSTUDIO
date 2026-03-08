@@ -136,7 +136,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
       const imageUrl = await generateImage(editedPrompt, project.aspectRatio);
 
       const updatedSettings = project.settings.map((s) =>
-        s.id === settingId ? { ...s, imageUrl, updatedAt: Date.now() } : s,
+        s.id === settingId ? { ...s, imageUrl, lastImagePrompt: editedPrompt, updatedAt: Date.now() } : s,
       );
       setProject({ ...project, settings: updatedSettings });
     } catch (error) {
@@ -171,7 +171,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
             CRITICAL: NO CHARACTERS, NO PEOPLE, NO ANIMALS. Just the empty environment/location.`;
           setActivePrompt(prompt);
           const imageUrl = await generateImage(prompt, project.aspectRatio);
-          updatedSettings[i] = { ...setting, imageUrl, updatedAt: Date.now() };
+          updatedSettings[i] = { ...setting, imageUrl, lastImagePrompt: prompt, updatedAt: Date.now() };
           // Update project state incrementally to show progress
           setProject({ ...project, settings: [...updatedSettings] });
         }

@@ -197,7 +197,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             
             setProject(prev => ({
               ...prev,
-              characters: prev.characters.map(c => c.id === char.id ? { ...c, imageUrl, updatedAt: Date.now() } : c)
+              characters: prev.characters.map(c => c.id === char.id ? { ...c, imageUrl, lastImagePrompt: prompt, updatedAt: Date.now() } : c)
             }));
           }
           completed++;
@@ -219,7 +219,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             
             setProject(prev => ({
               ...prev,
-              settings: prev.settings.map(s => s.id === setting.id ? { ...s, imageUrl, updatedAt: Date.now() } : s)
+              settings: prev.settings.map(s => s.id === setting.id ? { ...s, imageUrl, lastImagePrompt: prompt, updatedAt: Date.now() } : s)
             }));
           }
           completed++;
@@ -325,25 +325,27 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             const promptBase = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}.`;
 
             if (!take.startFrameUrl) {
-              const startFrameUrl = await generateImage(`${promptBase} Frame Inicial.`, project.aspectRatio, referenceImages);
+              const startPrompt = `${promptBase} Frame Inicial.`;
+              const startFrameUrl = await generateImage(startPrompt, project.aspectRatio, referenceImages);
               addCost(COST_IMAGE);
               setProject(prev => ({
                 ...prev,
                 scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
                   ...s,
-                  takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, startFrameUrl, updatedAt: Date.now() } : t)
+                  takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, startFrameUrl, lastStartFramePrompt: startPrompt, updatedAt: Date.now() } : t)
                 } : s)
               }));
             }
 
             if (!take.endFrameUrl) {
-              const endFrameUrl = await generateImage(`${promptBase} Frame Final.`, project.aspectRatio, referenceImages);
+              const endPrompt = `${promptBase} Frame Final.`;
+              const endFrameUrl = await generateImage(endPrompt, project.aspectRatio, referenceImages);
               addCost(COST_IMAGE);
               setProject(prev => ({
                 ...prev,
                 scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
                   ...s,
-                  takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, endFrameUrl, updatedAt: Date.now() } : t)
+                  takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, endFrameUrl, lastEndFramePrompt: endPrompt, updatedAt: Date.now() } : t)
                 } : s)
               }));
             }
@@ -410,26 +412,26 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           const operation = await generateVideo(prompt, tInfo.start, tInfo.end, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
           
-          // Update operation ID
+          // Update operation ID and prompt
           setProject(prev => ({
             ...prev,
             scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
               ...s,
-              takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, videoOperationId: operation.name } : t)
+              takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: prompt } : t)
             } : s)
           }));
 
           // Poll for result
           addLog(`A aguardar renderização do Take ${completed + 1}... (Isto pode demorar 2-5 minutos)`);
-          const videoUrl = await pollVideoOperation(operation);
+          const { videoUrl, videoObject } = await pollVideoOperation(operation);
           addLog(`Take ${completed + 1} renderizado com sucesso!`);
           
-          // Update final video URL
+          // Update final video URL and object
           setProject(prev => ({
             ...prev,
             scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
               ...s,
-              takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, videoUrl, videoOperationId: undefined } : t)
+              takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, videoUrl, videoObject, videoOperationId: undefined } : t)
             } : s)
           }));
 
@@ -450,8 +452,9 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           addLog("Renderizando vídeo para Intro...");
           const op = await generateVideo(project.intro.prompt, project.intro.imageUrl, undefined, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
-          const vUrl = await pollVideoOperation(op);
-          setProject(prev => ({ ...prev, intro: { ...prev.intro!, videoUrl: vUrl } }));
+          setProject(prev => ({ ...prev, intro: { ...prev.intro!, videoOperationId: op.name, lastVideoPrompt: project.intro!.prompt } }));
+          const { videoUrl: vUrl, videoObject: vObj } = await pollVideoOperation(op);
+          setProject(prev => ({ ...prev, intro: { ...prev.intro!, videoUrl: vUrl, videoObject: vObj, videoOperationId: undefined } }));
         }
         updateAutomation({ progress: 50 });
 
@@ -460,8 +463,9 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           addLog("Renderizando vídeo para Créditos...");
           const op = await generateVideo(project.outro.prompt, project.outro.imageUrl, undefined, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
-          const vUrl = await pollVideoOperation(op);
-          setProject(prev => ({ ...prev, outro: { ...prev.outro!, videoUrl: vUrl } }));
+          setProject(prev => ({ ...prev, outro: { ...prev.outro!, videoOperationId: op.name, lastVideoPrompt: project.outro!.prompt } }));
+          const { videoUrl: vUrl, videoObject: vObj } = await pollVideoOperation(op);
+          setProject(prev => ({ ...prev, outro: { ...prev.outro!, videoUrl: vUrl, videoObject: vObj, videoOperationId: undefined } }));
         }
         
         updateAutomation({ progress: 100 });

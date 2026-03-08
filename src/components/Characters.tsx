@@ -265,7 +265,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
       const imageUrl = await generateImage(editedPrompt, "1:1");
 
       const updatedCharacters = project.characters.map((c) =>
-        c.id === charId ? { ...c, imageUrl, updatedAt: Date.now() } : c,
+        c.id === charId ? { ...c, imageUrl, lastImagePrompt: editedPrompt, updatedAt: Date.now() } : c,
       );
       setProject({ ...project, characters: updatedCharacters });
     } catch (error) {
@@ -307,7 +307,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
       const viewsImageUrl = await generateImage(editedPrompt, "16:9", [referenceBase64]);
 
       const updatedCharacters = project.characters.map((c) =>
-        c.id === charId ? { ...c, viewsImageUrl, updatedAt: Date.now() } : c,
+        c.id === charId ? { ...c, viewsImageUrl, lastViewsPrompt: editedPrompt, updatedAt: Date.now() } : c,
       );
       setProject({ ...project, characters: updatedCharacters });
     } catch (error) {
@@ -340,7 +340,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
             One single front-facing view of the character, full body, neutral background.`;
           setActivePrompt(prompt);
           const imageUrl = await generateImage(prompt, "1:1");
-          char = { ...char, imageUrl, updatedAt: Date.now() };
+          char = { ...char, imageUrl, lastImagePrompt: prompt, updatedAt: Date.now() };
           updatedCharacters[i] = char;
           setProject({ ...project, characters: [...updatedCharacters] });
         }
@@ -356,7 +356,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
           setActivePrompt(viewsPrompt);
           const referenceBase64 = await getBase64FromUrl(char.imageUrl);
           const viewsImageUrl = await generateImage(viewsPrompt, "16:9", [referenceBase64]);
-          char = { ...char, viewsImageUrl, updatedAt: Date.now() };
+          char = { ...char, viewsImageUrl, lastViewsPrompt: viewsPrompt, updatedAt: Date.now() };
           updatedCharacters[i] = char;
           setProject({ ...project, characters: [...updatedCharacters] });
           setGeneratingViewsId(null);

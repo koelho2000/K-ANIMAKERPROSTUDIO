@@ -47,7 +47,9 @@ export interface Project {
     imageUrl?: string;
     videoUrl?: string;
     videoOperationId?: string;
+    videoObject?: any;
     videoModel?: 'veo' | 'flow';
+    lastVideoPrompt?: string;
   };
   outro?: {
     type: string;
@@ -55,10 +57,13 @@ export interface Project {
     imageUrl?: string;
     videoUrl?: string;
     videoOperationId?: string;
+    videoObject?: any;
     videoModel?: 'veo' | 'flow';
+    lastVideoPrompt?: string;
     company?: string;
     director?: string;
     producer?: string;
+    thankYouMessage?: string;
   };
 }
 
@@ -73,7 +78,9 @@ export interface Character {
     personality: string;
   };
   imageUrl?: string;
+  lastImagePrompt?: string;
   viewsImageUrl?: string;
+  lastViewsPrompt?: string;
   updatedAt?: number;
   analysis?: {
     status: 'ok' | 'warning' | 'error';
@@ -87,6 +94,7 @@ export interface Setting {
   name: string;
   description: string;
   imageUrl?: string;
+  lastImagePrompt?: string;
   updatedAt?: number;
 }
 
@@ -117,7 +125,11 @@ export interface Take {
   endFrameUrl?: string;
   videoUrl?: string;
   videoOperationId?: string;
+  videoObject?: any;
   videoModel?: 'veo' | 'flow';
+  lastStartFramePrompt?: string;
+  lastEndFramePrompt?: string;
+  lastVideoPrompt?: string;
   duration?: number; // duration in seconds
   analysis?: {
     status: 'ok' | 'warning' | 'error';

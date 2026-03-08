@@ -88,7 +88,8 @@ export function ApiKeyModal({ isOpen, onClose, onSave, currentKey }: ApiKeyModal
             
             <div className="flex items-center justify-between gap-4 mt-2">
               <p className="text-[10px] text-zinc-500 leading-relaxed flex-1">
-                Obtém uma chave em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Google AI Studio</a>.
+                Obtém uma chave em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Google AI Studio</a>. 
+                Para Vercel, configura a variável <code className="text-indigo-300">VITE_GEMINI_API_KEY</code>.
               </p>
               <button
                 onClick={handleValidate}

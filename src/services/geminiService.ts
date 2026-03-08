@@ -5,13 +5,17 @@ export const getGenAI = () => {
   // 1. Try to get from localStorage (manually entered by user)
   const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
   
-  // 2. Try to get from environment (injected by AI Studio)
-  const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  // 2. Try to get from environment (injected by AI Studio or set in Vercel/Vite)
+  // Vite uses import.meta.env.VITE_*, but we also check process.env for compatibility
+  const envKey = 
+    (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : null) ||
+    (import.meta as any).env?.VITE_API_KEY || 
+    (import.meta as any).env?.VITE_GEMINI_API_KEY;
   
   const apiKey = manualKey || envKey;
   
   if (!apiKey) {
-    throw new Error("API Key not found. Please select an API key or enter it manually in Settings.");
+    throw new Error("Chave API não encontrada. Por favor, introduz a tua chave manualmente no menu lateral (Manual) ou configura as variáveis de ambiente (VITE_GEMINI_API_KEY).");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -35,6 +39,19 @@ const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> =>
         console.warn(`Quota exceeded (429). Retrying in ${Math.round(delay)}ms... (Attempt ${i + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
+      }
+      
+      const errorMsg = error.message?.toLowerCase() || "";
+      if (errorMsg.includes("billing") || errorMsg.includes("pay-as-you-go") || errorMsg.includes("faturação")) {
+        throw new Error("A tua chave API não tem uma conta de faturação associada. A geração de vídeo (Veo) e imagens de alta qualidade requerem um projeto pago no Google Cloud.");
+      }
+
+      if (errorMsg.includes("api_key_invalid") || errorMsg.includes("invalid api key")) {
+        throw new Error("Chave API inválida. Por favor, verifica se a chave foi copiada corretamente.");
+      }
+
+      if (errorMsg.includes("permission_denied") || error.status === 403) {
+        throw new Error("Acesso negado. A tua chave API pode não ter permissões para este modelo ou região.");
       }
       
       // If it's a quota error and we're out of retries, throw a better message
@@ -210,8 +227,9 @@ export const pollVideoOperation = async (operationOrName: any) => {
   if (currentOperation.error) {
     console.error("Operação terminou com erro:", currentOperation.error);
     const errorMsg = currentOperation.error.message || "Erro desconhecido na geração de vídeo.";
-    if (errorMsg.includes("billing")) {
-      throw new Error("A tua chave API não tem uma conta de faturação associada. A geração de vídeo (Veo) requer um projeto pago.");
+    const lowerMsg = errorMsg.toLowerCase();
+    if (lowerMsg.includes("billing") || lowerMsg.includes("pay-as-you-go") || lowerMsg.includes("faturação")) {
+      throw new Error("A tua chave API não tem uma conta de faturação associada. A geração de vídeo (Veo) requer um projeto pago no Google Cloud.");
     }
     throw new Error(`Erro na geração do vídeo: ${errorMsg}`);
   }
@@ -243,11 +261,42 @@ export const pollVideoOperation = async (operationOrName: any) => {
   }
 
   const blob = await response.blob();
-  return new Promise<string>((resolve, reject) => {
+  const videoUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve(reader.result as string);
     reader.onerror = reject;
     reader.readAsDataURL(blob);
+  });
+
+  return {
+    videoUrl,
+    videoObject: currentOperation.response?.generatedVideos?.[0]?.video
+  };
+};
+
+export const extendVideo = async (
+  prompt: string,
+  previousVideo: any,
+  aspectRatio: string = "16:9",
+) => {
+  return withRetry(async () => {
+    const ai = getGenAI();
+
+    const config: any = {
+      numberOfVideos: 1,
+      resolution: "720p",
+      aspectRatio: aspectRatio,
+    };
+
+    const request: any = {
+      model: 'veo-3.1-generate-preview',
+      prompt,
+      video: previousVideo,
+      config,
+    };
+
+    const operation = await ai.models.generateVideos(request);
+    return operation;
   });
 };
 

@@ -21,7 +21,8 @@ import {
   X,
   ZoomIn,
   Users,
-  Upload
+  Upload,
+  Download
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
@@ -52,6 +53,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [progress, setProgress] = useState(0);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
+  const [editingPrompt, setEditingPrompt] = useState<string | null>(null);
 
   const intro = project.intro || { type: "cinematic", prompt: "" };
   const outro = project.outro || { type: "scrolling", prompt: "" };
@@ -90,11 +92,16 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       
       let extraInfo = "";
       if (activeTab === "outro") {
+        const creditsText = `
+          Empresa: ${project.outro?.company || "N/A"}
+          Realização: ${project.outro?.director || "N/A"}
+          Produção: ${project.outro?.producer || "N/A"}
+          ${currentData.type === 'thankyou' ? `Mensagem de Agradecimento: ${project.outro?.thankYouMessage || "N/A"}` : ""}
+        `;
+        
         extraInfo = `
-        Dados Adicionais para Créditos:
-        Empresa: ${project.outro?.company || "N/A"}
-        Realização: ${project.outro?.director || "N/A"}
-        Produção: ${project.outro?.producer || "N/A"}
+        Dados Adicionais para Créditos (Estes dados DEVEM aparecer visualmente no vídeo):
+        ${creditsText}
         `;
       }
 
@@ -105,7 +112,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
         Tipo de ${activeTab === "intro" ? "Intro" : "Outro"}: ${typeInfo?.name} (${typeInfo?.description})
         ${extraInfo}
         
-        O prompt deve descrever visualmente a cena, a tipografia do texto "${activeTab === "intro" ? project.title : "FIM / CRÉDITOS"}", a iluminação, o movimento de câmara e a atmosfera.
+        O prompt deve descrever visualmente a cena, a tipografia do texto "${activeTab === "intro" ? project.title : (currentData.type === 'thankyou' ? project.outro?.thankYouMessage || "OBRIGADO" : "FIM / CRÉDITOS")}", a iluminação, o movimento de câmara e a atmosfera.
         Para os créditos, certifica-te que o prompt inclui a exibição dos nomes da Empresa, Realizador e Produtor de forma legível e estilizada de acordo com o tipo selecionado.
         Responde apenas com o prompt em Inglês para ser usado numa ferramenta de geração de imagem/vídeo.`;
       
@@ -124,11 +131,16 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       alert("Gera primeiro o prompt!");
       return;
     }
+    setEditingPrompt(currentData.prompt);
+  };
+
+  const confirmGenerateImage = async (editedPrompt: string) => {
+    setEditingPrompt(null);
     setIsGeneratingImage(true);
     setProgress(0);
     try {
-      const imageUrl = await generateImage(currentData.prompt, project.aspectRatio);
-      updateData({ imageUrl });
+      const imageUrl = await generateImage(editedPrompt, project.aspectRatio);
+      updateData({ imageUrl, prompt: editedPrompt });
     } catch (error) {
       console.error(error);
       alert("Erro ao gerar imagem.");
@@ -174,13 +186,13 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${activeTab === "intro" ? "epic orchestral music" : "gentle closing music"}, and professional transitions.`;
       const operation = await generateVideo(videoPrompt, currentData.imageUrl, undefined, currentData.videoModel || 'flow', project.aspectRatio);
       
-      updateData({ videoOperationId: operation.name });
+      updateData({ videoOperationId: operation.name, lastVideoPrompt: videoPrompt });
       
-      const videoUrl = await pollVideoOperation(operation);
-      updateData({ videoUrl, videoOperationId: undefined });
-    } catch (error) {
+      const { videoUrl, videoObject } = await pollVideoOperation(operation);
+      updateData({ videoUrl, videoObject, videoOperationId: undefined });
+    } catch (error: any) {
       console.error(error);
-      alert("Erro ao gerar vídeo.");
+      alert(`Erro ao gerar vídeo: ${error.message || 'Verifica a consola.'}`);
       updateData({ videoOperationId: undefined });
     } finally {
       setIsGeneratingVideo(false);
@@ -309,6 +321,17 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                       className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
                     />
                   </div>
+                  {currentData.type === 'thankyou' && (
+                    <div>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Mensagem de Agradecimento</label>
+                      <textarea
+                        value={project.outro?.thankYouMessage || ""}
+                        onChange={(e) => updateData({ thankYouMessage: e.target.value })}
+                        placeholder="Escreve aqui a tua nota pessoal de agradecimento..."
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none h-24 resize-none"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -358,6 +381,16 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                         >
                           <ZoomIn className="w-5 h-5" />
                         </button>
+                        <a 
+                          href={currentData.imageUrl}
+                          download={`${activeTab}-keyframe.png`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-2 bg-white rounded-full text-zinc-900 hover:scale-110 transition-transform flex items-center justify-center"
+                          title="Descarregar Imagem"
+                        >
+                          <Download className="w-5 h-5" />
+                        </a>
                       </div>
                     </>
                   ) : (
@@ -416,13 +449,25 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                     </button>
                   </div>
                 </div>
-                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden flex items-center justify-center relative`}>
+                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden flex items-center justify-center relative group`}>
                   {currentData.videoUrl ? (
-                    <video 
-                      src={currentData.videoUrl} 
-                      controls 
-                      className="w-full h-full object-cover"
-                    />
+                    <>
+                      <video 
+                        src={currentData.videoUrl} 
+                        controls 
+                        className="w-full h-full object-cover"
+                      />
+                      <a 
+                        href={currentData.videoUrl}
+                        download={`${activeTab}-video.mp4`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute top-4 right-4 p-2 bg-white/90 rounded-full text-zinc-900 opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-lg flex items-center justify-center"
+                        title="Descarregar Vídeo"
+                      >
+                        <Download className="w-5 h-5" />
+                      </a>
+                    </>
                   ) : (
                     <div className="text-center p-6">
                       <Video className="w-10 h-10 text-zinc-300 mx-auto mb-2" />
@@ -468,6 +513,66 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
         title={selectedImage?.title} 
         onClose={() => setSelectedImage(null)} 
       />
+
+      {/* Prompt Validation Modal */}
+      {editingPrompt !== null && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-zinc-200">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900">Validar Prompt de Geração</h3>
+                  <p className="text-xs text-zinc-500">Edita o prompt para garantir que o resultado da {activeTab === 'intro' ? 'Intro' : 'Créditos'} é o pretendido.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingPrompt(null)}
+                className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6 text-zinc-400" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Prompt Visual</label>
+                <textarea
+                  value={editingPrompt}
+                  onChange={(e) => setEditingPrompt(e.target.value)}
+                  className="w-full h-48 bg-zinc-50 border border-zinc-200 rounded-2xl p-4 text-sm text-zinc-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all resize-none font-mono"
+                  placeholder="Descreve a cena detalhadamente..."
+                />
+              </div>
+              
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  <strong>Dica:</strong> Inclui detalhes sobre iluminação, estilo de animação e atmosfera para melhores resultados.
+                </p>
+              </div>
+            </div>
+            
+            <div className="p-6 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-3">
+              <button
+                onClick={() => setEditingPrompt(null)}
+                className="px-6 py-2.5 rounded-xl font-bold text-zinc-600 hover:bg-zinc-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => confirmGenerateImage(editingPrompt)}
+                className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                Gerar Imagem Agora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
