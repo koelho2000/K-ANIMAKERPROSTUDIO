@@ -16,19 +16,53 @@ export const getGenAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Helper for retrying API calls with exponential backoff
+const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> => {
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const isQuotaError = 
+        error.status === 429 || 
+        error.message?.includes("429") || 
+        error.message?.includes("quota") ||
+        error.message?.includes("RESOURCE_EXHAUSTED");
+
+      if (isQuotaError && i < maxRetries - 1) {
+        const delay = Math.pow(2, i) * 2000 + Math.random() * 1000;
+        console.warn(`Quota exceeded (429). Retrying in ${Math.round(delay)}ms... (Attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // If it's a quota error and we're out of retries, throw a better message
+      if (isQuotaError) {
+        throw new Error("Limite de quota atingido (429). Por favor, aguarda um momento antes de tentar novamente ou verifica a tua conta de faturação.");
+      }
+      
+      throw error;
+    }
+  }
+  throw lastError;
+};
+
 export const generateText = async (
   prompt: string,
   systemInstruction?: string,
 ) => {
-  const ai = getGenAI();
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
-    contents: prompt,
-    config: {
-      systemInstruction,
-    },
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: prompt,
+      config: {
+        systemInstruction,
+      },
+    });
+    return response.text || "";
   });
-  return response.text || "";
 };
 
 export const generateJSON = async (
@@ -36,53 +70,57 @@ export const generateJSON = async (
   schema: any,
   systemInstruction?: string,
 ) => {
-  const ai = getGenAI();
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
-    contents: prompt,
-    config: {
-      systemInstruction,
-      responseMimeType: "application/json",
-      responseSchema: schema,
-    },
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: prompt,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: schema,
+      },
+    });
+    return response.text || "";
   });
-  return response.text || "";
 };
 
 export const generateImage = async (prompt: string, aspectRatio: string = "16:9", referenceImagesBase64?: string[]) => {
-  const ai = getGenAI();
-  const parts: any[] = [{ text: prompt }];
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const parts: any[] = [{ text: prompt }];
 
-  if (referenceImagesBase64 && referenceImagesBase64.length > 0) {
-    referenceImagesBase64.forEach(img => {
-      const [mimeType, base64Data] = img.split(";base64,");
-      parts.unshift({
-        inlineData: {
-          data: base64Data,
-          mimeType: mimeType.replace("data:", ""),
-        },
+    if (referenceImagesBase64 && referenceImagesBase64.length > 0) {
+      referenceImagesBase64.forEach(img => {
+        const [mimeType, base64Data] = img.split(";base64,");
+        parts.unshift({
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType.replace("data:", ""),
+          },
+        });
       });
-    });
-  }
-
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-flash-image-preview",
-    contents: {
-      parts: parts,
-    },
-    config: {
-      imageConfig: {
-        aspectRatio: aspectRatio,
-      },
-    },
-  });
-
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
     }
-  }
-  throw new Error("No image generated.");
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-image-preview",
+      contents: {
+        parts: parts,
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: aspectRatio,
+        },
+      },
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("No image generated.");
+  });
 };
 
 export const generateVideo = async (
@@ -92,40 +130,42 @@ export const generateVideo = async (
   model: 'veo' | 'flow' = 'flow',
   aspectRatio: string = "16:9",
 ) => {
-  const ai = getGenAI();
+  return withRetry(async () => {
+    const ai = getGenAI();
 
-  const config: any = {
-    numberOfVideos: 1,
-    resolution: "720p",
-    aspectRatio: aspectRatio,
-  };
-
-  const modelName = model === 'veo' ? 'veo-3.1-generate-preview' : 'veo-3.1-fast-generate-preview';
-
-  const request: any = {
-    model: modelName,
-    prompt,
-    config,
-  };
-
-  if (startImageBase64) {
-    const [mimeType, base64Data] = startImageBase64.split(";base64,");
-    request.image = {
-      imageBytes: base64Data,
-      mimeType: mimeType.replace("data:", ""),
+    const config: any = {
+      numberOfVideos: 1,
+      resolution: "720p",
+      aspectRatio: aspectRatio,
     };
-  }
 
-  if (endImageBase64) {
-    const [mimeType, base64Data] = endImageBase64.split(";base64,");
-    request.config.lastFrame = {
-      imageBytes: base64Data,
-      mimeType: mimeType.replace("data:", ""),
+    const modelName = model === 'veo' ? 'veo-3.1-generate-preview' : 'veo-3.1-fast-generate-preview';
+
+    const request: any = {
+      model: modelName,
+      prompt,
+      config,
     };
-  }
 
-  const operation = await ai.models.generateVideos(request);
-  return operation;
+    if (startImageBase64) {
+      const [mimeType, base64Data] = startImageBase64.split(";base64,");
+      request.image = {
+        imageBytes: base64Data,
+        mimeType: mimeType.replace("data:", ""),
+      };
+    }
+
+    if (endImageBase64) {
+      const [mimeType, base64Data] = endImageBase64.split(";base64,");
+      request.config.lastFrame = {
+        imageBytes: base64Data,
+        mimeType: mimeType.replace("data:", ""),
+      };
+    }
+
+    const operation = await ai.models.generateVideos(request);
+    return operation;
+  });
 };
 
 export const pollVideoOperation = async (operationOrName: any) => {
@@ -140,9 +180,9 @@ export const pollVideoOperation = async (operationOrName: any) => {
   
   let currentOperation;
   try {
-    currentOperation = await ai.operations.getVideosOperation({
+    currentOperation = await withRetry(() => ai.operations.getVideosOperation({
       operation: operation,
-    });
+    }));
   } catch (error: any) {
     console.error("Erro ao obter operação inicial:", error);
     throw new Error(`Falha ao iniciar monitorização do vídeo: ${error.message}`);
@@ -155,9 +195,9 @@ export const pollVideoOperation = async (operationOrName: any) => {
     await new Promise((resolve) => setTimeout(resolve, 10000));
     
     try {
-      currentOperation = await ai.operations.getVideosOperation({
+      currentOperation = await withRetry(() => ai.operations.getVideosOperation({
         operation: currentOperation,
-      });
+      }));
     } catch (error: any) {
       console.error(`Erro na tentativa ${attempts}:`, error);
       // Don't throw immediately on a single network error, retry a few times
@@ -212,99 +252,105 @@ export const pollVideoOperation = async (operationOrName: any) => {
 };
 
 export const describeCharacterFromImage = async (base64Image: string, filmType?: string, filmStyle?: string) => {
-  const ai = getGenAI();
-  const [mimeType, base64Data] = base64Image.split(";base64,");
-  
-  const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const [mimeType, base64Data] = base64Image.split(";base64,");
+    
+    const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType.replace("data:", ""),
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: mimeType.replace("data:", ""),
+            },
           },
-        },
-        {
-          text: `Descreve detalhadamente esta personagem de animação.${context} Inclui a sua aparência física, vestuário, cores principais e personalidade sugerida pela imagem. A descrição deve ser em Português e adequada para ser usada como prompt de geração de imagem.`,
-        },
-      ],
-    },
-  });
+          {
+            text: `Descreve detalhadamente esta personagem de animação.${context} Inclui a sua aparência física, vestuário, cores principais e personalidade sugerida pela imagem. A descrição deve ser em Português e adequada para ser usada como prompt de geração de imagem.`,
+          },
+        ],
+      },
+    });
 
-  return response.text || "";
+    return response.text || "";
+  });
 };
 
 export const describeSettingFromImage = async (base64Image: string, filmType?: string, filmStyle?: string) => {
-  const ai = getGenAI();
-  const [mimeType, base64Data] = base64Image.split(";base64,");
-  
-  const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const [mimeType, base64Data] = base64Image.split(";base64,");
+    
+    const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType.replace("data:", ""),
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: mimeType.replace("data:", ""),
+            },
           },
-        },
-        {
-          text: `Descreve detalhadamente este cenário ou localização para um filme de animação.${context} Foca-te na arquitetura, iluminação, cores, atmosfera e detalhes ambientais. NÃO incluas personagens na descrição. A descrição deve ser em Português e adequada para ser usada como prompt de geração de imagem.`,
-        },
-      ],
-    },
-  });
+          {
+            text: `Descreve detalhadamente este cenário ou localização para um filme de animação.${context} Foca-te na arquitetura, iluminação, cores, atmosfera e detalhes ambientais. NÃO incluas personagens na descrição. A descrição deve ser em Português e adequada para ser usada como prompt de geração de imagem.`,
+          },
+        ],
+      },
+    });
 
-  return response.text || "";
+    return response.text || "";
+  });
 };
 
 export const analyzeCoherence = async (
   prompt: string,
   imagesBase64?: string[],
 ) => {
-  const ai = getGenAI();
-  const parts: any[] = [{ text: prompt }];
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const parts: any[] = [{ text: prompt }];
 
-  if (imagesBase64 && imagesBase64.length > 0) {
-    imagesBase64.forEach((img) => {
-      const [mimeType, base64Data] = img.split(";base64,");
-      parts.unshift({
-        inlineData: {
-          data: base64Data,
-          mimeType: mimeType.replace("data:", ""),
-        },
+    if (imagesBase64 && imagesBase64.length > 0) {
+      imagesBase64.forEach((img) => {
+        const [mimeType, base64Data] = img.split(";base64,");
+        parts.unshift({
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType.replace("data:", ""),
+          },
+        });
       });
-    });
-  }
+    }
 
-  const schema = {
-    type: Type.OBJECT,
-    properties: {
-      status: { type: Type.STRING, enum: ["ok", "warning", "error"] },
-      feedback: { type: Type.STRING },
-      suggestions: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING },
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        status: { type: Type.STRING, enum: ["ok", "warning", "error"] },
+        feedback: { type: Type.STRING },
+        suggestions: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        },
       },
-    },
-    required: ["status", "feedback", "suggestions"],
-  };
+      required: ["status", "feedback", "suggestions"],
+    };
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
-    contents: { parts },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: schema,
-    },
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: { parts },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+      },
+    });
+
+    return JSON.parse(response.text || "{}");
   });
-
-  return JSON.parse(response.text || "{}");
 };
 
 export const validateApiKey = async (key: string) => {
