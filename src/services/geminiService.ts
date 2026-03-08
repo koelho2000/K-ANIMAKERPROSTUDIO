@@ -89,17 +89,21 @@ export const generateVideo = async (
   prompt: string,
   startImageBase64?: string,
   endImageBase64?: string,
+  model: 'veo' | 'flow' = 'flow',
+  aspectRatio: string = "16:9",
 ) => {
   const ai = getGenAI();
 
   const config: any = {
     numberOfVideos: 1,
     resolution: "720p",
-    aspectRatio: "16:9",
+    aspectRatio: aspectRatio,
   };
 
+  const modelName = model === 'veo' ? 'veo-3.1-generate-preview' : 'veo-3.1-fast-generate-preview';
+
   const request: any = {
-    model: "veo-3.1-fast-generate-preview",
+    model: modelName,
     prompt,
     config,
   };
@@ -132,22 +136,53 @@ export const pollVideoOperation = async (operationOrName: any) => {
     ? { name: operationOrName } 
     : operationOrName;
 
-  let currentOperation = await ai.operations.getVideosOperation({
-    operation: operation,
-  });
-
-  while (!currentOperation.done) {
-    await new Promise((resolve) => setTimeout(resolve, 10000));
+  console.log(`Iniciando polling para operação: ${operation.name}`);
+  
+  let currentOperation;
+  try {
     currentOperation = await ai.operations.getVideosOperation({
-      operation: currentOperation,
+      operation: operation,
     });
+  } catch (error: any) {
+    console.error("Erro ao obter operação inicial:", error);
+    throw new Error(`Falha ao iniciar monitorização do vídeo: ${error.message}`);
+  }
+
+  let attempts = 0;
+  while (!currentOperation.done) {
+    attempts++;
+    console.log(`Polling tentativa ${attempts} para ${operation.name}...`);
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+    
+    try {
+      currentOperation = await ai.operations.getVideosOperation({
+        operation: currentOperation,
+      });
+    } catch (error: any) {
+      console.error(`Erro na tentativa ${attempts}:`, error);
+      // Don't throw immediately on a single network error, retry a few times
+      if (attempts > 10) {
+        throw new Error(`Erro persistente ao monitorizar vídeo: ${error.message}`);
+      }
+    }
+  }
+
+  if (currentOperation.error) {
+    console.error("Operação terminou com erro:", currentOperation.error);
+    const errorMsg = currentOperation.error.message || "Erro desconhecido na geração de vídeo.";
+    if (errorMsg.includes("billing")) {
+      throw new Error("A tua chave API não tem uma conta de faturação associada. A geração de vídeo (Veo) requer um projeto pago.");
+    }
+    throw new Error(`Erro na geração do vídeo: ${errorMsg}`);
   }
 
   const downloadLink =
     currentOperation.response?.generatedVideos?.[0]?.video?.uri;
   if (!downloadLink) {
-    throw new Error("Video generation failed or no URI returned.");
+    throw new Error("Geração de vídeo concluída, mas nenhum link foi retornado.");
   }
+
+  console.log(`Vídeo pronto! Link: ${downloadLink}`);
 
   // Use the same key logic as getGenAI for the fetch
   const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
@@ -162,7 +197,9 @@ export const pollVideoOperation = async (operationOrName: any) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch video: ${response.statusText}`);
+    const errorText = await response.text();
+    console.error("Erro ao descarregar vídeo:", errorText);
+    throw new Error(`Falha ao descarregar o ficheiro de vídeo: ${response.status} ${response.statusText}`);
   }
 
   const blob = await response.blob();
@@ -268,4 +305,30 @@ export const analyzeCoherence = async (
   });
 
   return JSON.parse(response.text || "{}");
+};
+
+export const validateApiKey = async (key: string) => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: key });
+    // Try a very simple request to check if the key is valid
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: "ping",
+      config: { maxOutputTokens: 1 }
+    });
+    
+    // If we got here, the key is valid for basic text
+    return { valid: true, message: "Chave válida!" };
+  } catch (error: any) {
+    console.error("Erro ao validar chave:", error);
+    let message = "Chave inválida.";
+    if (error.message?.includes("API_KEY_INVALID")) {
+      message = "Chave API inválida ou expirada.";
+    } else if (error.message?.includes("billing")) {
+      message = "Chave válida, mas sem conta de faturação associada.";
+    } else if (error.status === 403) {
+      message = "Acesso negado. Verifica as permissões da chave.";
+    }
+    return { valid: false, message };
+  }
 };

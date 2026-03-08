@@ -259,11 +259,24 @@ export default function Sidebar({
                   ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20" 
                   : "bg-zinc-700/50 text-zinc-400 border border-zinc-600/50 hover:bg-zinc-700"
               }`}
-              title="Introduzir chave manualmente"
+              title={manualKey ? `Chave: ${manualKey.substring(0, 4)}...${manualKey.substring(manualKey.length - 4)}` : "Introduzir chave manualmente"}
             >
-              Manual
+              {manualKey ? "Manual ✓" : "Manual"}
             </button>
           </div>
+          {manualKey && (
+            <div className="mt-1.5 px-2 py-1 bg-black/20 rounded border border-white/5 flex items-center justify-between">
+              <span className="text-[8px] font-mono text-zinc-500">
+                {manualKey.substring(0, 4)}••••{manualKey.substring(manualKey.length - 4)}
+              </span>
+              <button 
+                onClick={() => setShowKeyModal(true)}
+                className="text-[8px] text-indigo-400 hover:text-indigo-300"
+              >
+                Ver
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Usage Stats Display */}

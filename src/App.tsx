@@ -23,6 +23,7 @@ const initialProject: Project = {
   filmStyle: "Fantasia",
   language: "Português (Portugal)",
   duration: "1 a 5 minutos",
+  aspectRatio: "16:9",
   script: "",
   characters: [],
   settings: [],

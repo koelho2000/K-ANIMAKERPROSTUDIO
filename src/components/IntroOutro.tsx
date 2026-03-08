@@ -20,7 +20,8 @@ import {
   PlayCircle,
   X,
   ZoomIn,
-  Users
+  Users,
+  Upload
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
@@ -56,6 +57,23 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
   const outro = project.outro || { type: "scrolling", prompt: "" };
 
   const currentData = activeTab === "intro" ? intro : outro;
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isGeneratingVideo || isGeneratingImage || isGeneratingPrompt) {
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 98) return prev;
+          // Faster initially, then slower
+          const increment = prev < 20 ? Math.random() * 5 : Math.random() * 0.5;
+          return prev + increment;
+        });
+      }, 1000);
+    } else {
+      setProgress(100);
+    }
+    return () => clearInterval(interval);
+  }, [isGeneratingVideo, isGeneratingImage, isGeneratingPrompt]);
 
   const updateData = (updates: any) => {
     setProject(prev => ({
@@ -109,7 +127,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
     setIsGeneratingImage(true);
     setProgress(0);
     try {
-      const imageUrl = await generateImage(currentData.prompt, "16:9");
+      const imageUrl = await generateImage(currentData.prompt, project.aspectRatio);
       updateData({ imageUrl });
     } catch (error) {
       console.error(error);
@@ -117,6 +135,18 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
     } finally {
       setIsGeneratingImage(false);
     }
+  };
+
+  const handleUploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      updateData({ imageUrl: base64 });
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleGenerateVideo = async () => {
@@ -142,7 +172,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       }
 
       const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${activeTab === "intro" ? "epic orchestral music" : "gentle closing music"}, and professional transitions.`;
-      const operation = await generateVideo(videoPrompt, currentData.imageUrl);
+      const operation = await generateVideo(videoPrompt, currentData.imageUrl, undefined, currentData.videoModel || 'flow', project.aspectRatio);
       
       updateData({ videoOperationId: operation.name });
       
@@ -296,16 +326,28 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                     <ImageIcon className="w-5 h-5 text-indigo-600" />
                     Keyframe Base
                   </h3>
-                  <button
-                    onClick={handleGenerateImage}
-                    disabled={isGeneratingImage || !currentData.prompt}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {isGeneratingImage ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                    Gerar Imagem
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer bg-white hover:bg-zinc-50 text-zinc-700 px-4 py-1.5 rounded-xl text-xs font-bold border border-zinc-200 transition-all flex items-center gap-2">
+                      <Upload className="w-3 h-3" />
+                      Upload
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={handleUploadImage}
+                      />
+                    </label>
+                    <button
+                      onClick={handleGenerateImage}
+                      disabled={isGeneratingImage || !currentData.prompt}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isGeneratingImage ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      Gerar Imagem
+                    </button>
+                  </div>
                 </div>
-                <div className="aspect-video bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden flex items-center justify-center relative group">
+                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden flex items-center justify-center relative group`}>
                   {currentData.imageUrl ? (
                     <>
                       <img src={currentData.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -341,16 +383,40 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                     <Video className="w-5 h-5 text-emerald-600" />
                     Vídeo Final
                   </h3>
-                  <button
-                    onClick={handleGenerateVideo}
-                    disabled={isGeneratingVideo || !currentData.imageUrl || !!currentData.videoOperationId}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {isGeneratingVideo || currentData.videoOperationId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                    Renderizar Vídeo
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
+                      <button
+                        onClick={() => updateData({ videoModel: 'flow' })}
+                        className={`px-2 py-1 text-[9px] font-bold rounded-md transition-all ${
+                          (currentData.videoModel || 'flow') === 'flow'
+                            ? "bg-white text-indigo-600 shadow-sm"
+                            : "text-zinc-400 hover:text-zinc-600"
+                        }`}
+                      >
+                        FLOW
+                      </button>
+                      <button
+                        onClick={() => updateData({ videoModel: 'veo' })}
+                        className={`px-2 py-1 text-[9px] font-bold rounded-md transition-all ${
+                          currentData.videoModel === 'veo'
+                            ? "bg-white text-emerald-600 shadow-sm"
+                            : "text-zinc-400 hover:text-zinc-600"
+                        }`}
+                      >
+                        VEO
+                      </button>
+                    </div>
+                    <button
+                      onClick={handleGenerateVideo}
+                      disabled={isGeneratingVideo || !currentData.imageUrl || !!currentData.videoOperationId}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isGeneratingVideo || currentData.videoOperationId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      Renderizar Vídeo
+                    </button>
+                  </div>
                 </div>
-                <div className="aspect-video bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden flex items-center justify-center relative">
+                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden flex items-center justify-center relative`}>
                   {currentData.videoUrl ? (
                     <video 
                       src={currentData.videoUrl} 
@@ -365,12 +431,13 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                   )}
                   {(isGeneratingVideo || currentData.videoOperationId) && (
                     <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center p-6 text-center">
-                      <div className="w-full max-w-[240px] space-y-4">
-                        <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
-                        <div className="space-y-1">
-                          <p className="text-sm font-bold text-zinc-900">A renderizar vídeo...</p>
-                          <p className="text-[10px] text-zinc-500">Isto pode demorar alguns minutos. Estamos a adicionar movimento e atmosfera.</p>
-                        </div>
+                      <div className="w-full max-w-[240px]">
+                        <ProgressBar 
+                          progress={progress} 
+                          label="A renderizar vídeo..." 
+                          modelName={(currentData.videoModel || 'flow') === 'veo' ? 'Veo' : 'Flow'} 
+                        />
+                        <p className="mt-2 text-[10px] text-zinc-500">Isto pode demorar alguns minutos. Estamos a adicionar movimento e atmosfera.</p>
                       </div>
                     </div>
                   )}
@@ -395,13 +462,12 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
         </div>
       </div>
 
-      {selectedImage && (
-        <ImageModal 
-          url={selectedImage.url} 
-          title={selectedImage.title} 
-          onClose={() => setSelectedImage(null)} 
-        />
-      )}
+      <ImageModal 
+        isOpen={!!selectedImage}
+        imageUrl={selectedImage?.url || null} 
+        title={selectedImage?.title} 
+        onClose={() => setSelectedImage(null)} 
+      />
     </div>
   );
 }

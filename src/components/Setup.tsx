@@ -332,6 +332,22 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
               <option value="90 a 120 minutos">90 a 120 minutos</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Formato de Tela (Aspect Ratio)
+            </label>
+            <select
+              name="aspectRatio"
+              value={project.aspectRatio}
+              onChange={handleChange}
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
+            >
+              <option value="16:9">16:9 (Cinema / TV)</option>
+              <option value="9:16">9:16 (Vertical / TikTok / Reels)</option>
+              <option value="4:3">4:3 (Clássico)</option>
+              <option value="1:1">1:1 (Quadrado / Instagram)</option>
+            </select>
+          </div>
         </div>
 
         {/* Mass Production Activation */}

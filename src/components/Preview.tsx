@@ -85,7 +85,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
         <h3 className="text-xl font-bold text-white mb-6">Corte do Realizador</h3>
 
         {completedTakes.length === 0 && !hasIntro && !hasOutro ? (
-          <div className="aspect-video bg-zinc-800 rounded-xl flex flex-col items-center justify-center text-zinc-500 border border-zinc-700">
+          <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-800 rounded-xl flex flex-col items-center justify-center text-zinc-500 border border-zinc-700`}>
             <PlayCircle className="w-16 h-16 mb-4 opacity-50" />
             <p>Ainda não existem conteúdos renderizados.</p>
             <p className="text-sm mt-2">
@@ -97,7 +97,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
             {/* Intro Video */}
             {hasIntro && (
               <div className="space-y-2">
-                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-indigo-500/50 relative group">
+                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black rounded-xl overflow-hidden border border-indigo-500/50 relative group`}>
                   <video
                     src={project.intro?.videoUrl}
                     controls
@@ -121,7 +121,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
             {/* Movie Takes */}
             {completedTakes.map((take, i) => (
               <div key={take.id} className="space-y-2">
-                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-zinc-700 relative group">
+                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black rounded-xl overflow-hidden border border-zinc-700 relative group`}>
                   <video
                     src={take.videoUrl}
                     controls
@@ -145,7 +145,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
             {/* Outro Video */}
             {hasOutro && (
               <div className="space-y-2">
-                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-rose-500/50 relative group">
+                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black rounded-xl overflow-hidden border border-rose-500/50 relative group`}>
                   <video
                     src={project.outro?.videoUrl}
                     controls

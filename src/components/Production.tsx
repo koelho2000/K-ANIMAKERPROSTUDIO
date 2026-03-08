@@ -19,6 +19,7 @@ import {
   X,
   ZoomIn,
   Trash2,
+  Upload,
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
@@ -38,7 +39,14 @@ export default function Production({ project, setProject }: ProductionProps) {
   );
   const [isAnalyzingTakeId, setIsAnalyzingTakeId] = useState<string | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
+  const [videoStatus, setVideoStatus] = useState<string>("");
   const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<{
+    sceneId: string;
+    takeId: string;
+    type: "start" | "end";
+    prompt: string;
+  } | null>(null);
   const [bulkProgress, setBulkProgress] = useState(0);
   const [expandedSceneId, setExpandedSceneId] = useState<string | null>(
     project.scenes[0]?.id || null,
@@ -63,12 +71,13 @@ export default function Production({ project, setProject }: ProductionProps) {
     let interval: NodeJS.Timeout;
     if (generatingVideoId) {
       setVideoProgress(0);
-      // Video generation is slow, so we increment slowly
+      // Video generation is slow, so we increment slowly but steadily
       interval = setInterval(() => {
         setVideoProgress((prev) => {
           if (prev >= 98) return prev;
-          // Slower progress for video
-          return prev + Math.random() * 0.5;
+          // Faster initially (up to 20%), then slower
+          const increment = prev < 20 ? Math.random() * 2 : Math.random() * 0.4;
+          return prev + increment;
         });
       }, 1000);
     } else {
@@ -82,6 +91,7 @@ export default function Production({ project, setProject }: ProductionProps) {
     takeId: string,
     type: "start" | "end",
     silent = false,
+    customPrompt?: string,
   ) => {
     if (!silent) setGeneratingImageId(`${takeId}-${type}`);
     try {
@@ -101,21 +111,7 @@ export default function Production({ project, setProject }: ProductionProps) {
         if (c.imageUrl) referenceImages.push(c.imageUrl);
       });
 
-      const charactersContext = takeCharacters
-        .map((c) => `${c.name}: ${c.description}`)
-        .join("\n");
-      const settingContext = takeSetting 
-        ? `${takeSetting.name}: ${takeSetting.description}`
-        : "Nenhum cenário específico definido.";
-
-      const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
-        ? take.dialogueLines.map(line => {
-            const char = project.characters.find(c => c.id === line.characterId);
-            return `${char?.name || "Personagem"}: ${line.text}`;
-          }).join("\n")
-        : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico.";
-
-      const prompt = `
+      const prompt = customPrompt || `
         Cria um frame de animação cinematográfica de alta qualidade.
         Tipo de Filme: ${project.filmType}. 
         Estilo Visual: ${project.filmStyle}. 
@@ -124,13 +120,18 @@ export default function Production({ project, setProject }: ProductionProps) {
         Câmara: ${take.camera}. 
         
         DIÁLOGO NESTE TAKE:
-        ${dialogueContext}
+        ${take.dialogueLines && take.dialogueLines.length > 0
+          ? take.dialogueLines.map(line => {
+              const char = project.characters.find(c => c.id === line.characterId);
+              return `${char?.name || "Personagem"}: ${line.text}`;
+            }).join("\n")
+          : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico."}
 
         PERSONAGENS PRESENTES NESTE TAKE:
-        ${charactersContext || "Nenhuma personagem específica."}
+        ${takeCharacters.map((c) => `${c.name}: ${c.description}`).join("\n") || "Nenhuma personagem específica."}
         
         CENÁRIO DESTE TAKE:
-        ${settingContext}
+        ${takeSetting ? `${takeSetting.name}: ${takeSetting.description}` : "Nenhum cenário específico definido."}
         
         INSTRUÇÕES DE CONSISTÊNCIA:
         1. Usa as imagens de referência fornecidas para manter a aparência exata das personagens e do cenário.
@@ -140,7 +141,7 @@ export default function Production({ project, setProject }: ProductionProps) {
         
         Altamente detalhado, iluminação dramática, composição profissional.
       `;
-      const imageUrl = await generateImage(prompt, "16:9", referenceImages);
+      const imageUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
       return imageUrl;
     } catch (error) {
       console.error(error);
@@ -193,6 +194,75 @@ export default function Production({ project, setProject }: ProductionProps) {
     }
 
     return true;
+  };
+
+  const handleFileUpload = async (sceneId: string, takeId: string, type: "start" | "end", e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      const updatedScenes = project.scenes.map((s) => {
+        if (s.id === sceneId) {
+          return {
+            ...s,
+            takes: s.takes.map((t) =>
+              t.id === takeId
+                ? {
+                    ...t,
+                    [type === "start" ? "startFrameUrl" : "endFrameUrl"]: base64,
+                    updatedAt: Date.now(),
+                  }
+                : t,
+            ),
+          };
+        }
+        return s;
+      });
+      setProject({ ...project, scenes: updatedScenes });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const getDefaultFramePrompt = (sceneId: string, takeId: string) => {
+    const scene = project.scenes.find((s) => s.id === sceneId);
+    const take = scene?.takes.find((t) => t.id === takeId);
+    if (!scene || !take) return "";
+
+    const takeCharacters = project.characters.filter((c) =>
+      take.characterIds?.includes(c.id)
+    );
+    const takeSetting = project.settings.find((s) => s.id === take.settingId);
+
+    return `Cria um frame de animação cinematográfica de alta qualidade.
+Tipo de Filme: ${project.filmType}. 
+Estilo Visual: ${project.filmStyle}. 
+Cena: ${scene.title}. 
+Ação do Take: ${take.action}. 
+Câmara: ${take.camera}. 
+
+DIÁLOGO NESTE TAKE:
+${take.dialogueLines && take.dialogueLines.length > 0
+  ? take.dialogueLines.map(line => {
+      const char = project.characters.find(c => c.id === line.characterId);
+      return `${char?.name || "Personagem"}: ${line.text}`;
+    }).join("\n")
+  : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico."}
+
+PERSONAGENS PRESENTES NESTE TAKE:
+${takeCharacters.map((c) => `${c.name}: ${c.description}`).join("\n") || "Nenhuma personagem específica."}
+
+CENÁRIO DESTE TAKE:
+${takeSetting ? `${takeSetting.name}: ${takeSetting.description}` : "Nenhum cenário específico definido."}
+
+INSTRUÇÕES DE CONSISTÊNCIA:
+1. Usa as imagens de referência fornecidas para manter a aparência exata das personagens e do cenário.
+2. As personagens devem ser instantaneamente reconhecíveis e consistentes com os seus designs originais.
+3. O cenário deve manter a mesma arquitetura, iluminação e atmosfera definida no concept art.
+4. Integra as personagens de forma natural no cenário de acordo com a ação descrita.
+
+Altamente detalhado, iluminação dramática, composição profissional.`.trim();
   };
 
   const onGenerateFrame = async (sceneId: string, takeId: string, type: "start" | "end") => {
@@ -351,6 +421,21 @@ export default function Production({ project, setProject }: ProductionProps) {
     }
   };
 
+  const handleUpdateTakeModel = (sceneId: string, takeId: string, model: 'veo' | 'flow') => {
+    const updatedScenes = project.scenes.map((s) => {
+      if (s.id === sceneId) {
+        return {
+          ...s,
+          takes: s.takes.map((t) =>
+            t.id === takeId ? { ...t, videoModel: model } : t
+          ),
+        };
+      }
+      return s;
+    });
+    setProject({ ...project, scenes: updatedScenes });
+  };
+
   const handleGenerateAllVideosForScene = async (sceneId: string) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     if (!scene) return;
@@ -402,6 +487,8 @@ export default function Production({ project, setProject }: ProductionProps) {
             prompt,
             take.startFrameUrl,
             take.endFrameUrl,
+            take.videoModel || 'flow',
+            project.aspectRatio
           );
 
           // Update state with operation ID
@@ -469,6 +556,7 @@ export default function Production({ project, setProject }: ProductionProps) {
 
   const handleGenerateVideo = async (sceneId: string, takeId: string) => {
     setGeneratingVideoId(takeId);
+    setVideoStatus("A preparar pedido...");
     try {
       const scene = project.scenes.find((s) => s.id === sceneId);
       const take = scene?.takes.find((t) => t.id === takeId);
@@ -500,7 +588,10 @@ export default function Production({ project, setProject }: ProductionProps) {
         prompt,
         take.startFrameUrl,
         take.endFrameUrl,
+        take.videoModel || 'flow',
+        project.aspectRatio
       );
+      setVideoStatus("A aguardar renderização (2-5 min)...");
 
       // Save operation name to state so we know it's generating
       const updatedScenes = project.scenes.map((s) => {
@@ -519,6 +610,7 @@ export default function Production({ project, setProject }: ProductionProps) {
       // Start polling
       try {
         const videoUrl = await pollVideoOperation(operation);
+        setVideoStatus("Vídeo pronto!");
 
         // Update with final video URL
         setProject(prev => ({
@@ -712,13 +804,13 @@ export default function Production({ project, setProject }: ProductionProps) {
       // Regenerate start frame if it exists
       let newStartFrameUrl = take.startFrameUrl;
       if (take.startFrameUrl) {
-        newStartFrameUrl = await generateImage(basePrompt, "16:9", referenceImages);
+        newStartFrameUrl = await generateImage(basePrompt, project.aspectRatio, referenceImages);
       }
 
       // Regenerate end frame if it exists
       let newEndFrameUrl = take.endFrameUrl;
       if (take.endFrameUrl) {
-        newEndFrameUrl = await generateImage(basePrompt + " (End of action)", "16:9", referenceImages);
+        newEndFrameUrl = await generateImage(basePrompt + " (End of action)", project.aspectRatio, referenceImages);
       }
 
       const updatedScenes = project.scenes.map((s) => {
@@ -1099,26 +1191,39 @@ export default function Production({ project, setProject }: ProductionProps) {
                       <span className="text-xs font-semibold text-zinc-500 uppercase">
                         Frame Inicial
                       </span>
-                      <button
-                        onClick={() =>
-                          onGenerateFrame(
-                            expandedSceneId!,
-                            take.id,
-                            "start",
-                          )
-                        }
-                        disabled={generatingImageId === `${take.id}-start`}
-                        className="text-xs flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-1 rounded transition-colors disabled:opacity-50"
-                      >
-                        {generatingImageId === `${take.id}-start` ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Sparkles className="w-3 h-3" />
-                        )}
-                        Gerar
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <label className="cursor-pointer text-[10px] flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-1 rounded transition-colors">
+                          <Upload className="w-3 h-3" />
+                          Importar
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*"
+                            onChange={(e) => handleFileUpload(expandedSceneId!, take.id, "start", e)}
+                          />
+                        </label>
+                        <button
+                          onClick={() =>
+                            setEditingPrompt({
+                              sceneId: expandedSceneId!,
+                              takeId: take.id,
+                              type: "start",
+                              prompt: getDefaultFramePrompt(expandedSceneId!, take.id)
+                            })
+                          }
+                          disabled={generatingImageId === `${take.id}-start`}
+                          className="text-[10px] flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          {generatingImageId === `${take.id}-start` ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3 h-3" />
+                          )}
+                          Gerar
+                        </button>
+                      </div>
                     </div>
-                    <div className="aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group">
+                    <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group`}>
                       {take.startFrameUrl ? (
                         <>
                           <img
@@ -1164,22 +1269,39 @@ export default function Production({ project, setProject }: ProductionProps) {
                       <span className="text-xs font-semibold text-zinc-500 uppercase">
                         Frame Final (Opcional)
                       </span>
-                      <button
-                        onClick={() =>
-                          onGenerateFrame(expandedSceneId!, take.id, "end")
-                        }
-                        disabled={generatingImageId === `${take.id}-end`}
-                        className="text-xs flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-1 rounded transition-colors disabled:opacity-50"
-                      >
-                        {generatingImageId === `${take.id}-end` ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Sparkles className="w-3 h-3" />
-                        )}
-                        Gerar
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <label className="cursor-pointer text-[10px] flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-1 rounded transition-colors">
+                          <Upload className="w-3 h-3" />
+                          Importar
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*"
+                            onChange={(e) => handleFileUpload(expandedSceneId!, take.id, "end", e)}
+                          />
+                        </label>
+                        <button
+                          onClick={() =>
+                            setEditingPrompt({
+                              sceneId: expandedSceneId!,
+                              takeId: take.id,
+                              type: "end",
+                              prompt: getDefaultFramePrompt(expandedSceneId!, take.id)
+                            })
+                          }
+                          disabled={generatingImageId === `${take.id}-end`}
+                          className="text-[10px] flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          {generatingImageId === `${take.id}-end` ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3 h-3" />
+                          )}
+                          Gerar
+                        </button>
+                      </div>
                     </div>
-                    <div className="aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group">
+                    <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group`}>
                       {take.endFrameUrl ? (
                         <>
                           <img
@@ -1226,6 +1348,28 @@ export default function Production({ project, setProject }: ProductionProps) {
                         Vídeo Final
                       </span>
                       <div className="flex items-center gap-2">
+                        <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
+                          <button
+                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'flow')}
+                            className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
+                              (take.videoModel || 'flow') === 'flow'
+                                ? "bg-white text-indigo-600 shadow-sm"
+                                : "text-zinc-400 hover:text-zinc-600"
+                            }`}
+                          >
+                            FLOW
+                          </button>
+                          <button
+                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo')}
+                            className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
+                              take.videoModel === 'veo'
+                                ? "bg-white text-emerald-600 shadow-sm"
+                                : "text-zinc-400 hover:text-zinc-600"
+                            }`}
+                          >
+                            VEO
+                          </button>
+                        </div>
                         <button
                           onClick={() => setInfoModalTake(take)}
                           className="text-xs flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-2 py-1 rounded transition-colors"
@@ -1254,7 +1398,7 @@ export default function Production({ project, setProject }: ProductionProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="aspect-video bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative group">
+                    <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative group`}>
                       {take.videoUrl ? (
                         <video
                           src={take.videoUrl}
@@ -1262,12 +1406,15 @@ export default function Production({ project, setProject }: ProductionProps) {
                           className="w-full h-full object-cover"
                         />
                       ) : take.videoOperationId ? (
-                        <div className="absolute inset-0 bg-zinc-900/90 flex items-center justify-center p-6">
+                        <div className="absolute inset-0 bg-zinc-900/90 flex flex-col items-center justify-center p-6 text-center">
                           <ProgressBar
                             progress={videoProgress}
-                            label="A renderizar vídeo..."
-                            modelName="Flow"
+                            label={videoStatus || "A renderizar vídeo..."}
+                            modelName={(take.videoModel || 'flow') === 'veo' ? 'Veo' : 'Flow'}
                           />
+                          <p className="mt-2 text-[8px] text-zinc-500 italic">
+                            Isto pode demorar 2-5 min. Podes continuar a trabalhar.
+                          </p>
                         </div>
                       ) : (
                         <PlayCircle className="w-8 h-8 text-zinc-700" />
@@ -1287,6 +1434,91 @@ export default function Production({ project, setProject }: ProductionProps) {
           )}
         </div>
       </div>
+
+      {/* Prompt Editor Modal */}
+      {editingPrompt && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-zinc-200">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900">Validar Prompt de Geração</h3>
+                  <p className="text-xs text-zinc-500">Edita o prompt para garantir que o resultado é o pretendido.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingPrompt(null)}
+                className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-zinc-400" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">
+                  Prompt para o Frame {editingPrompt.type === 'start' ? 'Inicial' : 'Final'}
+                </label>
+                <textarea
+                  value={editingPrompt.prompt}
+                  onChange={(e) => setEditingPrompt({ ...editingPrompt, prompt: e.target.value })}
+                  className="w-full h-64 bg-zinc-50 border border-zinc-200 rounded-2xl p-4 text-sm text-zinc-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all resize-none font-mono leading-relaxed"
+                  placeholder="Descreve o frame em detalhe..."
+                />
+              </div>
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
+                <Info className="w-5 h-5 text-amber-600 shrink-0" />
+                <p className="text-[10px] text-amber-800 leading-relaxed">
+                  <strong>Dica:</strong> O prompt já inclui o contexto do filme, personagens e cenário. 
+                  Podes adicionar detalhes específicos sobre a pose, iluminação ou expressão facial para este take.
+                </p>
+              </div>
+            </div>
+            <div className="p-6 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-3">
+              <button
+                onClick={() => setEditingPrompt(null)}
+                className="px-6 py-2.5 rounded-xl font-bold text-zinc-600 hover:bg-zinc-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  const { sceneId, takeId, type, prompt } = editingPrompt;
+                  setEditingPrompt(null);
+                  setGeneratingImageId(`${takeId}-${type}`);
+                  const imageUrl = await handleGenerateFrame(sceneId, takeId, type, false, prompt);
+                  if (imageUrl) {
+                    const updatedScenes = project.scenes.map((s) => {
+                      if (s.id === sceneId) {
+                        return {
+                          ...s,
+                          takes: s.takes.map((t) =>
+                            t.id === takeId
+                              ? {
+                                  ...t,
+                                  [type === "start" ? "startFrameUrl" : "endFrameUrl"]: imageUrl,
+                                  updatedAt: Date.now(),
+                                }
+                              : t,
+                          ),
+                        };
+                      }
+                      return s;
+                    });
+                    setProject({ ...project, scenes: updatedScenes });
+                  }
+                }}
+                className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                Confirmar e Gerar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ImageModal
         isOpen={!!selectedImage}

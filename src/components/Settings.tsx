@@ -133,7 +133,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
     setGeneratingImageId(settingId);
     try {
       setActivePrompt(editedPrompt);
-      const imageUrl = await generateImage(editedPrompt);
+      const imageUrl = await generateImage(editedPrompt, project.aspectRatio);
 
       const updatedSettings = project.settings.map((s) =>
         s.id === settingId ? { ...s, imageUrl, updatedAt: Date.now() } : s,
@@ -170,7 +170,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
             Cinematic lighting, highly detailed, wide angle. 
             CRITICAL: NO CHARACTERS, NO PEOPLE, NO ANIMALS. Just the empty environment/location.`;
           setActivePrompt(prompt);
-          const imageUrl = await generateImage(prompt);
+          const imageUrl = await generateImage(prompt, project.aspectRatio);
           updatedSettings[i] = { ...setting, imageUrl, updatedAt: Date.now() };
           // Update project state incrementally to show progress
           setProject({ ...project, settings: [...updatedSettings] });
@@ -322,7 +322,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
             key={setting.id}
             className="bg-white rounded-2xl shadow-sm border border-zinc-100 overflow-hidden flex flex-col"
           >
-            <div className="aspect-video bg-zinc-100 relative group">
+            <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 relative group`}>
               {setting.imageUrl ? (
                 <>
                   <img

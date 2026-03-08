@@ -52,11 +52,13 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
     status: "idle",
     autoMode: false,
     progress: 0,
+    currentTask: "",
     logs: ["Pronto para iniciar a produção em massa."],
     totalCost: project.automation?.totalCost || 0
   };
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [globalVideoModel, setGlobalVideoModel] = useState<'veo' | 'flow'>('flow');
 
   const updateAutomation = (updates: Partial<typeof automation>) => {
     setProject((prev) => ({
@@ -212,7 +214,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
               Estilo: ${project.filmStyle}. 
               Tipo: ${project.filmType}.
               CRITICAL: NO CHARACTERS, NO PEOPLE, NO ANIMALS. Just the empty environment/location.`;
-            const imageUrl = await generateImage(prompt, "16:9");
+            const imageUrl = await generateImage(prompt, project.aspectRatio);
             addCost(COST_IMAGE);
             
             setProject(prev => ({
@@ -230,13 +232,13 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         // Generate Intro/Outro Images if prompts exist
         if (project.intro?.prompt && !project.intro.imageUrl) {
           addLog("Gerando imagem para Intro...");
-          const introUrl = await generateImage(project.intro.prompt, "16:9");
+          const introUrl = await generateImage(project.intro.prompt, project.aspectRatio);
           addCost(COST_IMAGE);
           setProject(prev => ({ ...prev, intro: { ...prev.intro!, imageUrl: introUrl } }));
         }
         if (project.outro?.prompt && !project.outro.imageUrl) {
           addLog("Gerando imagem para Créditos...");
-          const outroUrl = await generateImage(project.outro.prompt, "16:9");
+          const outroUrl = await generateImage(project.outro.prompt, project.aspectRatio);
           addCost(COST_IMAGE);
           setProject(prev => ({ ...prev, outro: { ...prev.outro!, imageUrl: outroUrl } }));
         }
@@ -323,7 +325,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             const promptBase = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}.`;
 
             if (!take.startFrameUrl) {
-              const startFrameUrl = await generateImage(`${promptBase} Frame Inicial.`, "16:9", referenceImages);
+              const startFrameUrl = await generateImage(`${promptBase} Frame Inicial.`, project.aspectRatio, referenceImages);
               addCost(COST_IMAGE);
               setProject(prev => ({
                 ...prev,
@@ -335,7 +337,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             }
 
             if (!take.endFrameUrl) {
-              const endFrameUrl = await generateImage(`${promptBase} Frame Final.`, "16:9", referenceImages);
+              const endFrameUrl = await generateImage(`${promptBase} Frame Final.`, project.aspectRatio, referenceImages);
               addCost(COST_IMAGE);
               setProject(prev => ({
                 ...prev,
@@ -400,10 +402,12 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         }
 
         for (const tInfo of allTakes) {
-          addLog(`Renderizando vídeo para Take ${completed + 1}/${allTakes.length}...`);
+          const taskName = `Renderizando vídeo para Take ${completed + 1}/${allTakes.length}`;
+          addLog(taskName);
+          updateAutomation({ currentTask: taskName });
           
           const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Ação: ${tInfo.action}. Câmara: ${tInfo.camera}.`;
-          const operation = await generateVideo(prompt, tInfo.start, tInfo.end);
+          const operation = await generateVideo(prompt, tInfo.start, tInfo.end, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
           
           // Update operation ID
@@ -416,7 +420,9 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           }));
 
           // Poll for result
+          addLog(`A aguardar renderização do Take ${completed + 1}... (Isto pode demorar 2-5 minutos)`);
           const videoUrl = await pollVideoOperation(operation);
+          addLog(`Take ${completed + 1} renderizado com sucesso!`);
           
           // Update final video URL
           setProject(prev => ({
@@ -428,7 +434,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           }));
 
           completed++;
-          updateAutomation({ progress: Math.round((completed / allTakes.length) * 100) });
+          updateAutomation({ progress: Math.round((completed / allTakes.length) * 100), currentTask: "" });
         }
 
         updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
@@ -442,7 +448,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         // Generate Intro Video if image exists
         if (project.intro?.imageUrl && !project.intro.videoUrl) {
           addLog("Renderizando vídeo para Intro...");
-          const op = await generateVideo(project.intro.prompt, project.intro.imageUrl);
+          const op = await generateVideo(project.intro.prompt, project.intro.imageUrl, undefined, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
           const vUrl = await pollVideoOperation(op);
           setProject(prev => ({ ...prev, intro: { ...prev.intro!, videoUrl: vUrl } }));
@@ -452,7 +458,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         // Generate Outro Video if image exists
         if (project.outro?.imageUrl && !project.outro.videoUrl) {
           addLog("Renderizando vídeo para Créditos...");
-          const op = await generateVideo(project.outro.prompt, project.outro.imageUrl);
+          const op = await generateVideo(project.outro.prompt, project.outro.imageUrl, undefined, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
           const vUrl = await pollVideoOperation(op);
           setProject(prev => ({ ...prev, outro: { ...prev.outro!, videoUrl: vUrl } }));
@@ -560,6 +566,30 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
                   Fase {automation.currentPhase}: {PHASES[automation.currentPhase - 1].name}
                 </h3>
                 <div className="flex items-center gap-4">
+                  {(automation.currentPhase === 5 || automation.currentPhase === 6) && automation.status === "idle" && (
+                    <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-700">
+                      <button
+                        onClick={() => setGlobalVideoModel('flow')}
+                        className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                          globalVideoModel === 'flow'
+                            ? "bg-indigo-600 text-white shadow-lg"
+                            : "text-zinc-500 hover:text-zinc-300"
+                        }`}
+                      >
+                        FLOW (Rápido)
+                      </button>
+                      <button
+                        onClick={() => setGlobalVideoModel('veo')}
+                        className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                          globalVideoModel === 'veo'
+                            ? "bg-emerald-600 text-white shadow-lg"
+                            : "text-zinc-500 hover:text-zinc-300"
+                        }`}
+                      >
+                        VEO (Qualidade)
+                      </button>
+                    </div>
+                  )}
                   <div className="flex flex-col items-end">
                     <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Custo Estimado</span>
                     <span className="text-emerald-400 font-mono font-bold text-lg">
@@ -583,7 +613,14 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
               {/* Progress Bar */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-medium">
-                  <span className="text-zinc-400">Progresso da Fase</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-400">Progresso da Fase</span>
+                    {automation.currentTask && (
+                      <span className="text-indigo-400 animate-pulse flex items-center gap-1">
+                        • {automation.currentTask}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-white">{automation.progress}%</span>
                 </div>
                 <div className="h-3 bg-zinc-900 rounded-full overflow-hidden border border-zinc-700">

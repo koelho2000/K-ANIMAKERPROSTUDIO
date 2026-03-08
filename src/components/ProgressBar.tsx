@@ -5,7 +5,7 @@ import { Sparkles, Zap, Film } from "lucide-react";
 interface ProgressBarProps {
   progress: number;
   label: string;
-  modelName?: "Nanobana" | "Flow" | "Gemini";
+  modelName?: "Nanobana" | "Flow" | "Gemini" | "Veo";
 }
 
 export default function ProgressBar({ progress, label, modelName }: ProgressBarProps) {
@@ -15,6 +15,8 @@ export default function ProgressBar({ progress, label, modelName }: ProgressBarP
         return <Zap className="w-4 h-4 text-yellow-500" />;
       case "Flow":
         return <Film className="w-4 h-4 text-indigo-500" />;
+      case "Veo":
+        return <Film className="w-4 h-4 text-emerald-500" />;
       case "Gemini":
         return <Sparkles className="w-4 h-4 text-purple-500" />;
       default:

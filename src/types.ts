@@ -15,6 +15,7 @@ export interface AutomationState {
   status: AutomationStatus;
   autoMode: boolean;
   progress: number;
+  currentTask?: string;
   logs: string[];
   totalCost?: number;
 }
@@ -28,6 +29,7 @@ export interface Project {
   filmStyle: string;
   language: string;
   duration: string;
+  aspectRatio: '9:16' | '16:9' | '4:3' | '1:1';
   script: string;
   characters: Character[];
   settings: Setting[];
@@ -45,6 +47,7 @@ export interface Project {
     imageUrl?: string;
     videoUrl?: string;
     videoOperationId?: string;
+    videoModel?: 'veo' | 'flow';
   };
   outro?: {
     type: string;
@@ -52,6 +55,7 @@ export interface Project {
     imageUrl?: string;
     videoUrl?: string;
     videoOperationId?: string;
+    videoModel?: 'veo' | 'flow';
     company?: string;
     director?: string;
     producer?: string;
@@ -113,6 +117,7 @@ export interface Take {
   endFrameUrl?: string;
   videoUrl?: string;
   videoOperationId?: string;
+  videoModel?: 'veo' | 'flow';
   duration?: number; // duration in seconds
   analysis?: {
     status: 'ok' | 'warning' | 'error';
