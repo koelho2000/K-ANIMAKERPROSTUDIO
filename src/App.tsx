@@ -10,6 +10,7 @@ import IntroOutro from "./components/IntroOutro";
 import Preview from "./components/Preview";
 import Summary from "./components/Summary";
 import Welcome from "./components/Welcome";
+import MediaLibrary from "./components/MediaLibrary";
 import MassProductionOverlay from "./components/MassProductionOverlay";
 import { Project } from "./types";
 import { v4 as uuidv4 } from "uuid";
@@ -97,6 +98,9 @@ export default function App() {
         )}
         {currentStep === 9 && (
           <Summary project={project} />
+        )}
+        {currentStep === 10 && (
+          <MediaLibrary project={project} />
         )}
       </main>
 

@@ -14,6 +14,7 @@ import {
   Zap,
   Plus,
   Key,
+  Library,
 } from "lucide-react";
 import { Project } from "../types";
 import { useRef, useState, useEffect, Dispatch, SetStateAction, ChangeEvent } from "react";
@@ -40,6 +41,7 @@ const steps = [
   { id: 7, name: "Intro & Créditos", icon: Zap },
   { id: 8, name: "Pré-visualização", icon: Play },
   { id: 9, name: "Quadro Resumo", icon: LayoutList },
+  { id: 10, name: "Biblioteca de Media", icon: Library },
 ];
 
 export default function Sidebar({
@@ -206,7 +208,7 @@ export default function Sidebar({
         {steps.map((step) => {
           const Icon = step.icon;
           const isActive = currentStep === step.id;
-          const isDisabled = step.id !== 1 && !isValidated;
+          const isDisabled = step.id !== 1 && step.id !== 10 && !isValidated;
 
           return (
             <button
