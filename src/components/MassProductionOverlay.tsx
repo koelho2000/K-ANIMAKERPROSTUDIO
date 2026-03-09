@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Project, AutomationPhase, AutomationStatus } from "../types";
+import { AUTOMATION_PHASES } from "../constants";
 import { 
   Play, 
   Pause, 
@@ -15,7 +16,8 @@ import {
   FileText,
   Clapperboard,
   Video,
-  Zap
+  Zap,
+  Settings2
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -32,15 +34,7 @@ interface MassProductionOverlayProps {
   setStep: (step: number) => void;
 }
 
-const PHASES = [
-  { id: 1, name: "Guião, Personagens e Cenários (Texto)", icon: FileText },
-  { id: 2, name: "Personagens e Cenários (Imagens)", icon: ImageIcon },
-  { id: 3, name: "Cenas e Takes (Texto)", icon: Clapperboard },
-  { id: 4, name: "Takes (Imagens)", icon: ImageIcon },
-  { id: 5, name: "Takes (Vídeos)", icon: Video },
-  { id: 6, name: "Intro e Créditos (Vídeos)", icon: Zap },
-  { id: 7, name: "Montagem Final do Filme", icon: Film },
-];
+const PHASES = AUTOMATION_PHASES;
 
 const COST_TEXT = 0.01;
 const COST_IMAGE = 0.05;
@@ -59,6 +53,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [globalVideoModel, setGlobalVideoModel] = useState<'veo' | 'flow'>('flow');
+  const [showInternalSettings, setShowInternalSettings] = useState(false);
 
   const updateAutomation = (updates: Partial<typeof automation>) => {
     setProject((prev) => ({
@@ -97,8 +92,20 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
   };
 
   const startAutomation = (autoMode: boolean) => {
-    updateAutomation({ status: "running", autoMode });
-    addLog(`Iniciando Fase ${automation.currentPhase} em modo ${autoMode ? "Automático" : "Manual"}.`);
+    const enabledPhases = project.automation?.enabledPhases || PHASES.map(p => p.id);
+    let phaseToStart = automation.currentPhase;
+    
+    if (!enabledPhases.includes(phaseToStart)) {
+      const nextPhases = enabledPhases.filter(id => id > phaseToStart);
+      if (nextPhases.length > 0) {
+        phaseToStart = nextPhases[0] as AutomationPhase;
+      } else if (enabledPhases.length > 0) {
+        phaseToStart = enabledPhases[0] as AutomationPhase;
+      }
+    }
+
+    updateAutomation({ status: "running", autoMode, currentPhase: phaseToStart });
+    addLog(`Iniciando Fase ${phaseToStart} em modo ${autoMode ? "Automático" : "Manual"}.`);
   };
 
   const pauseAutomation = () => {
@@ -112,8 +119,11 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
   };
 
   const validatePhase = () => {
-    if (automation.currentPhase < 7) {
-      const nextPhase = (automation.currentPhase + 1) as AutomationPhase;
+    const enabledPhases = project.automation?.enabledPhases || PHASES.map(p => p.id);
+    const nextPhases = enabledPhases.filter(id => id > automation.currentPhase);
+
+    if (nextPhases.length > 0) {
+      const nextPhase = nextPhases[0] as AutomationPhase;
       updateAutomation({ 
         currentPhase: nextPhase, 
         status: automation.autoMode ? "running" : "idle",
@@ -128,6 +138,14 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
 
   const runPhaseLogic = async () => {
     if (isProcessing) return;
+
+    const enabledPhases = project.automation?.enabledPhases || PHASES.map(p => p.id);
+    if (!enabledPhases.includes(automation.currentPhase)) {
+      addLog(`Fase ${automation.currentPhase} ignorada (não selecionada).`);
+      validatePhase();
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -175,22 +193,19 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         if (automation.autoMode) validatePhase();
       } 
       else if (automation.currentPhase === 2) {
-        addLog("Gerando imagens para Personagens e Cenários...");
+        addLog("Gerando imagens principais para Personagens...");
         
-        const totalItems = project.characters.length + project.settings.length;
-        if (totalItems === 0) {
+        if (project.characters.length === 0) {
           updateAutomation({ progress: 100, status: automation.autoMode ? "running" : "waiting_validation" });
-          addLog("Nenhum personagem ou cenário para gerar imagens.");
+          addLog("Nenhum personagem para gerar imagens.");
           if (automation.autoMode) validatePhase();
           return;
         }
 
         let completed = 0;
-
-        // Generate Character Images
         for (const char of project.characters) {
           if (!char.imageUrl) {
-            addLog(`Gerando imagem para personagem: ${char.name}...`);
+            addLog(`Gerando imagem principal para: ${char.name}...`);
             const prompt = `Personagem de animação: ${char.name}. Descrição: ${char.description}. Estilo: ${project.filmStyle}. Tipo: ${project.filmType}.`;
             const imageUrl = await generateImage(prompt, "1:1");
             addCost(COST_IMAGE);
@@ -201,10 +216,62 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             }));
           }
           completed++;
-          updateAutomation({ progress: Math.round((completed / totalItems) * 100) });
+          updateAutomation({ progress: Math.round((completed / project.characters.length) * 100) });
         }
 
-        // Generate Setting Images
+        updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
+        addLog("Fase 2 concluída: Imagens principais geradas.");
+        if (automation.autoMode) validatePhase();
+      }
+      else if (automation.currentPhase === 3) {
+        addLog("Gerando vistas (views) para Personagens...");
+        
+        if (project.characters.length === 0) {
+          updateAutomation({ progress: 100, status: automation.autoMode ? "running" : "waiting_validation" });
+          addLog("Nenhum personagem para gerar vistas.");
+          if (automation.autoMode) validatePhase();
+          return;
+        }
+
+        let completed = 0;
+        for (const char of project.characters) {
+          if (!char.viewsImageUrl) {
+            addLog(`Gerando vistas para: ${char.name}...`);
+            const prompt = `Character sheet with multiple views (front, side, back) for an animated character. 
+              Character: ${char.name}. 
+              Description: ${char.description}. 
+              Estilo: ${project.filmStyle}. 
+              Tipo: ${project.filmType}.
+              Maintain consistency with the character's design.`;
+            
+            const referenceImages = char.imageUrl ? [char.imageUrl] : [];
+            const viewsImageUrl = await generateImage(prompt, "1:1", referenceImages);
+            addCost(COST_IMAGE);
+            
+            setProject(prev => ({
+              ...prev,
+              characters: prev.characters.map(c => c.id === char.id ? { ...c, viewsImageUrl, lastViewsPrompt: prompt, updatedAt: Date.now() } : c)
+            }));
+          }
+          completed++;
+          updateAutomation({ progress: Math.round((completed / project.characters.length) * 100) });
+        }
+
+        updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
+        addLog("Fase 3 concluída: Vistas dos personagens geradas.");
+        if (automation.autoMode) validatePhase();
+      }
+      else if (automation.currentPhase === 4) {
+        addLog("Gerando imagens para Cenários...");
+        
+        if (project.settings.length === 0) {
+          updateAutomation({ progress: 100, status: automation.autoMode ? "running" : "waiting_validation" });
+          addLog("Nenhum cenário para gerar imagens.");
+          if (automation.autoMode) validatePhase();
+          return;
+        }
+
+        let completed = 0;
         for (const setting of project.settings) {
           if (!setting.imageUrl) {
             addLog(`Gerando imagem para cenário: ${setting.name}...`);
@@ -223,29 +290,14 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             }));
           }
           completed++;
-          updateAutomation({ progress: Math.round((completed / totalItems) * 100) });
+          updateAutomation({ progress: Math.round((completed / project.settings.length) * 100) });
         }
 
         updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
-        addLog("Fase 2 concluída: Todas as imagens base geradas.");
-        
-        // Generate Intro/Outro Images if prompts exist
-        if (project.intro?.prompt && !project.intro.imageUrl) {
-          addLog("Gerando imagem para Intro...");
-          const introUrl = await generateImage(project.intro.prompt, project.aspectRatio);
-          addCost(COST_IMAGE);
-          setProject(prev => ({ ...prev, intro: { ...prev.intro!, imageUrl: introUrl } }));
-        }
-        if (project.outro?.prompt && !project.outro.imageUrl) {
-          addLog("Gerando imagem para Créditos...");
-          const outroUrl = await generateImage(project.outro.prompt, project.aspectRatio);
-          addCost(COST_IMAGE);
-          setProject(prev => ({ ...prev, outro: { ...prev.outro!, imageUrl: outroUrl } }));
-        }
-
+        addLog("Fase 4 concluída: Imagens dos cenários geradas.");
         if (automation.autoMode) validatePhase();
       }
-      else if (automation.currentPhase === 3) {
+      else if (automation.currentPhase === 5) {
         addLog("Gerando Cenas e Takes para todo o filme...");
         updateAutomation({ progress: 10 });
 
@@ -280,36 +332,38 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           }
         }));
 
-        addLog("Fase 3 concluída: Cenas e Takes gerados.");
+        addLog("Fase 5 concluída: Cenas e Takes gerados.");
         if (automation.autoMode) validatePhase();
       }
-      else if (automation.currentPhase === 4) {
-        addLog("Gerando frames (inicial e final) para todos os Takes...");
+      else if (automation.currentPhase === 6) {
+        addLog("Gerando Frame Inicial para todos os Takes...");
         
         const allTakes: { sceneId: string, takeId: string, action: string, camera: string, charIds?: string[], settingId?: string }[] = [];
         project.scenes.forEach(scene => {
           scene.takes.forEach(take => {
-            allTakes.push({ 
-              sceneId: scene.id, 
-              takeId: take.id, 
-              action: take.action, 
-              camera: take.camera,
-              charIds: take.characterIds,
-              settingId: take.settingId
-            });
+            if (!take.startFrameUrl) {
+              allTakes.push({ 
+                sceneId: scene.id, 
+                takeId: take.id, 
+                action: take.action, 
+                camera: take.camera,
+                charIds: take.characterIds,
+                settingId: take.settingId
+              });
+            }
           });
         });
 
         if (allTakes.length === 0) {
           updateAutomation({ progress: 100, status: automation.autoMode ? "running" : "waiting_validation" });
-          addLog("Nenhum take encontrado para gerar frames.");
+          addLog("Todos os frames iniciais já existem ou nenhum take encontrado.");
           if (automation.autoMode) validatePhase();
           return;
         }
 
         let completed = 0;
         for (const tInfo of allTakes) {
-          addLog(`Processando frames para Take ${completed + 1}/${allTakes.length}...`);
+          addLog(`Processando Frame Inicial para Take ${completed + 1}/${allTakes.length}...`);
           
           const scene = project.scenes.find(s => s.id === tInfo.sceneId);
           const take = scene?.takes.find(t => t.id === tInfo.takeId);
@@ -322,33 +376,17 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             if (takeSetting?.imageUrl) referenceImages.push(takeSetting.imageUrl);
             takeCharacters.forEach(c => { if (c.imageUrl) referenceImages.push(c.imageUrl); });
 
-            const promptBase = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}.`;
-
-            if (!take.startFrameUrl) {
-              const startPrompt = `${promptBase} Frame Inicial.`;
-              const startFrameUrl = await generateImage(startPrompt, project.aspectRatio, referenceImages);
-              addCost(COST_IMAGE);
-              setProject(prev => ({
-                ...prev,
-                scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
-                  ...s,
-                  takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, startFrameUrl, lastStartFramePrompt: startPrompt, updatedAt: Date.now() } : t)
-                } : s)
-              }));
-            }
-
-            if (!take.endFrameUrl) {
-              const endPrompt = `${promptBase} Frame Final.`;
-              const endFrameUrl = await generateImage(endPrompt, project.aspectRatio, referenceImages);
-              addCost(COST_IMAGE);
-              setProject(prev => ({
-                ...prev,
-                scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
-                  ...s,
-                  takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, endFrameUrl, lastEndFramePrompt: endPrompt, updatedAt: Date.now() } : t)
-                } : s)
-              }));
-            }
+            const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}. Frame Inicial.`;
+            const startFrameUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
+            addCost(COST_IMAGE);
+            
+            setProject(prev => ({
+              ...prev,
+              scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
+                ...s,
+                takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, startFrameUrl, lastStartFramePrompt: prompt, updatedAt: Date.now() } : t)
+              } : s)
+            }));
           }
 
           completed++;
@@ -356,10 +394,74 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         }
 
         updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
-        addLog("Fase 4 concluída: Todos os frames gerados.");
+        addLog("Fase 6 concluída: Todos os frames iniciais gerados.");
         if (automation.autoMode) validatePhase();
       }
-      else if (automation.currentPhase === 5) {
+      else if (automation.currentPhase === 7) {
+        addLog("Gerando Frame Final para todos os Takes...");
+        
+        const allTakes: { sceneId: string, takeId: string, action: string, camera: string, charIds?: string[], settingId?: string, startFrame?: string }[] = [];
+        project.scenes.forEach(scene => {
+          scene.takes.forEach(take => {
+            if (!take.endFrameUrl) {
+              allTakes.push({ 
+                sceneId: scene.id, 
+                takeId: take.id, 
+                action: take.action, 
+                camera: take.camera,
+                charIds: take.characterIds,
+                settingId: take.settingId,
+                startFrame: take.startFrameUrl
+              });
+            }
+          });
+        });
+
+        if (allTakes.length === 0) {
+          updateAutomation({ progress: 100, status: automation.autoMode ? "running" : "waiting_validation" });
+          addLog("Todos os frames finais já existem ou nenhum take encontrado.");
+          if (automation.autoMode) validatePhase();
+          return;
+        }
+
+        let completed = 0;
+        for (const tInfo of allTakes) {
+          addLog(`Processando Frame Final para Take ${completed + 1}/${allTakes.length}...`);
+          
+          const scene = project.scenes.find(s => s.id === tInfo.sceneId);
+          const take = scene?.takes.find(t => t.id === tInfo.takeId);
+          
+          if (take) {
+            const takeCharacters = project.characters.filter(c => tInfo.charIds?.includes(c.id));
+            const takeSetting = project.settings.find(s => s.id === tInfo.settingId);
+            
+            const referenceImages: string[] = [];
+            if (takeSetting?.imageUrl) referenceImages.push(takeSetting.imageUrl);
+            takeCharacters.forEach(c => { if (c.imageUrl) referenceImages.push(c.imageUrl); });
+            if (tInfo.startFrame) referenceImages.push(tInfo.startFrame);
+
+            const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}. Frame Final. Deve ser uma continuação coerente do frame inicial.`;
+            const endFrameUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
+            addCost(COST_IMAGE);
+            
+            setProject(prev => ({
+              ...prev,
+              scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
+                ...s,
+                takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, endFrameUrl, lastEndFramePrompt: prompt, updatedAt: Date.now() } : t)
+              } : s)
+            }));
+          }
+
+          completed++;
+          updateAutomation({ progress: Math.round((completed / allTakes.length) * 100) });
+        }
+
+        updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
+        addLog("Fase 7 concluída: Todos os frames finais gerados.");
+        if (automation.autoMode) validatePhase();
+      }
+      else if (automation.currentPhase === 8) {
         addLog("Renderizando vídeos para todos os Takes...");
         
         const allTakes: { sceneId: string, takeId: string, action: string, camera: string, start: string, end: string }[] = [];
@@ -440,11 +542,11 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         }
 
         updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
-        addLog("Fase 5 concluída: Todos os vídeos dos takes renderizados.");
+        addLog("Fase 8 concluída: Todos os vídeos dos takes renderizados.");
         if (automation.autoMode) validatePhase();
       }
-      else if (automation.currentPhase === 6) {
-        addLog("Iniciando Fase 6: Renderização de Intro e Créditos...");
+      else if (automation.currentPhase === 9) {
+        addLog("Iniciando Fase 9: Renderização de Intro e Créditos...");
         updateAutomation({ progress: 10 });
 
         // Generate Intro Video if image exists
@@ -470,10 +572,10 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         
         updateAutomation({ progress: 100 });
         updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
-        addLog("Fase 6 concluída: Intro e Créditos renderizados.");
+        addLog("Fase 9 concluída: Intro e Créditos renderizados.");
         if (automation.autoMode) validatePhase();
       }
-      else if (automation.currentPhase === 7) {
+      else if (automation.currentPhase === 10) {
         addLog("Iniciando Montagem Final do Filme...");
         updateAutomation({ progress: 50 });
         
@@ -481,7 +583,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         await new Promise(resolve => setTimeout(resolve, 3000));
         
         updateAutomation({ progress: 100, status: "completed" });
-        addLog("Fase 7 concluída: Filme montado e pronto para visualização!");
+        addLog("Fase 10 concluída: Filme montado e pronto para visualização!");
         
         // Auto-navigate to Preview step if in auto mode
         if (automation.autoMode) {
@@ -516,13 +618,69 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
               <p className="text-xs text-zinc-400">Automatização inteligente de produção cinematográfica</p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowInternalSettings(!showInternalSettings)}
+              className={`p-2 rounded-xl transition-all flex items-center gap-2 text-xs font-bold ${
+                showInternalSettings ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400 hover:text-white"
+              }`}
+              title="Opções de Automatização"
+            >
+              <Settings2 className="w-5 h-5" />
+              <span className="hidden md:inline">Opções</span>
+            </button>
+            <button 
+              onClick={onClose}
+              className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
+
+        {showInternalSettings && (
+          <div className="bg-zinc-800/80 border-b border-zinc-700 p-4 animate-in slide-in-from-top-2 duration-300">
+            <div className="max-w-3xl mx-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Configuração de Fases</h4>
+                <button 
+                  onClick={() => {
+                    const allPhases = PHASES.map(p => p.id);
+                    const currentEnabled = project.automation?.enabledPhases || allPhases;
+                    const newPhases = currentEnabled.length === allPhases.length ? [] : allPhases;
+                    updateAutomation({ enabledPhases: newPhases });
+                  }}
+                  className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                >
+                  {(project.automation?.enabledPhases || PHASES.map(p => p.id)).length === PHASES.length ? "Desativar Todas" : "Ativar Todas"}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {PHASES.map(phase => {
+                  const isEnabled = (project.automation?.enabledPhases || PHASES.map(p => p.id)).includes(phase.id);
+                  return (
+                    <button
+                      key={phase.id}
+                      onClick={() => {
+                        const current = project.automation?.enabledPhases || PHASES.map(p => p.id);
+                        const next = current.includes(phase.id) ? current.filter(id => id !== phase.id) : [...current, phase.id].sort((a, b) => a - b);
+                        updateAutomation({ enabledPhases: next });
+                      }}
+                      className={`flex items-center gap-2 p-2 rounded-lg text-[10px] font-medium transition-all border ${
+                        isEnabled ? "bg-indigo-600/10 border-indigo-500/30 text-white" : "bg-zinc-900/50 border-zinc-800 text-zinc-500"
+                      }`}
+                    >
+                      <div className={`w-3 h-3 rounded-sm border flex items-center justify-center ${isEnabled ? "bg-indigo-500 border-indigo-500" : "border-zinc-700"}`}>
+                        {isEnabled && <CheckCircle2 className="w-2 h-2 text-white" />}
+                      </div>
+                      <span className="truncate">{phase.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-hidden flex">
           {/* Sidebar Phases */}
@@ -537,7 +695,9 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
                   key={phase.id}
                   className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
                     isActive ? "bg-indigo-600/10 border border-indigo-500/50 text-white" : 
-                    isCompleted ? "text-emerald-500" : "text-zinc-500"
+                    isCompleted ? "text-emerald-500" : 
+                    !(project.automation?.enabledPhases || PHASES.map(p => p.id)).includes(phase.id) ? "opacity-30 grayscale" :
+                    "text-zinc-500"
                   }`}
                 >
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
@@ -682,7 +842,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
                     className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold transition-all"
                   >
                     <CheckCircle2 className="w-5 h-5" />
-                    Validar e Seguir para Fase {automation.currentPhase + 1}
+                    Validar e Seguir para Próxima Fase
                   </button>
                 )}
 
@@ -730,7 +890,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
               Pode fechar esta janela a qualquer momento para verificar os menus. O progresso será mantido.
             </span>
           </div>
-          <span className="font-mono">K-ANIMAKER PRO v2.5.0</span>
+          <span className="font-mono">K-ANIMAKER PRO V2.0.0</span>
         </div>
       </div>
     </div>

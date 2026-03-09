@@ -7,7 +7,7 @@ declare global {
   }
 }
 
-export type AutomationPhase = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type AutomationPhase = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 export type AutomationStatus = 'idle' | 'running' | 'paused' | 'waiting_validation' | 'completed';
 
 export interface AutomationState {
@@ -18,6 +18,7 @@ export interface AutomationState {
   currentTask?: string;
   logs: string[];
   totalCost?: number;
+  enabledPhases?: number[];
 }
 
 export interface Project {

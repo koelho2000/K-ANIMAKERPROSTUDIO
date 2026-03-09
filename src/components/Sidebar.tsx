@@ -15,8 +15,12 @@ import {
   Plus,
   Key,
   Library,
+  ChevronDown,
+  ChevronUp,
+  Settings2,
 } from "lucide-react";
 import { Project } from "../types";
+import { AUTOMATION_PHASES } from "../constants";
 import { useRef, useState, useEffect, Dispatch, SetStateAction, ChangeEvent } from "react";
 import { ApiKeyModal } from "./ApiKeyModal";
 
@@ -59,6 +63,7 @@ export default function Sidebar({
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [manualKey, setManualKey] = useState<string>(localStorage.getItem('GEMINI_API_KEY_MANUAL') || "");
+  const [showAutoSettings, setShowAutoSettings] = useState(false);
 
   useEffect(() => {
     const checkKey = async () => {
@@ -158,6 +163,53 @@ export default function Sidebar({
   };
 
   const usage = calculateUsage();
+
+  const togglePhase = (phaseId: number) => {
+    setProject(prev => {
+      const currentPhases = prev.automation?.enabledPhases || AUTOMATION_PHASES.map(p => p.id);
+      let newPhases;
+      if (currentPhases.includes(phaseId)) {
+        newPhases = currentPhases.filter(id => id !== phaseId);
+      } else {
+        newPhases = [...currentPhases, phaseId].sort((a, b) => a - b);
+      }
+      return {
+        ...prev,
+        automation: {
+          ...(prev.automation || {
+            currentPhase: 1,
+            status: 'idle',
+            autoMode: false,
+            progress: 0,
+            logs: ["Pronto para iniciar a produção em massa."]
+          }),
+          enabledPhases: newPhases
+        }
+      };
+    });
+  };
+
+  const toggleAllPhases = () => {
+    setProject(prev => {
+      const currentPhases = prev.automation?.enabledPhases || AUTOMATION_PHASES.map(p => p.id);
+      const allPhases = AUTOMATION_PHASES.map(p => p.id);
+      const newPhases = currentPhases.length === allPhases.length ? [] : allPhases;
+      
+      return {
+        ...prev,
+        automation: {
+          ...(prev.automation || {
+            currentPhase: 1,
+            status: 'idle',
+            autoMode: false,
+            progress: 0,
+            logs: ["Pronto para iniciar a produção em massa."]
+          }),
+          enabledPhases: newPhases
+        }
+      };
+    });
+  };
 
   const handleSave = () => {
     const dataStr = JSON.stringify(project, null, 2);
@@ -384,25 +436,72 @@ export default function Sidebar({
 
         {/* Mass Production Quick Access */}
         {isConfigComplete && onStartMassProduction && (
-          <button
-            onClick={() => isValidated && onStartMassProduction()}
-            disabled={!isValidated}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-bold ${
-              project.automation?.status === "running"
-                ? "bg-indigo-600 text-white animate-pulse"
-                : !isValidated
-                ? "bg-zinc-800 text-zinc-600 cursor-not-allowed opacity-50"
-                : "bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600/20 border border-indigo-500/30"
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span>{project.automation?.status === "running" ? "Em Curso" : "Produção Massa"}</span>
-          </button>
+          <div className="space-y-1">
+            <div className="flex flex-col bg-zinc-800/30 rounded-lg border border-zinc-700/30 overflow-hidden">
+              <button
+                onClick={() => setShowAutoSettings(!showAutoSettings)}
+                className="w-full flex items-center justify-between px-3 py-2 hover:bg-zinc-800 transition-colors text-[10px] font-bold text-zinc-400 uppercase tracking-wider"
+              >
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Opções de Automatização</span>
+                </div>
+                {showAutoSettings ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+              
+              {showAutoSettings && (
+                <div className="p-2 space-y-1 bg-black/20 border-t border-zinc-700/30 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <button
+                    onClick={toggleAllPhases}
+                    className="w-full text-left px-2 py-1 rounded hover:bg-zinc-700/50 text-[9px] font-bold text-indigo-400 mb-1"
+                  >
+                    {(project.automation?.enabledPhases || AUTOMATION_PHASES.map(p => p.id)).length === AUTOMATION_PHASES.length 
+                      ? "Desativar Todas" 
+                      : "Ativar Todas"}
+                  </button>
+                  {AUTOMATION_PHASES.map((phase) => {
+                    const isEnabled = (project.automation?.enabledPhases || AUTOMATION_PHASES.map(p => p.id)).includes(phase.id);
+                    return (
+                      <button
+                        key={phase.id}
+                        onClick={() => togglePhase(phase.id)}
+                        className={`w-full flex items-center gap-2 px-2 py-1 rounded text-[9px] transition-colors ${
+                          isEnabled ? "text-zinc-200 bg-indigo-500/10" : "text-zinc-500 hover:bg-zinc-800"
+                        }`}
+                      >
+                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${
+                          isEnabled ? "bg-indigo-500 border-indigo-500" : "border-zinc-600"
+                        }`}>
+                          {isEnabled && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                        </div>
+                        <span className="truncate">{phase.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => isValidated && onStartMassProduction()}
+              disabled={!isValidated}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-bold ${
+                project.automation?.status === "running"
+                  ? "bg-indigo-600 text-white animate-pulse"
+                  : !isValidated
+                  ? "bg-zinc-800 text-zinc-600 cursor-not-allowed opacity-50"
+                  : "bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600/20 border border-indigo-500/30"
+              }`}
+            >
+              <Zap className="w-4 h-4" />
+              <span>{project.automation?.status === "running" ? "Em Curso" : "Produção Massa"}</span>
+            </button>
+          </div>
         )}
       </div>
 
       <div className="p-2 text-[10px] text-zinc-500 text-center">
-        v2.5.0 • Gemini & Veo
+        V2.0.0 • Gemini & Veo
       </div>
 
       <ApiKeyModal

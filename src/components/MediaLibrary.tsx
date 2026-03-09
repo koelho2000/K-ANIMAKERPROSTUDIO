@@ -7,7 +7,10 @@ import {
   Image as ImageIcon, 
   Video as VideoIcon,
   ExternalLink,
-  Library
+  Library,
+  CheckSquare,
+  Square,
+  CheckCircle2
 } from "lucide-react";
 
 interface MediaLibraryProps {
@@ -24,6 +27,7 @@ interface MediaItem {
 
 export default function MediaLibrary({ project }: MediaLibraryProps) {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Extract all media from project
   const mediaItems: MediaItem[] = [];
@@ -152,8 +156,35 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
     mediaItems.forEach((item, index) => {
       setTimeout(() => {
         handleDownload(item.url, `${item.title.replace(/\s+/g, '_')}.${item.type === 'image' ? 'png' : 'mp4'}`);
-      }, index * 200); // Stagger downloads to avoid browser blocking
+      }, index * 200);
     });
+  };
+
+  const handleDownloadSelected = () => {
+    const itemsToDownload = mediaItems.filter(item => selectedIds.has(item.id));
+    itemsToDownload.forEach((item, index) => {
+      setTimeout(() => {
+        handleDownload(item.url, `${item.title.replace(/\s+/g, '_')}.${item.type === 'image' ? 'png' : 'mp4'}`);
+      }, index * 200);
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === mediaItems.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(mediaItems.map(item => item.id)));
+    }
+  };
+
+  const toggleItemSelection = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
   };
 
   return (
@@ -168,15 +199,52 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
             <p className="text-zinc-500 mt-1">Gere, visualize e descarregue todos os recursos visuais do seu projeto.</p>
           </div>
         </div>
-        <button
-          onClick={handleDownloadAll}
-          disabled={mediaItems.length === 0}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50"
-        >
-          <Download className="w-5 h-5" />
-          Descarregar Tudo ({mediaItems.length})
-        </button>
+        <div className="flex items-center gap-3">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleDownloadSelected}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2"
+            >
+              <Download className="w-5 h-5" />
+              Descarregar Selecionados ({selectedIds.size})
+            </button>
+          )}
+          <button
+            onClick={handleDownloadAll}
+            disabled={mediaItems.length === 0}
+            className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            <Download className="w-5 h-5" />
+            Descarregar Tudo ({mediaItems.length})
+          </button>
+        </div>
       </div>
+
+      {mediaItems.length > 0 && (
+        <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-zinc-200">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={toggleSelectAll}
+              className="flex items-center gap-2 text-sm font-bold text-zinc-600 hover:text-indigo-600 transition-colors"
+            >
+              {selectedIds.size === mediaItems.length ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+              {selectedIds.size === mediaItems.length ? "Desmarcar Todos" : "Selecionar Todos"}
+            </button>
+            <span className="text-sm text-zinc-400">|</span>
+            <span className="text-sm text-zinc-500 font-medium">
+              {selectedIds.size} de {mediaItems.length} itens selecionados
+            </span>
+          </div>
+          {selectedIds.size > 0 && (
+            <button 
+              onClick={() => setSelectedIds(new Set())}
+              className="text-sm font-bold text-rose-500 hover:text-rose-600 transition-colors"
+            >
+              Limpar Seleção
+            </button>
+          )}
+        </div>
+      )}
 
       {mediaItems.length === 0 ? (
         <div className="bg-white border-2 border-dashed border-zinc-200 rounded-3xl p-20 text-center">
@@ -191,7 +259,10 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
           {mediaItems.map((item) => (
             <div 
               key={item.id}
-              className="group bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
+              onClick={() => toggleItemSelection(item.id)}
+              className={`group bg-white rounded-2xl border transition-all flex flex-col cursor-pointer relative ${
+                selectedIds.has(item.id) ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-zinc-200 hover:border-zinc-300 shadow-sm hover:shadow-md'
+              }`}
             >
               <div className="aspect-square bg-zinc-100 relative overflow-hidden">
                 {item.type === 'image' ? (
@@ -213,8 +284,17 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
                   </div>
                 )}
                 
+                {/* Selection Checkbox (always visible if selected, or on hover) */}
+                <div className={`absolute top-2 right-2 z-10 transition-opacity ${selectedIds.has(item.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center shadow-lg border-2 ${
+                    selectedIds.has(item.id) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white/80 border-white text-zinc-400'
+                  }`}>
+                    {selectedIds.has(item.id) ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-2 h-2 rounded-full bg-zinc-200" />}
+                  </div>
+                </div>
+
                 {/* Overlay Actions */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <button 
                     onClick={() => setSelectedItem(item)}
                     className="p-2 bg-white rounded-full text-zinc-900 hover:scale-110 transition-transform"

@@ -95,6 +95,7 @@ export default function Production({ project, setProject }: ProductionProps) {
     type: "start" | "end",
     silent = false,
     customPrompt?: string,
+    startFrameOverride?: string,
   ): Promise<{ imageUrl: string; prompt: string } | null> => {
     if (!silent) setGeneratingImageId(`${takeId}-${type}`);
     try {
@@ -114,6 +115,12 @@ export default function Production({ project, setProject }: ProductionProps) {
         if (c.imageUrl) referenceImages.push(c.imageUrl);
       });
 
+      // Add start frame as reference for end frame
+      const startFrame = startFrameOverride || take.startFrameUrl;
+      if (type === "end" && startFrame) {
+        referenceImages.push(startFrame);
+      }
+
       const prompt = customPrompt || `
         Cria um frame de animação cinematográfica de alta qualidade.
         Tipo de Filme: ${project.filmType}. 
@@ -122,6 +129,8 @@ export default function Production({ project, setProject }: ProductionProps) {
         Ação do Take: ${take.action}. 
         Câmara: ${take.camera}. 
         
+        ${type === "end" ? "ESTE É O FRAME FINAL DO TAKE. Deve ser uma continuação direta e coerente do Frame Inicial fornecido." : ""}
+
         DIÁLOGO NESTE TAKE:
         ${take.dialogueLines && take.dialogueLines.length > 0
           ? take.dialogueLines.map(line => {
@@ -138,9 +147,10 @@ export default function Production({ project, setProject }: ProductionProps) {
         
         INSTRUÇÕES DE CONSISTÊNCIA:
         1. Usa as imagens de referência fornecidas para manter a aparência exata das personagens e do cenário.
-        2. As personagens devem ser instantaneamente reconhecíveis e consistentes com os seus designs originais.
-        3. O cenário deve manter a mesma arquitetura, iluminação e atmosfera definida no concept art.
-        4. Integra as personagens de forma natural no cenário de acordo com a ação descrita.
+        ${type === "end" ? "2. Usa o Frame Inicial fornecido como referência obrigatória para garantir que a posição das personagens, a iluminação e o cenário são idênticos, mudando apenas o necessário para refletir o fim da ação descrita." : ""}
+        ${type === "end" ? "3." : "2."} As personagens devem ser instantaneamente reconhecíveis e consistentes com os seus designs originais.
+        ${type === "end" ? "4." : "3."} O cenário deve manter a mesma arquitetura, iluminação e atmosfera definida no concept art.
+        ${type === "end" ? "5." : "4."} Integra as personagens de forma natural no cenário de acordo com a ação descrita.
         
         Altamente detalhado, iluminação dramática, composição profissional.
       `;
@@ -276,6 +286,11 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       return;
     }
 
+    if (type === "end" && take && !take.startFrameUrl) {
+      alert("Aviso: O Frame Final deve ser baseado no Frame Inicial para garantir coerência visual. Por favor, gera primeiro o Frame Inicial.");
+      return;
+    }
+
     const result = await handleGenerateFrame(sceneId, takeId, type);
     if (result) {
       const { imageUrl, prompt } = result;
@@ -362,7 +377,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         
         // Generate end frame if missing
         if (!take.endFrameUrl) {
-          const result = await handleGenerateFrame(sceneId, take.id, "end", true);
+          const result = await handleGenerateFrame(sceneId, take.id, "end", true, undefined, take.startFrameUrl);
           if (result) {
             updatedTakes[i].endFrameUrl = result.imageUrl;
             updatedTakes[i].lastEndFramePrompt = result.prompt;
@@ -408,7 +423,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             }
           }
           if (!take.endFrameUrl) {
-            const result = await handleGenerateFrame(scene.id, take.id, "end", true);
+            const result = await handleGenerateFrame(scene.id, take.id, "end", true, undefined, take.startFrameUrl);
             if (result) {
               updatedTakes[j].endFrameUrl = result.imageUrl;
               updatedTakes[j].lastEndFramePrompt = result.prompt;
