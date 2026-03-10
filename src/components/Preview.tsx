@@ -55,7 +55,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
   const [isTranslating, setIsTranslating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [exportFormat, setExportFormat] = useState<'json' | 'mp4'>('json');
+  const [exportStatus, setExportStatus] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   const allTakes = project.scenes.flatMap((s) =>
     s.takes.map((t) => ({ ...t, sceneTitle: s.title })),
@@ -102,21 +107,160 @@ export default function Preview({ project, setProject }: PreviewProps) {
     }));
   };
 
-  const handleExportVideo = () => {
+  const handleExportVideo = async () => {
+    if (exportFormat === 'json') {
+      setIsExporting(true);
+      setExportProgress(0);
+      const interval = setInterval(() => {
+        setExportProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            setIsExporting(false);
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(project));
+            const downloadAnchorNode = document.createElement("a");
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", `${project.title || "animaker-project"}-final-package.json`);
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            alert("Exportação concluída! O pacote JSON do projeto foi descarregado.");
+            return 100;
+          }
+          return prev + Math.random() * 15;
+        });
+      }, 400);
+      return;
+    }
+
+    // MP4 Export Logic
+    if (movieClips.length === 0) return;
+    
     setIsExporting(true);
     setExportProgress(0);
+    setExportStatus("A preparar motor de renderização...");
     
-    const interval = setInterval(() => {
-      setExportProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsExporting(false);
-          alert("Exportação concluída! O vídeo final foi gerado com sucesso.");
-          return 100;
-        }
-        return prev + Math.random() * 10;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size based on aspect ratio
+    const [w, h] = (project.aspectRatio || '16:9').split(':').map(Number);
+    canvas.width = 1280;
+    canvas.height = Math.round(1280 * (h / w));
+
+    const stream = canvas.captureStream(30); // 30 FPS
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+    recorderRef.current = recorder;
+    chunksRef.current = [];
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project.title || "animaker-project"}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setIsExporting(false);
+      setExportStatus("");
+      alert("Exportação MP4 (WebM) concluída! O vídeo foi gerado com todas as transições e legendas.");
+    };
+
+    recorder.start();
+
+    // Rendering Loop
+    let clipIdx = 0;
+    const totalClips = movieClips.length;
+    
+    const renderClip = async (index: number) => {
+      if (index >= totalClips) {
+        recorder.stop();
+        return;
+      }
+
+      const clip = movieClips[index];
+      const nextClip = movieClips[index + 1];
+      const transition = (clip as any).transition || project.globalTransition || 'cut';
+      
+      setExportStatus(`A renderizar Clip ${index + 1} de ${totalClips}...`);
+      setExportProgress((index / totalClips) * 100);
+
+      const video = document.createElement('video');
+      video.src = clip.videoUrl;
+      video.crossOrigin = "anonymous";
+      video.muted = true;
+      video.playsInline = true;
+      
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => resolve(null);
+        video.onerror = (e) => reject(e);
       });
-    }, 500);
+
+      await video.play();
+
+      return new Promise<void>((resolve) => {
+        let frameId: number;
+        const drawFrame = () => {
+          if (video.paused || video.ended) {
+            cancelAnimationFrame(frameId);
+            video.pause();
+            video.src = "";
+            video.load();
+            resolve();
+            return;
+          }
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          // Draw Subtitles
+          if (subtitleSettings.enabled) {
+            const text = subtitleSettings.translatedLanguage && subtitleSettings.translations?.[clip.id] 
+              ? subtitleSettings.translations[clip.id] 
+              : (clip.dialogue && clip.dialogue !== "Nenhum" ? clip.dialogue : null);
+
+            if (text) {
+              ctx.font = "bold 32px sans-serif";
+              ctx.textAlign = "center";
+              ctx.shadowColor = "black";
+              ctx.shadowBlur = 8;
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = "black";
+              ctx.strokeText(text, canvas.width / 2, canvas.height - 60);
+              ctx.fillStyle = "white";
+              ctx.fillText(text, canvas.width / 2, canvas.height - 60);
+              ctx.shadowBlur = 0;
+            }
+          }
+
+          // Handle Transitions (Simple Fade Out at the end)
+          const timeLeft = video.duration - video.currentTime;
+          if (timeLeft < 0.5 && transition !== 'cut') {
+            if (transition === 'fade' || transition === 'fade-black') {
+              ctx.fillStyle = `rgba(0, 0, 0, ${1 - (timeLeft / 0.5)})`;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (transition === 'fade-white') {
+              ctx.fillStyle = `rgba(255, 255, 255, ${1 - (timeLeft / 0.5)})`;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+          }
+
+          requestAnimationFrame(drawFrame);
+        };
+        drawFrame();
+      });
+    };
+
+    for (let i = 0; i < totalClips; i++) {
+      await renderClip(i);
+    }
   };
 
   const handleTranslateSubtitles = async (targetLangCode: string) => {
@@ -198,6 +342,45 @@ export default function Preview({ project, setProject }: PreviewProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Hidden Canvas for Export */}
+        <canvas ref={canvasRef} className="hidden" />
+        
+        {/* Export Overlay */}
+        {isExporting && exportFormat === 'mp4' && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center p-8 text-center">
+            <div className="w-full max-w-md space-y-8">
+              <div className="relative">
+                <div className="w-32 h-32 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mx-auto" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Film className="w-10 h-10 text-indigo-500 animate-pulse" />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <h2 className="text-3xl font-bold text-white">A Exportar Filme...</h2>
+                <p className="text-zinc-400">{exportStatus}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="h-4 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
+                  <div 
+                    className="h-full bg-gradient-to-r from-indigo-600 to-violet-600 transition-all duration-500"
+                    style={{ width: `${exportProgress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs font-mono text-zinc-500">
+                  <span>{Math.round(exportProgress)}% CONCLUÍDO</span>
+                  <span>ESTIMATIVA: {Math.round((100 - exportProgress) / 5)}s</span>
+                </div>
+              </div>
+
+              <p className="text-sm text-zinc-500 italic">
+                Por favor, não feches esta janela. O vídeo está a ser renderizado frame a frame com todas as transições e legendas.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Main Player */}
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-800 overflow-hidden relative">
@@ -256,35 +439,56 @@ export default function Preview({ project, setProject }: PreviewProps) {
             )}
           </div>
 
-          <div className="flex gap-4">
-            <button
-              onClick={() => {
-                setIsPlayingFullMovie(true);
-                setCurrentClipIndex(0);
-              }}
-              disabled={movieClips.length === 0}
-              className="flex-1 flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-200 transition-all disabled:opacity-50"
-            >
-              <Film className="w-6 h-6" />
-              Renderizar Filme Completo (Preview)
-            </button>
-            <button
-              onClick={handleExportVideo}
-              disabled={movieClips.length === 0 || isExporting}
-              className="flex-1 flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 transition-all disabled:opacity-50"
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  {Math.round(exportProgress)}%
-                </>
-              ) : (
-                <>
-                  <Download className="w-6 h-6" />
-                  Exportar Vídeo Final
-                </>
-              )}
-            </button>
+          <div className="flex flex-col gap-4">
+            <div className="flex bg-zinc-100 p-1 rounded-xl">
+              <button
+                onClick={() => setExportFormat('json')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  exportFormat === 'json' ? "bg-white shadow-sm text-indigo-600" : "text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                FORMATO JSON
+              </button>
+              <button
+                onClick={() => setExportFormat('mp4')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  exportFormat === 'mp4' ? "bg-white shadow-sm text-indigo-600" : "text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                FORMATO MP4
+              </button>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setIsPlayingFullMovie(true);
+                  setCurrentClipIndex(0);
+                }}
+                disabled={movieClips.length === 0}
+                className="flex-1 flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-200 transition-all disabled:opacity-50"
+              >
+                <Film className="w-6 h-6" />
+                Renderizar Filme Completo (Preview)
+              </button>
+              <button
+                onClick={handleExportVideo}
+                disabled={movieClips.length === 0 || isExporting}
+                className="flex-1 flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 transition-all disabled:opacity-50"
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    {Math.round(exportProgress)}%
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-6 h-6" />
+                    Exportar {exportFormat.toUpperCase()}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
