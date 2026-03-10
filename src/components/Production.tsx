@@ -1447,6 +1447,17 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             alt="Frame Inicial"
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              console.error("Erro ao carregar Frame Inicial");
+                              e.currentTarget.style.display = 'none';
+                              const parent = e.currentTarget.parentElement;
+                              if (parent) {
+                                const errorDiv = document.createElement('div');
+                                errorDiv.className = 'flex flex-col items-center gap-2 text-rose-500 p-4 text-center';
+                                errorDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-triangle"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span class="text-[10px] font-bold">Erro ao carregar imagem. Tenta gerar novamente.</span>';
+                                parent.appendChild(errorDiv);
+                              }
+                            }}
                           />
                           <button
                             onClick={() => setSelectedImage({ url: take.startFrameUrl!, title: `Take ${index + 1} - Frame Inicial` })}
@@ -1535,6 +1546,17 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             alt="Frame Final"
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              console.error("Erro ao carregar Frame Final");
+                              e.currentTarget.style.display = 'none';
+                              const parent = e.currentTarget.parentElement;
+                              if (parent) {
+                                const errorDiv = document.createElement('div');
+                                errorDiv.className = 'flex flex-col items-center gap-2 text-rose-500 p-4 text-center';
+                                errorDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-triangle"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span class="text-[10px] font-bold">Erro ao carregar imagem. Tenta gerar novamente.</span>';
+                                parent.appendChild(errorDiv);
+                              }
+                            }}
                           />
                           <button
                             onClick={() => setSelectedImage({ url: take.endFrameUrl!, title: `Take ${index + 1} - Frame Final` })}

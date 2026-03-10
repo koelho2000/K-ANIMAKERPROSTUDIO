@@ -109,13 +109,21 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
 
     if (referenceImagesBase64 && referenceImagesBase64.length > 0) {
       referenceImagesBase64.forEach(img => {
-        const [mimeType, base64Data] = img.split(";base64,");
-        parts.unshift({
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType.replace("data:", ""),
-          },
-        });
+        if (img && img.startsWith('data:')) {
+          const parts_split = img.split(";base64,");
+          if (parts_split.length === 2) {
+            const mimeType = parts_split[0].replace("data:", "");
+            const base64Data = parts_split[1];
+            parts.unshift({
+              inlineData: {
+                data: base64Data,
+                mimeType: mimeType,
+              },
+            });
+          }
+        } else {
+          console.warn("A ignorar imagem de referência que não é data URL ou está malformada:", img?.substring(0, 50));
+        }
       });
     }
 
@@ -132,10 +140,13 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
+      if (part.inlineData && part.inlineData.data) {
         const mimeType = part.inlineData.mimeType || "image/png";
-        const data = part.inlineData.data.replace(/\s/g, '');
-        return `data:${mimeType};base64,${data}`;
+        // Remove any potential whitespace or newlines from the base64 data
+        const data = part.inlineData.data.replace(/[\s\n\r]/g, '');
+        if (data.length > 0) {
+          return `data:${mimeType};base64,${data}`;
+        }
       }
     }
     throw new Error("No image generated.");
@@ -166,20 +177,28 @@ export const generateVideo = async (
       config,
     };
 
-    if (startImageBase64) {
-      const [mimeType, base64Data] = startImageBase64.split(";base64,");
-      request.image = {
-        imageBytes: base64Data,
-        mimeType: mimeType.replace("data:", ""),
-      };
+    if (startImageBase64 && startImageBase64.startsWith('data:')) {
+      const parts_split = startImageBase64.split(";base64,");
+      if (parts_split.length === 2) {
+        request.image = {
+          imageBytes: parts_split[1],
+          mimeType: parts_split[0].replace("data:", ""),
+        };
+      }
+    } else if (startImageBase64) {
+      console.warn("A ignorar imagem inicial do vídeo que não é data URL:", startImageBase64.substring(0, 50));
     }
 
-    if (endImageBase64) {
-      const [mimeType, base64Data] = endImageBase64.split(";base64,");
-      request.config.lastFrame = {
-        imageBytes: base64Data,
-        mimeType: mimeType.replace("data:", ""),
-      };
+    if (endImageBase64 && endImageBase64.startsWith('data:')) {
+      const parts_split = endImageBase64.split(";base64,");
+      if (parts_split.length === 2) {
+        request.config.lastFrame = {
+          imageBytes: parts_split[1],
+          mimeType: parts_split[0].replace("data:", ""),
+        };
+      }
+    } else if (endImageBase64) {
+      console.warn("A ignorar imagem final do vídeo que não é data URL:", endImageBase64.substring(0, 50));
     }
 
     const operation = await ai.models.generateVideos(request);
@@ -246,7 +265,10 @@ export const pollVideoOperation = async (operationOrName: any) => {
 
   // Use the same key logic as getGenAI for the fetch
   const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
-  const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const envKey = 
+    (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : null) ||
+    (import.meta as any).env?.VITE_API_KEY || 
+    (import.meta as any).env?.VITE_GEMINI_API_KEY;
   const apiKey = manualKey || envKey;
 
   const response = await fetch(downloadLink, {
