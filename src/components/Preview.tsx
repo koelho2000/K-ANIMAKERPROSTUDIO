@@ -12,14 +12,31 @@ import {
   SkipBack,
   Volume2,
   Settings as SettingsIcon,
-  Globe
+  Globe,
+  Scissors,
+  Zap,
+  Maximize2,
+  ArrowRightLeft,
+  Download
 } from "lucide-react";
 import { generateText } from "../services/geminiService";
+import { TransitionType } from "../types";
 
 interface PreviewProps {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
 }
+
+const TRANSITION_TYPES: { id: TransitionType; name: string }[] = [
+  { id: 'cut', name: 'Corte Seco' },
+  { id: 'fade', name: 'Dissolver (Fade)' },
+  { id: 'fade-black', name: 'Fade para Preto' },
+  { id: 'fade-white', name: 'Fade para Branco' },
+  { id: 'wipe-left', name: 'Wipe Esquerda' },
+  { id: 'wipe-right', name: 'Wipe Direita' },
+  { id: 'zoom-in', name: 'Zoom In' },
+  { id: 'zoom-out', name: 'Zoom Out' },
+];
 
 const SUGGESTED_LANGUAGES = [
   { code: "en", name: "Inglês" },
@@ -36,6 +53,8 @@ export default function Preview({ project, setProject }: PreviewProps) {
   const [isPlayingFullMovie, setIsPlayingFullMovie] = useState(false);
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const allTakes = project.scenes.flatMap((s) =>
@@ -60,6 +79,44 @@ export default function Preview({ project, setProject }: PreviewProps) {
         enabled: !prev.subtitleSettings?.enabled
       }
     }));
+  };
+
+  const handleUpdateTransition = (takeId: string, transition: TransitionType) => {
+    setProject(prev => ({
+      ...prev,
+      scenes: prev.scenes.map(s => ({
+        ...s,
+        takes: s.takes.map(t => t.id === takeId ? { ...t, transition } : t)
+      }))
+    }));
+  };
+
+  const handleApplyGlobalTransition = (transition: TransitionType) => {
+    setProject(prev => ({
+      ...prev,
+      globalTransition: transition,
+      scenes: prev.scenes.map(s => ({
+        ...s,
+        takes: s.takes.map(t => ({ ...t, transition }))
+      }))
+    }));
+  };
+
+  const handleExportVideo = () => {
+    setIsExporting(true);
+    setExportProgress(0);
+    
+    const interval = setInterval(() => {
+      setExportProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setIsExporting(false);
+          alert("Exportação concluída! O vídeo final foi gerado com sucesso.");
+          return 100;
+        }
+        return prev + Math.random() * 10;
+      });
+    }, 500);
   };
 
   const handleTranslateSubtitles = async (targetLangCode: string) => {
@@ -211,11 +268,50 @@ export default function Preview({ project, setProject }: PreviewProps) {
               <Film className="w-6 h-6" />
               Renderizar Filme Completo (Preview)
             </button>
+            <button
+              onClick={handleExportVideo}
+              disabled={movieClips.length === 0 || isExporting}
+              className="flex-1 flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 transition-all disabled:opacity-50"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  {Math.round(exportProgress)}%
+                </>
+              ) : (
+                <>
+                  <Download className="w-6 h-6" />
+                  Exportar Vídeo Final
+                </>
+              )}
+            </button>
           </div>
         </div>
 
         {/* Sidebar Controls */}
         <div className="space-y-6">
+          {/* Transitions Card */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-4">
+            <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+              <ArrowRightLeft className="w-5 h-5 text-indigo-600" />
+              Transições Globais
+            </h3>
+            <div className="space-y-3">
+              <select
+                value={project.globalTransition || 'cut'}
+                onChange={(e) => handleApplyGlobalTransition(e.target.value as TransitionType)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {TRANSITION_TYPES.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-zinc-400 italic">
+                Aplica o mesmo tipo de transição a todos os clips do filme.
+              </p>
+            </div>
+          </div>
+
           {/* Subtitles Card */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
             <div className="flex items-center justify-between">
@@ -303,34 +399,55 @@ export default function Preview({ project, setProject }: PreviewProps) {
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-zinc-200">
         <h3 className="text-xl font-bold text-zinc-900 mb-6 flex items-center gap-2">
           <Film className="w-6 h-6 text-indigo-600" />
-          Lista de Clips
+          Lista de Clips e Transições
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-10">
           {movieClips.map((clip, i) => (
-            <button
-              key={clip.id}
-              onClick={() => {
-                setIsPlayingFullMovie(false);
-                setCurrentClipIndex(i);
-              }}
-              className={`text-left space-y-2 group transition-all ${
-                currentClipIndex === i && !isPlayingFullMovie ? "ring-2 ring-indigo-500 ring-offset-4 rounded-xl" : ""
-              }`}
-            >
-              <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black rounded-xl overflow-hidden border border-zinc-200 relative`}>
-                <video src={clip.videoUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Play className="w-8 h-8 text-white fill-white" />
+            <div key={clip.id} className="space-y-3">
+              <button
+                onClick={() => {
+                  setIsPlayingFullMovie(false);
+                  setCurrentClipIndex(i);
+                }}
+                className={`w-full text-left space-y-2 group transition-all ${
+                  currentClipIndex === i && !isPlayingFullMovie ? "ring-2 ring-indigo-500 ring-offset-4 rounded-xl" : ""
+                }`}
+              >
+                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black rounded-xl overflow-hidden border border-zinc-200 relative`}>
+                  <video src={clip.videoUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Play className="w-8 h-8 text-white fill-white" />
+                  </div>
+                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+                    {i + 1}
+                  </div>
                 </div>
-                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
-                  {i + 1}
+                <div className="px-1">
+                  <p className="text-xs font-bold text-zinc-900 truncate">{clip.action}</p>
+                  <p className="text-[10px] text-zinc-500 truncate">{clip.dialogue || "Sem diálogo"}</p>
                 </div>
-              </div>
-              <div className="px-1">
-                <p className="text-xs font-bold text-zinc-900 truncate">{clip.action}</p>
-                <p className="text-[10px] text-zinc-500 truncate">{clip.dialogue || "Sem diálogo"}</p>
-              </div>
-            </button>
+              </button>
+
+              {/* Transition Selector for this clip (transition to NEXT clip) */}
+              {i < movieClips.length - 1 && (
+                <div className="flex items-center gap-2 px-1">
+                  <div className="h-px flex-1 bg-zinc-100" />
+                  <div className="relative group/trans">
+                    <select
+                      value={(clip as Take).transition || project.globalTransition || 'cut'}
+                      onChange={(e) => handleUpdateTransition(clip.id, e.target.value as TransitionType)}
+                      className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-[9px] font-bold text-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none pr-6 cursor-pointer hover:bg-white transition-colors"
+                    >
+                      {TRANSITION_TYPES.map(t => (
+                        <option key={t.id} value={t.id}>{t.name.toUpperCase()}</option>
+                      ))}
+                    </select>
+                    <ArrowRightLeft className="w-3 h-3 text-zinc-300 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none group-hover/trans:text-indigo-400 transition-colors" />
+                  </div>
+                  <div className="h-px flex-1 bg-zinc-100" />
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </div>

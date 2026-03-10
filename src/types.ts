@@ -7,6 +7,8 @@ declare global {
   }
 }
 
+export type TransitionType = 'cut' | 'fade' | 'fade-black' | 'fade-white' | 'wipe-left' | 'wipe-right' | 'zoom-in' | 'zoom-out';
+
 export type AutomationPhase = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 export type AutomationStatus = 'idle' | 'running' | 'paused' | 'waiting_validation' | 'completed';
 
@@ -48,6 +50,7 @@ export interface Project {
     translatedLanguage?: string;
     translations?: Record<string, string>; // takeId -> translatedText
   };
+  globalTransition?: TransitionType;
   intro?: {
     type: string;
     prompt: string;
@@ -138,6 +141,7 @@ export interface Take {
   lastEndFramePrompt?: string;
   lastVideoPrompt?: string;
   duration?: number; // duration in seconds
+  transition?: TransitionType;
   analysis?: {
     status: 'ok' | 'warning' | 'error';
     feedback: string;
