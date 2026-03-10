@@ -133,7 +133,9 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        const mimeType = part.inlineData.mimeType || "image/png";
+        const data = part.inlineData.data.replace(/\s/g, '');
+        return `data:${mimeType};base64,${data}`;
       }
     }
     throw new Error("No image generated.");
@@ -261,10 +263,21 @@ export const pollVideoOperation = async (operationOrName: any) => {
   }
 
   const blob = await response.blob();
+  if (blob.size === 0) {
+    throw new Error("O vídeo descarregado está vazio.");
+  }
+
   const videoUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      if (result && result.length > 100) {
+        resolve(result);
+      } else {
+        reject(new Error("Erro ao converter vídeo para Data URL ou ficheiro demasiado pequeno."));
+      }
+    };
+    reader.onerror = () => reject(new Error("Erro na leitura do blob do vídeo."));
     reader.readAsDataURL(blob);
   });
 

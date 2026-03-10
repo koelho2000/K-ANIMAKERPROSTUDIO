@@ -12,6 +12,7 @@ import {
   X,
   Users,
   MapPin,
+  Maximize2,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Type } from "@google/genai";
@@ -273,6 +274,118 @@ export default function Scenes({ project, setProject }: ScenesProps) {
     }
   };
 
+  const handleExtendScene = async (sceneId: string) => {
+    const scene = project.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+
+    setGeneratingTakesId(sceneId);
+    try {
+      const charactersContext = project.characters
+        .map((c) => `${c.name}: ${c.description}`)
+        .join("\n");
+      const settingsContext = project.settings
+        .map((s) => `${s.name}: ${s.description}`)
+        .join("\n");
+      
+      const currentTakesContext = scene.takes.map((t, i) => `Take ${i+1}: ${t.action}`).join("\n");
+
+      const prompt = `
+        Aumenta o detalhe da seguinte cena de um filme de animação, gerando MAIS takes (planos de câmara) adicionais para tornar a cena mais rica e cinematográfica.
+        
+        Cena: ${scene.title}
+        Descrição: ${scene.description}
+        Tipo de filme: ${project.filmType}
+        Estilo de filme: ${project.filmStyle}
+        
+        Takes Atuais (para referência):
+        ${currentTakesContext}
+
+        Contexto de Personagens:
+        ${charactersContext}
+        
+        Contexto de Cenários:
+        ${settingsContext}
+
+        Gera novos takes que complementem os atuais ou que dividam a ação de forma mais detalhada. 
+        Retorna APENAS os novos takes que devem ser ADICIONADOS à cena.
+      `;
+
+      const schema = {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            action: { type: Type.STRING },
+            camera: { type: Type.STRING },
+            sound: { type: Type.STRING },
+            music: { type: Type.STRING },
+            dialogue: { type: Type.STRING },
+            dialogueLines: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  characterName: { type: Type.STRING },
+                  text: { type: Type.STRING },
+                },
+                required: ["characterName", "text"],
+              },
+            },
+            characterNames: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            settingName: { type: Type.STRING },
+          },
+          required: ["action", "camera", "sound", "music", "dialogue", "dialogueLines", "characterNames", "settingName"],
+        },
+      };
+
+      const result = await generateJSON(
+        prompt,
+        schema,
+        "És um realizador de cinema a expandir uma storyboard para maior detalhe.",
+      );
+      const parsed = JSON.parse(result);
+
+      const newTakes: Take[] = parsed.map((t: any) => ({
+        id: uuidv4(),
+        action: t.action,
+        camera: t.camera,
+        sound: t.sound,
+        music: t.music,
+        dialogue: t.dialogue,
+        dialogueLines: t.dialogueLines?.map((dl: any) => ({
+          characterId: project.characters.find((c) => c.name === dl.characterName)?.id || "",
+          text: dl.text,
+        })).filter((dl: any) => dl.characterId !== ""),
+        characterIds: project.characters
+          .filter((c) => t.characterNames?.includes(c.name))
+          .map((c) => c.id),
+        settingId: project.settings.find((s) => s.name === t.settingName)?.id,
+        duration: 5,
+      }));
+
+      const updatedScenes = project.scenes.map((s) => {
+        if (s.id === sceneId) {
+          return {
+            ...s,
+            takes: [...s.takes, ...newTakes],
+          };
+        }
+        return s;
+      });
+
+      setProject({ ...project, scenes: updatedScenes });
+      alert(`${newTakes.length} novos takes adicionados à cena!`);
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao estender a cena.");
+    } finally {
+      setGeneratingTakesId(null);
+    }
+  };
+
   const onRegenerateTake = async (sceneId: string, takeId: string) => {
     setGeneratingTakesId(takeId);
     try {
@@ -515,21 +628,39 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                 <span className="text-xs font-medium bg-zinc-200 text-zinc-700 px-2 py-1 rounded-md">
                   {scene.takes.length} Takes
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onGenerateTakesForScene(scene);
-                  }}
-                  disabled={generatingTakesId === scene.id}
-                  className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  {generatingTakesId === scene.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-4 h-4" />
-                  )}
-                  Gerar Takes
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleExtendScene(scene.id);
+                    }}
+                    disabled={generatingTakesId === scene.id || scene.takes.length === 0}
+                    className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-indigo-600 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                    title="Adicionar mais takes para detalhar a cena"
+                  >
+                    {generatingTakesId === scene.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Maximize2 className="w-4 h-4" />
+                    )}
+                    Extender
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onGenerateTakesForScene(scene);
+                    }}
+                    disabled={generatingTakesId === scene.id}
+                    className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {generatingTakesId === scene.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
+                    Gerar Takes
+                  </button>
+                </div>
               </div>
             </div>
 

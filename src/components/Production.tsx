@@ -340,22 +340,9 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setProject({ ...project, scenes: updatedScenes });
   };
 
-  const handleGenerateAllFramesForScene = async (sceneId: string) => {
+  const handleGenerateAllStartFramesForScene = async (sceneId: string) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     if (!scene) return;
-
-    // Check all takes for consistency requirements
-    let allRequirementsMet = true;
-    for (const take of scene.takes) {
-      if (!take.startFrameUrl || !take.endFrameUrl) {
-        if (!checkConsistencyRequirements(take)) {
-          allRequirementsMet = false;
-          break;
-        }
-      }
-    }
-
-    if (!allRequirementsMet) return;
 
     setIsGeneratingBulk(true);
     setBulkProgress(0);
@@ -364,8 +351,6 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       for (let i = 0; i < updatedTakes.length; i++) {
         setBulkProgress((i / updatedTakes.length) * 100);
         const take = updatedTakes[i];
-        
-        // Generate start frame if missing
         if (!take.startFrameUrl) {
           const result = await handleGenerateFrame(sceneId, take.id, "start", true);
           if (result) {
@@ -374,8 +359,31 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             updatedTakes[i].updatedAt = Date.now();
           }
         }
-        
-        // Generate end frame if missing
+      }
+      const updatedScenes = project.scenes.map((s) =>
+        s.id === sceneId ? { ...s, takes: updatedTakes } : s,
+      );
+      setProject({ ...project, scenes: updatedScenes });
+      alert(`Todos os frames iniciais da cena "${scene.title}" foram gerados!`);
+    } catch (error) {
+      console.error(error);
+      alert("Erro na geração em massa.");
+    } finally {
+      setIsGeneratingBulk(false);
+    }
+  };
+
+  const handleGenerateAllEndFramesForScene = async (sceneId: string) => {
+    const scene = project.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+
+    setIsGeneratingBulk(true);
+    setBulkProgress(0);
+    try {
+      const updatedTakes = [...scene.takes];
+      for (let i = 0; i < updatedTakes.length; i++) {
+        setBulkProgress((i / updatedTakes.length) * 100);
+        const take = updatedTakes[i];
         if (!take.endFrameUrl) {
           const result = await handleGenerateFrame(sceneId, take.id, "end", true, undefined, take.startFrameUrl);
           if (result) {
@@ -385,18 +393,59 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           }
         }
       }
-
       const updatedScenes = project.scenes.map((s) =>
         s.id === sceneId ? { ...s, takes: updatedTakes } : s,
       );
       setProject({ ...project, scenes: updatedScenes });
-      alert(`Todos os frames da cena "${scene.title}" foram gerados!`);
+      alert(`Todos os frames finais da cena "${scene.title}" foram gerados!`);
     } catch (error) {
       console.error(error);
       alert("Erro na geração em massa.");
     } finally {
       setIsGeneratingBulk(false);
     }
+  };
+
+  const handleDeleteAllStartFramesForScene = (sceneId: string) => {
+    if (!window.confirm("Tens a certeza que desejas apagar TODOS os Frames Iniciais desta cena?")) return;
+    const updatedScenes = project.scenes.map((s) => {
+      if (s.id === sceneId) {
+        return {
+          ...s,
+          takes: s.takes.map((t) => ({ ...t, startFrameUrl: undefined, updatedAt: Date.now() })),
+        };
+      }
+      return s;
+    });
+    setProject({ ...project, scenes: updatedScenes });
+  };
+
+  const handleDeleteAllEndFramesForScene = (sceneId: string) => {
+    if (!window.confirm("Tens a certeza que desejas apagar TODOS os Frames Finais desta cena?")) return;
+    const updatedScenes = project.scenes.map((s) => {
+      if (s.id === sceneId) {
+        return {
+          ...s,
+          takes: s.takes.map((t) => ({ ...t, endFrameUrl: undefined, updatedAt: Date.now() })),
+        };
+      }
+      return s;
+    });
+    setProject({ ...project, scenes: updatedScenes });
+  };
+
+  const handleDeleteAllVideosForScene = (sceneId: string) => {
+    if (!window.confirm("Tens a certeza que desejas apagar TODOS os Vídeos desta cena?")) return;
+    const updatedScenes = project.scenes.map((s) => {
+      if (s.id === sceneId) {
+        return {
+          ...s,
+          takes: s.takes.map((t) => ({ ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, updatedAt: Date.now() })),
+        };
+      }
+      return s;
+    });
+    setProject({ ...project, scenes: updatedScenes });
   };
 
   const handleGenerateAllFramesForAllScenes = async () => {
@@ -1122,27 +1171,73 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                   <div className="text-xs font-normal opacity-70">
                     {scene.takes.length} Takes
                   </div>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleGenerateAllFramesForScene(scene.id);
-                      }}
-                      className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded hover:bg-indigo-200 transition-colors"
-                      title="Gerar todos os frames desta cena"
-                    >
-                      Frames
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleGenerateAllVideosForScene(scene.id);
-                      }}
-                      className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded hover:bg-emerald-200 transition-colors"
-                      title="Renderizar todos os vídeos desta cena"
-                    >
-                      Vídeos
-                    </button>
+                  <div className="flex flex-col gap-1 mt-2">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleGenerateAllStartFramesForScene(scene.id);
+                        }}
+                        className="flex-1 text-[9px] bg-indigo-100 text-indigo-600 px-1.5 py-1 rounded hover:bg-indigo-200 transition-colors font-bold uppercase"
+                        title="Gerar todos os frames iniciais desta cena"
+                      >
+                        Gerar F. Inicial
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteAllStartFramesForScene(scene.id);
+                        }}
+                        className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-1 rounded hover:bg-rose-200 transition-colors font-bold uppercase"
+                        title="Apagar todos os frames iniciais desta cena"
+                      >
+                        Apagar
+                      </button>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleGenerateAllEndFramesForScene(scene.id);
+                        }}
+                        className="flex-1 text-[9px] bg-indigo-100 text-indigo-600 px-1.5 py-1 rounded hover:bg-indigo-200 transition-colors font-bold uppercase"
+                        title="Gerar todos os frames finais desta cena"
+                      >
+                        Gerar F. Final
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteAllEndFramesForScene(scene.id);
+                        }}
+                        className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-1 rounded hover:bg-rose-200 transition-colors font-bold uppercase"
+                        title="Apagar todos os frames finais desta cena"
+                      >
+                        Apagar
+                      </button>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleGenerateAllVideosForScene(scene.id);
+                        }}
+                        className="flex-1 text-[9px] bg-emerald-100 text-emerald-600 px-1.5 py-1 rounded hover:bg-emerald-200 transition-colors font-bold uppercase"
+                        title="Renderizar todos os vídeos desta cena"
+                      >
+                        Renderizar Vídeos
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteAllVideosForScene(scene.id);
+                        }}
+                        className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-1 rounded hover:bg-rose-200 transition-colors font-bold uppercase"
+                        title="Apagar todos os vídeos desta cena"
+                      >
+                        Apagar
+                      </button>
+                    </div>
                   </div>
                 </div>
             </div>
