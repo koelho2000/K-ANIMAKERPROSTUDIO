@@ -54,6 +54,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
   const [progress, setProgress] = useState(0);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<string | null>(null);
+  const [editingVideoPrompt, setEditingVideoPrompt] = useState<string | null>(null);
 
   const intro = project.intro || { type: "cinematic", prompt: "" };
   const outro = project.outro || { type: "scrolling", prompt: "" };
@@ -166,6 +167,12 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       alert("Gera primeiro a imagem base!");
       return;
     }
+    const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${activeTab === "intro" ? "epic orchestral music" : "gentle closing music"}, and professional transitions.`;
+    setEditingVideoPrompt(videoPrompt);
+  };
+
+  const confirmGenerateVideo = async (editedPrompt: string) => {
+    setEditingVideoPrompt(null);
     setIsGeneratingVideo(true);
     setProgress(0);
     try {
@@ -183,10 +190,9 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
         }
       }
 
-      const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${activeTab === "intro" ? "epic orchestral music" : "gentle closing music"}, and professional transitions.`;
-      const operation = await generateVideo(videoPrompt, currentData.imageUrl, undefined, currentData.videoModel || 'flow', project.aspectRatio);
+      const operation = await generateVideo(editedPrompt, currentData.imageUrl, undefined, currentData.videoModel || 'flow', project.aspectRatio);
       
-      updateData({ videoOperationId: operation.name, lastVideoPrompt: videoPrompt });
+      updateData({ videoOperationId: operation.name, lastVideoPrompt: editedPrompt });
       
       const { videoUrl, videoObject } = await pollVideoOperation(operation);
       updateData({ videoUrl, videoObject, videoOperationId: undefined });
@@ -568,6 +574,65 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
               >
                 <Sparkles className="w-4 h-4" />
                 Gerar Imagem Agora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Video Prompt Validation Modal */}
+      {editingVideoPrompt !== null && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-zinc-200">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                  <Video className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900">Validar Prompt de Vídeo</h3>
+                  <p className="text-xs text-zinc-500">Edita o prompt para garantir que a animação do vídeo é a pretendida.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingVideoPrompt(null)}
+                className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6 text-zinc-400" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Prompt de Vídeo</label>
+                <textarea
+                  value={editingVideoPrompt}
+                  onChange={(e) => setEditingVideoPrompt(e.target.value)}
+                  className="w-full h-48 bg-zinc-50 border border-zinc-200 rounded-2xl p-4 text-sm text-zinc-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all resize-none font-mono"
+                  placeholder="Descreve o movimento e atmosfera do vídeo..."
+                />
+              </div>
+              
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  <strong>Dica:</strong> Descreve movimentos de câmara como "pan", "zoom" ou "tracking shot" para melhores resultados.
+                </p>
+              </div>
+            </div>
+            
+            <div className="p-6 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-3">
+              <button
+                onClick={() => setEditingVideoPrompt(null)}
+                className="px-6 py-2.5 rounded-xl font-bold text-zinc-600 hover:bg-zinc-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => confirmGenerateVideo(editingVideoPrompt)}
+                className="px-8 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 transition-all flex items-center gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                Renderizar Vídeo Agora
               </button>
             </div>
           </div>

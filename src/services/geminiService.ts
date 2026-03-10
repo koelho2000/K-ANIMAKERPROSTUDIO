@@ -112,7 +112,9 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
         if (img && img.startsWith('data:')) {
           const parts_split = img.split(";base64,");
           if (parts_split.length === 2) {
-            const mimeType = parts_split[0].replace("data:", "");
+            // Extract clean mime type (everything between 'data:' and the first ';')
+            const mimeTypeMatch = parts_split[0].match(/data:([^;]+)/);
+            const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
             const base64Data = parts_split[1];
             parts.unshift({
               inlineData: {
@@ -128,7 +130,7 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-image-preview",
+      model: "gemini-2.5-flash-image",
       contents: {
         parts: parts,
       },

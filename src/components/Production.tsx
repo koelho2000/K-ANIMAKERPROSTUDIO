@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
+import { PromptEditorModal } from "./PromptEditorModal";
 
 interface ProductionProps {
   project: Project;
@@ -48,6 +49,11 @@ export default function Production({ project, setProject }: ProductionProps) {
     sceneId: string;
     takeId: string;
     type: "start" | "end";
+    prompt: string;
+  } | null>(null);
+  const [editingVideoPrompt, setEditingVideoPrompt] = useState<{
+    sceneId: string;
+    takeId: string;
     prompt: string;
   } | null>(null);
   const [bulkProgress, setBulkProgress] = useState(0);
@@ -628,8 +634,6 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
   };
 
   const handleGenerateVideo = async (sceneId: string, takeId: string) => {
-    setGeneratingVideoId(takeId);
-    setVideoStatus("A preparar pedido...");
     try {
       const scene = project.scenes.find((s) => s.id === sceneId);
       const take = scene?.takes.find((t) => t.id === takeId);
@@ -643,6 +647,22 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
 
       const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
+      
+      setEditingVideoPrompt({ sceneId, takeId, prompt });
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao preparar prompt do vídeo.");
+    }
+  };
+
+  const confirmGenerateVideo = async (sceneId: string, takeId: string, editedPrompt: string) => {
+    setEditingVideoPrompt(null);
+    setGeneratingVideoId(takeId);
+    setVideoStatus("A preparar pedido...");
+    try {
+      const scene = project.scenes.find((s) => s.id === sceneId);
+      const take = scene?.takes.find((t) => t.id === takeId);
+      if (!scene || !take) return;
 
       // Check if API key is selected (system or manual)
       const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
@@ -653,12 +673,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           await (window as any).aistudio.openSelectKey();
         } else {
           alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
+          setGeneratingVideoId(null);
           return;
         }
       }
 
       const operation = await generateVideo(
-        prompt,
+        editedPrompt,
         take.startFrameUrl,
         take.endFrameUrl,
         take.videoModel || 'flow',
@@ -672,7 +693,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           return {
             ...s,
             takes: s.takes.map((t) =>
-              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: prompt } : t,
+              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: editedPrompt } : t,
             ),
           };
         }
@@ -1817,6 +1838,14 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         onClose={() => setSelectedImage(null)}
         imageUrl={selectedImage?.url || null}
         title={selectedImage?.title}
+      />
+      <PromptEditorModal
+        isOpen={!!editingVideoPrompt}
+        onClose={() => setEditingVideoPrompt(null)}
+        onConfirm={(editedPrompt) => confirmGenerateVideo(editingVideoPrompt!.sceneId, editingVideoPrompt!.takeId, editedPrompt)}
+        initialPrompt={editingVideoPrompt?.prompt || ""}
+        title="Validar Prompt de Vídeo"
+        description="Edita o prompt para garantir que a animação do vídeo corresponde à tua visão."
       />
     </div>
   );
