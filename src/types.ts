@@ -42,6 +42,12 @@ export interface Project {
     concept?: { status: 'ok' | 'warning' | 'error'; message: string };
     ignoreWarnings?: boolean;
   };
+  subtitleSettings?: {
+    enabled: boolean;
+    language: string;
+    translatedLanguage?: string;
+    translations?: Record<string, string>; // takeId -> translatedText
+  };
   intro?: {
     type: string;
     prompt: string;

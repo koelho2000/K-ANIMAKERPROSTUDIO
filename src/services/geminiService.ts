@@ -133,10 +133,11 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
       });
     }
 
+    const finalPrompt = `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS. Pure visual content only.`;
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",
       contents: {
-        parts: parts,
+        parts: [{ text: finalPrompt }, ...parts.slice(1)],
       },
       config: {
         imageConfig: {
@@ -177,9 +178,11 @@ export const generateVideo = async (
 
     const modelName = model === 'veo' ? 'veo-3.1-generate-preview' : 'veo-3.1-fast-generate-preview';
 
+    const finalPrompt = `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS. Pure visual content only.`;
+
     const request: any = {
       model: modelName,
-      prompt,
+      prompt: finalPrompt,
       config,
     };
 

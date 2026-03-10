@@ -782,6 +782,11 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
                     {automation.currentTask && (
                       <span className="text-indigo-400 animate-pulse flex items-center gap-1">
                         • {automation.currentTask}
+                        {automation.currentPhase === 8 && (
+                          <span className="ml-1 px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[8px] font-bold uppercase">
+                            Motor: {globalVideoModel === 'veo' ? 'Veo' : 'Flow'}
+                          </span>
+                        )}
                       </span>
                     )}
                   </div>

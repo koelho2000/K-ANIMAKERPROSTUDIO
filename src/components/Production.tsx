@@ -1717,7 +1717,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             <Download className="w-4 h-4" />
                           </a>
                         </>
-                      ) : take.videoOperationId ? (
+                      ) : (take.videoOperationId || generatingVideoId === take.id) ? (
                         <div className="absolute inset-0 bg-zinc-900/90 flex flex-col items-center justify-center p-6 text-center">
                           <ProgressBar
                             progress={videoProgress}
