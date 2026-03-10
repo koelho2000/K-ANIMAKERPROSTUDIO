@@ -1,21 +1,25 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Helper to get the AI instance with the selected API key
-export const getGenAI = () => {
+export const getApiKey = () => {
   // 1. Try to get from localStorage (manually entered by user)
   const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
   
-  // 2. Try to get from environment (injected by AI Studio or set in Vercel/Vite)
-  // Vite uses import.meta.env.VITE_*, but we also check process.env for compatibility
+  // 2. Try to get from environment
+  // In AI Studio, the key is often injected into process.env.API_KEY or similar
   const envKey = 
     (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : null) ||
     (import.meta as any).env?.VITE_API_KEY || 
     (import.meta as any).env?.VITE_GEMINI_API_KEY;
   
-  const apiKey = manualKey || envKey;
+  return manualKey || envKey;
+};
+
+// Helper to get the AI instance with the selected API key
+export const getGenAI = () => {
+  const apiKey = getApiKey();
   
   if (!apiKey) {
-    throw new Error("Chave API não encontrada. Por favor, introduz a tua chave manualmente no menu lateral (Manual) ou configura as variáveis de ambiente (VITE_GEMINI_API_KEY).");
+    throw new Error("Chave API não encontrada. Por favor, configura a tua chave no menu lateral (Manual) ou seleciona uma chave do sistema.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -182,9 +186,11 @@ export const generateVideo = async (
     if (startImageBase64 && startImageBase64.startsWith('data:')) {
       const parts_split = startImageBase64.split(";base64,");
       if (parts_split.length === 2) {
+        const mimeTypeMatch = parts_split[0].match(/data:([^;]+)/);
+        const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
         request.image = {
           imageBytes: parts_split[1],
-          mimeType: parts_split[0].replace("data:", ""),
+          mimeType: mimeType,
         };
       }
     } else if (startImageBase64) {
@@ -194,9 +200,11 @@ export const generateVideo = async (
     if (endImageBase64 && endImageBase64.startsWith('data:')) {
       const parts_split = endImageBase64.split(";base64,");
       if (parts_split.length === 2) {
+        const mimeTypeMatch = parts_split[0].match(/data:([^;]+)/);
+        const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
         request.config.lastFrame = {
           imageBytes: parts_split[1],
-          mimeType: parts_split[0].replace("data:", ""),
+          mimeType: mimeType,
         };
       }
     } else if (endImageBase64) {
@@ -265,13 +273,7 @@ export const pollVideoOperation = async (operationOrName: any) => {
 
   console.log(`Vídeo pronto! Link: ${downloadLink}`);
 
-  // Use the same key logic as getGenAI for the fetch
-  const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
-  const envKey = 
-    (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : null) ||
-    (import.meta as any).env?.VITE_API_KEY || 
-    (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  const apiKey = manualKey || envKey;
+  const apiKey = getApiKey();
 
   const response = await fetch(downloadLink, {
     method: "GET",

@@ -1800,8 +1800,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                   const { sceneId, takeId, type, prompt } = editingPrompt;
                   setEditingPrompt(null);
                   setGeneratingImageId(`${takeId}-${type}`);
-                  const imageUrl = await handleGenerateFrame(sceneId, takeId, type, false, prompt);
-                  if (imageUrl) {
+                  const result = await handleGenerateFrame(sceneId, takeId, type, false, prompt);
+                  if (result) {
                     const updatedScenes = project.scenes.map((s) => {
                       if (s.id === sceneId) {
                         return {
@@ -1810,8 +1810,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             t.id === takeId
                               ? {
                                   ...t,
-                                  [type === "start" ? "startFrameUrl" : "endFrameUrl"]: imageUrl,
-                                  [type === "start" ? "lastStartFramePrompt" : "lastEndFramePrompt"]: prompt,
+                                  [type === "start" ? "startFrameUrl" : "endFrameUrl"]: result.imageUrl,
+                                  [type === "start" ? "lastStartFramePrompt" : "lastEndFramePrompt"]: result.prompt,
                                   updatedAt: Date.now(),
                                 }
                               : t,
