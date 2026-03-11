@@ -57,6 +57,11 @@ export default function Production({ project, setProject }: ProductionProps) {
     prompt: string;
   } | null>(null);
   const [bulkProgress, setBulkProgress] = useState(0);
+  const [importingVideo, setImportingVideo] = useState<{
+    sceneId: string;
+    takeId: string;
+    prompt: string;
+  } | null>(null);
   const [expandedSceneId, setExpandedSceneId] = useState<string | null>(
     project.scenes[0]?.id || null,
   );
@@ -244,6 +249,38 @@ export default function Production({ project, setProject }: ProductionProps) {
     reader.readAsDataURL(file);
   };
 
+  const handleVideoFileUpload = async (sceneId: string, takeId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      const updatedScenes = project.scenes.map((s) => {
+        if (s.id === sceneId) {
+          return {
+            ...s,
+            takes: s.takes.map((t) =>
+              t.id === takeId
+                ? {
+                    ...t,
+                    videoUrl: base64,
+                    videoOperationId: undefined,
+                    videoObject: undefined,
+                    updatedAt: Date.now(),
+                  }
+                : t,
+            ),
+          };
+        }
+        return s;
+      });
+      setProject({ ...project, scenes: updatedScenes });
+      setImportingVideo(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const getDefaultFramePrompt = (sceneId: string, takeId: string) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     const take = scene?.takes.find((t) => t.id === takeId);
@@ -282,6 +319,21 @@ INSTRUÇÕES DE CONSISTÊNCIA:
 4. Integra as personagens de forma natural no cenário de acordo com a ação descrita.
 
 Altamente detalhado, iluminação dramática, composição profissional.`.trim();
+  };
+
+  const getDefaultVideoPrompt = (sceneId: string, takeId: string) => {
+    const scene = project.scenes.find((s) => s.id === sceneId);
+    const take = scene?.takes.find((t) => t.id === takeId);
+    if (!scene || !take) return "";
+
+    const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
+      ? " Diálogo: " + take.dialogueLines.map(line => {
+          const char = project.characters.find(c => c.id === line.characterId);
+          return `${char?.name || "Personagem"}: ${line.text}`;
+        }).join(" | ")
+      : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
+
+    return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
   };
 
   const onGenerateFrame = async (sceneId: string, takeId: string, type: "start" | "end") => {
@@ -1658,6 +1710,17 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           Info
                         </button>
                         <button
+                          onClick={() => {
+                            const prompt = take.lastVideoPrompt || getDefaultVideoPrompt(expandedSceneId!, take.id);
+                            setImportingVideo({ sceneId: expandedSceneId!, takeId: take.id, prompt });
+                          }}
+                          className="text-xs flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-2 py-1 rounded transition-colors"
+                          title="Importar vídeo manualmente"
+                        >
+                          <Upload className="w-3 h-3" />
+                          Importar
+                        </button>
+                        <button
                           onClick={() =>
                             handleGenerateVideo(expandedSceneId!, take.id)
                           }
@@ -1746,6 +1809,51 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           )}
         </div>
       </div>
+
+      {/* Video Import Modal */}
+      {importingVideo && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-zinc-200 animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+                  <Upload className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900">Importar Vídeo</h3>
+                  <p className="text-xs text-zinc-500">Faz o upload de um vídeo externo.</p>
+                </div>
+              </div>
+              <button onClick={() => setImportingVideo(null)} className="p-2 hover:bg-zinc-200 rounded-full transition-colors">
+                <X className="w-5 h-5 text-zinc-400" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Formato Necessário</span>
+                  <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">{project.aspectRatio}</span>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Prompt Definido</span>
+                  <p className="text-[11px] text-indigo-900 leading-relaxed bg-white/50 p-2 rounded-lg border border-indigo-100/50 max-h-32 overflow-y-auto custom-scrollbar">
+                    {importingVideo.prompt}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Selecionar Ficheiro</label>
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => handleVideoFileUpload(importingVideo.sceneId, importingVideo.takeId, e)}
+                  className="w-full text-sm text-zinc-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 transition-all"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Prompt Editor Modal */}
       {editingPrompt && (

@@ -28,6 +28,7 @@ interface MediaItem {
 export default function MediaLibrary({ project }: MediaLibraryProps) {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<'all' | 'image' | 'video'>('all');
 
   // Extract all media from project
   const mediaItems: MediaItem[] = [];
@@ -143,6 +144,11 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
     }
   }
 
+  const filteredItems = mediaItems.filter(item => {
+    if (filter === 'all') return true;
+    return item.type === filter;
+  });
+
   const handleDownload = (url: string, filename: string) => {
     const link = document.createElement('a');
     link.href = url;
@@ -153,7 +159,7 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
   };
 
   const handleDownloadAll = () => {
-    mediaItems.forEach((item, index) => {
+    filteredItems.forEach((item, index) => {
       setTimeout(() => {
         handleDownload(item.url, `${item.title.replace(/\s+/g, '_')}.${item.type === 'image' ? 'png' : 'mp4'}`);
       }, index * 200);
@@ -161,7 +167,7 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
   };
 
   const handleDownloadSelected = () => {
-    const itemsToDownload = mediaItems.filter(item => selectedIds.has(item.id));
+    const itemsToDownload = filteredItems.filter(item => selectedIds.has(item.id));
     itemsToDownload.forEach((item, index) => {
       setTimeout(() => {
         handleDownload(item.url, `${item.title.replace(/\s+/g, '_')}.${item.type === 'image' ? 'png' : 'mp4'}`);
@@ -170,10 +176,10 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === mediaItems.length) {
+    if (selectedIds.size === filteredItems.length && filteredItems.every(item => selectedIds.has(item.id))) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(mediaItems.map(item => item.id)));
+      setSelectedIds(new Set(filteredItems.map(item => item.id)));
     }
   };
 
@@ -209,44 +215,63 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
               Descarregar Selecionados ({selectedIds.size})
             </button>
           )}
+            <button
+              onClick={handleDownloadAll}
+              disabled={filteredItems.length === 0}
+              className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              <Download className="w-5 h-5" />
+              Descarregar {filter === 'all' ? 'Tudo' : filter === 'image' ? 'Imagens' : 'Vídeos'} ({filteredItems.length})
+            </button>
+          </div>
+        </div>
+
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="flex bg-zinc-100 p-1 rounded-xl w-full md:w-auto">
           <button
-            onClick={handleDownloadAll}
-            disabled={mediaItems.length === 0}
-            className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+            onClick={() => setFilter('all')}
+            className={`flex-1 md:flex-none px-6 py-2 text-xs font-bold rounded-lg transition-all ${
+              filter === 'all' ? "bg-white shadow-sm text-indigo-600" : "text-zinc-500 hover:text-zinc-700"
+            }`}
           >
-            <Download className="w-5 h-5" />
-            Descarregar Tudo ({mediaItems.length})
+            TUDO ({mediaItems.length})
+          </button>
+          <button
+            onClick={() => setFilter('image')}
+            className={`flex-1 md:flex-none px-6 py-2 text-xs font-bold rounded-lg transition-all ${
+              filter === 'image' ? "bg-white shadow-sm text-indigo-600" : "text-zinc-500 hover:text-zinc-700"
+            }`}
+          >
+            IMAGENS ({mediaItems.filter(i => i.type === 'image').length})
+          </button>
+          <button
+            onClick={() => setFilter('video')}
+            className={`flex-1 md:flex-none px-6 py-2 text-xs font-bold rounded-lg transition-all ${
+              filter === 'video' ? "bg-white shadow-sm text-indigo-600" : "text-zinc-500 hover:text-zinc-700"
+            }`}
+          >
+            VÍDEOS ({mediaItems.filter(i => i.type === 'video').length})
           </button>
         </div>
-      </div>
 
-      {mediaItems.length > 0 && (
-        <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-zinc-200">
-          <div className="flex items-center gap-4">
+        {filteredItems.length > 0 && (
+          <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-zinc-200 w-full md:w-auto">
             <button 
               onClick={toggleSelectAll}
-              className="flex items-center gap-2 text-sm font-bold text-zinc-600 hover:text-indigo-600 transition-colors"
+              className="flex items-center gap-2 text-xs font-bold text-zinc-600 hover:text-indigo-600 transition-colors"
             >
-              {selectedIds.size === mediaItems.length ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
-              {selectedIds.size === mediaItems.length ? "Desmarcar Todos" : "Selecionar Todos"}
+              {selectedIds.size === filteredItems.length && filteredItems.length > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+              Selecionar Visíveis
             </button>
-            <span className="text-sm text-zinc-400">|</span>
-            <span className="text-sm text-zinc-500 font-medium">
-              {selectedIds.size} de {mediaItems.length} itens selecionados
+            <span className="text-zinc-300">|</span>
+            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+              {selectedIds.size} Selecionados
             </span>
           </div>
-          {selectedIds.size > 0 && (
-            <button 
-              onClick={() => setSelectedIds(new Set())}
-              className="text-sm font-bold text-rose-500 hover:text-rose-600 transition-colors"
-            >
-              Limpar Seleção
-            </button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
-      {mediaItems.length === 0 ? (
+      {filteredItems.length === 0 ? (
         <div className="bg-white border-2 border-dashed border-zinc-200 rounded-3xl p-20 text-center">
           <div className="w-20 h-20 bg-zinc-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <ImageIcon className="w-10 h-10 text-zinc-300" />
@@ -256,7 +281,7 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {mediaItems.map((item) => (
+          {filteredItems.map((item) => (
             <div 
               key={item.id}
               onClick={() => toggleItemSelection(item.id)}

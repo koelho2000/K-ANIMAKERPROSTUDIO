@@ -23,6 +23,7 @@ import { Project } from "../types";
 import { AUTOMATION_PHASES } from "../constants";
 import { useRef, useState, useEffect, Dispatch, SetStateAction, ChangeEvent } from "react";
 import { ApiKeyModal } from "./ApiKeyModal";
+import { UsageModal } from "./UsageModal";
 
 interface SidebarProps {
   currentStep: number;
@@ -59,7 +60,7 @@ export default function Sidebar({
   onNewProject,
 }: SidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showUsagePopup, setShowUsagePopup] = useState(false);
+  const [showUsageModal, setShowUsageModal] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [manualKey, setManualKey] = useState<string>(localStorage.getItem('GEMINI_API_KEY_MANUAL') || "");
@@ -144,9 +145,10 @@ export default function Sidebar({
       if (project.outro.videoUrl) videosCount += 1;
     }
 
-    const textCost = textUnits * 0.01;
-    const imageCost = imagesCount * 0.05;
-    const videoCost = videosCount * 0.25;
+    // Adjusted costs to reflect real Google Cloud / Gemini API pricing
+    const textCost = textUnits * 0.05;
+    const imageCost = imagesCount * 0.25;
+    const videoCost = videosCount * 3.50;
     const totalCost = textCost + imageCost + videoCost;
     const totalCredits = Math.round(totalCost * 100);
 
@@ -341,9 +343,10 @@ export default function Sidebar({
               <span>Créditos / Custo</span>
             </div>
             <button 
-              onClick={() => setShowUsagePopup(!showUsagePopup)}
-              className="text-zinc-500 hover:text-white transition-colors"
+              onClick={() => setShowUsageModal(true)}
+              className="text-zinc-500 hover:text-white transition-colors flex items-center gap-1 text-[9px] font-bold uppercase"
             >
+              <span>Detalhes</span>
               <Info className="w-3 h-3" />
             </button>
           </div>
@@ -357,36 +360,11 @@ export default function Sidebar({
           </div>
         </div>
 
-        {/* Usage Breakdown Popup */}
-        {showUsagePopup && (
-          <div className="absolute bottom-full left-4 right-4 mb-2 p-4 bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-white">Divisão de Custos</h3>
-              <button onClick={() => setShowUsagePopup(false)} className="text-zinc-500 hover:text-white">×</button>
-            </div>
-            <div className="space-y-3">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-400">Conteúdo Texto ({usage.textUnits})</span>
-                <span className="text-white font-medium">{usage.textCost.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-400">Imagens Geradas ({usage.imagesCount})</span>
-                <span className="text-white font-medium">{usage.imageCost.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-400">Vídeos Renderizados ({usage.videosCount})</span>
-                <span className="text-white font-medium">{usage.videoCost.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</span>
-              </div>
-              <div className="pt-2 border-t border-zinc-700 flex justify-between text-sm font-bold">
-                <span className="text-white">Total Estimado</span>
-                <span className="text-emerald-500">{usage.totalCost.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</span>
-              </div>
-            </div>
-            <div className="mt-3 text-[10px] text-zinc-500 italic">
-              * Valores baseados em estimativas de consumo de API.
-            </div>
-          </div>
-        )}
+        <UsageModal 
+          isOpen={showUsageModal}
+          onClose={() => setShowUsageModal(false)}
+          usage={usage}
+        />
 
         <button
           onClick={handleSave}
