@@ -585,6 +585,35 @@ function createWavHeader(pcmLength: number, sampleRate: number = 24000): Uint8Ar
   return new Uint8Array(header);
 }
 
+const fetchAsBase64 = async (url: string) => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.warn("Failed to fetch media for AI analysis:", url, error);
+    return null;
+  }
+};
+
+export const getVoiceForSettings = (gender: 'male' | 'female', ageGroup: 'child' | 'youth' | 'adult' | 'senior') => {
+  if (gender === 'male') {
+    if (ageGroup === 'child' || ageGroup === 'youth') return 'Puck';
+    return 'Charon'; // Adult/Senior
+  } else {
+    if (ageGroup === 'child' || ageGroup === 'youth') return 'Kore';
+    return 'Zephyr'; // Adult/Senior
+  }
+};
+
 export const generateNarrationAudio = async (text: string, voiceName: string = 'Kore') => {
   return withRetry(async () => {
     const ai = getGenAI();
@@ -621,5 +650,70 @@ export const generateNarrationAudio = async (text: string, voiceName: string = '
       return `data:${mimeType};base64,${base64Audio}`;
     }
     throw new Error("Falha ao gerar áudio da narração.");
+  });
+};
+
+export const generateSubtitles = async (
+  action: string,
+  narration: string,
+  language: string,
+  context: string,
+  videoUrl?: string,
+  narrationAudioUrl?: string
+) => {
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const isPTPT = language === "Português (Portugal)";
+    const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : language;
+
+    const parts: any[] = [];
+    
+    // Add context and instructions
+    let prompt = `Gera legendas (diálogo) para um take de um filme.
+    Acção do Take: "${action}"
+    Texto da Narração: "${narration}"
+    Língua: ${langSpec}
+    Contexto do Filme: ${context}
+    
+    Instruções:
+    1. O diálogo deve ser natural e condizer com a acção e a narração.
+    2. Se houver narração, o diálogo não deve repetir exatamente o que o narrador diz, mas sim complementá-lo ou ser o que as personagens dizem nesse momento.
+    3. Se houver vídeo ou áudio fornecido, analisa o conteúdo para extrair falas reais ou sons importantes que devam ser legendados.
+    4. Mantém o texto curto e conciso para caber no ecrã como legenda.
+    5. ${isPTPT ? "Usa estritamente Português de Portugal." : ""}
+    6. Responde APENAS com o texto do diálogo/legenda, sem aspas ou comentários. Se não houver necessidade de diálogo, responde "Nenhum".`;
+
+    parts.push({ text: prompt });
+
+    if (videoUrl) {
+      const videoBase64 = await fetchAsBase64(videoUrl);
+      if (videoBase64) {
+        parts.push({
+          inlineData: {
+            data: videoBase64,
+            mimeType: "video/mp4" // Assuming mp4/webm
+          }
+        });
+      }
+    }
+
+    if (narrationAudioUrl) {
+      const audioBase64 = await fetchAsBase64(narrationAudioUrl);
+      if (audioBase64) {
+        parts.push({
+          inlineData: {
+            data: audioBase64,
+            mimeType: "audio/wav"
+          }
+        });
+      }
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: { parts },
+    });
+    
+    return response.text || "";
   });
 };

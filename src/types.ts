@@ -24,6 +24,8 @@ export interface AutomationState {
   enabledPhases?: number[];
 }
 
+export type TargetAudience = 'Crianças' | 'Adolescentes' | 'Jovens' | 'Adultos' | 'Seniores' | 'Idosos';
+
 export interface Project {
   id: string;
   title: string;
@@ -34,6 +36,7 @@ export interface Project {
   language: string;
   duration: string;
   aspectRatio: '9:16' | '16:9' | '4:3' | '1:1';
+  targetAudience?: TargetAudience;
   sceneDetailLevel: 'low' | 'medium' | 'high';
   takeDetailLevel: 'low' | 'medium' | 'high';
   script: string;
@@ -52,6 +55,11 @@ export interface Project {
     language: string;
     translatedLanguage?: string;
     translations?: Record<string, string>; // takeId -> translatedText
+  };
+  narrationSettings?: {
+    gender: 'male' | 'female';
+    ageGroup: 'child' | 'youth' | 'adult' | 'senior';
+    voiceName?: string;
   };
   globalTransition?: TransitionType;
   videoModel?: VideoModel;

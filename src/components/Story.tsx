@@ -42,6 +42,7 @@ export default function Story({ project, setProject }: StoryProps) {
         - Conceito/Tema: ${project.concept}
         - Tipo de Filme: ${project.filmType}
         - Estilo de Filme: ${project.filmStyle}
+        - Público Alvo: ${project.targetAudience || 'Adultos'}
         - Língua/Nacionalidade: ${langSpec}
         - Duração Esperada: ${project.duration}
 

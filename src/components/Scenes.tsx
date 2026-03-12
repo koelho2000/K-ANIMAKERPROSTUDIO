@@ -100,6 +100,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         Com base no seguinte guião de filme de animação, divide a história em exatamente ${targetScenes} cenas lógicas.
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
+        Público Alvo: ${project.targetAudience || 'Adultos'}
         Língua: ${langSpec}
         Guião: ${project.script}
         
@@ -170,6 +171,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         Descrição: ${scene.description}
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
+        Público Alvo: ${project.targetAudience || 'Adultos'}
         Língua: ${langSpec}
         
         ${isPTPT ? "IMPORTANTE: Todos os textos (acção, câmara, som, música, diálogo) devem ser em Português de Portugal." : ""}
@@ -325,6 +327,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         Descrição: ${scene.description}
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
+        Público Alvo: ${project.targetAudience || 'Adultos'}
         
         Takes Atuais (para referência):
         ${currentTakesContext}
@@ -432,6 +435,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
       const prompt = `
         Refina o seguinte take de um filme de animação.
         Cena: ${scene.title}
+        Público Alvo: ${project.targetAudience || 'Adultos'}
         Take Atual:
         Ação: ${take.action}
         Câmara: ${take.camera}

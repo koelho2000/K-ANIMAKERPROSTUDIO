@@ -420,6 +420,24 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
           </div>
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Público Alvo
+            </label>
+            <select
+              name="targetAudience"
+              value={project.targetAudience || 'Adultos'}
+              onChange={handleChange}
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
+            >
+              <option value="Crianças">Crianças</option>
+              <option value="Adolescentes">Adolescentes</option>
+              <option value="Jovens">Jovens</option>
+              <option value="Adultos">Adultos</option>
+              <option value="Seniores">Seniores</option>
+              <option value="Idosos">Idosos</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Transição Global
             </label>
             <select

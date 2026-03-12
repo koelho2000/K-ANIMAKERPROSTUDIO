@@ -74,6 +74,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
         Foca-te apenas no ambiente e arquitetura. É CRÍTICO que a descrição NÃO inclua personagens, apenas o cenário vazio.
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
+        Público Alvo: ${project.targetAudience || 'Adultos'}
         Língua: ${langSpec}
         Guião: ${project.script}
         
@@ -125,6 +126,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
     const prompt = `Concept art environment design for an animated film. 
       Tipo de Filme: ${project.filmType}. 
       Estilo Visual: ${project.filmStyle}. 
+      Público Alvo: ${project.targetAudience || 'Adultos'}.
       Location Name: ${setting.name}. 
       Description: ${setting.description}. 
       Cinematic lighting, highly detailed, wide angle. 
@@ -173,6 +175,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
           const prompt = `Concept art environment design for an animated film. 
             Tipo de Filme: ${project.filmType}. 
             Estilo Visual: ${project.filmStyle}. 
+            Público Alvo: ${project.targetAudience || 'Adultos'}.
             Location Name: ${setting.name}. 
             Description: ${setting.description}. 
             Cinematic lighting, highly detailed, wide angle. 

@@ -157,7 +157,14 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         
         const response = await ai.models.generateContent({
           model: "gemini-3-flash-preview",
-          contents: `Cria um guião de curta metragem, 3 personagens principais, 2 cenários e prompts para Intro e Créditos Finais para um filme com o título "${project.title}", ideia "${project.idea}" e conceito "${project.concept}". Estilo: ${project.filmStyle}. Tipo: ${project.filmType}. 
+          contents: `Cria um guião de curta metragem, 3 personagens principais, 2 cenários e prompts para Intro e Créditos Finais para um filme com o seguinte contexto:
+          - Título: "${project.title}"
+          - Ideia: "${project.idea}"
+          - Conceito: "${project.concept}"
+          - Estilo: ${project.filmStyle}
+          - Tipo: ${project.filmType}
+          - Público Alvo: ${project.targetAudience || 'Adultos'}
+          
           Para cada personagem, define também as características da sua voz para dobragem (língua/país, idade aproximada e personalidade vocal).
           Responde em JSON com campos: script, characters (array de {name, description, voice: {language, country, age, personality}}), settings (array de {name, description}), introPrompt (string), outroPrompt (string).`,
           config: { responseMimeType: "application/json" }
@@ -206,7 +213,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         for (const char of project.characters) {
           if (!char.imageUrl) {
             addLog(`Gerando imagem principal para: ${char.name}...`);
-            const prompt = `Personagem de animação: ${char.name}. Descrição: ${char.description}. Estilo: ${project.filmStyle}. Tipo: ${project.filmType}.`;
+            const prompt = `Personagem de animação: ${char.name}. Descrição: ${char.description}. Estilo: ${project.filmStyle}. Tipo: ${project.filmType}. Público Alvo: ${project.targetAudience || 'Adultos'}.`;
             const imageUrl = await generateImage(prompt, "1:1");
             addCost(COST_IMAGE);
             
@@ -242,6 +249,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
               Description: ${char.description}. 
               Estilo: ${project.filmStyle}. 
               Tipo: ${project.filmType}.
+              Público Alvo: ${project.targetAudience || 'Adultos'}.
               Maintain consistency with the character's design.`;
             
             const referenceImages = char.imageUrl ? [char.imageUrl] : [];
@@ -280,6 +288,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
               Description: ${setting.description}. 
               Estilo: ${project.filmStyle}. 
               Tipo: ${project.filmType}.
+              Público Alvo: ${project.targetAudience || 'Adultos'}.
               CRITICAL: NO CHARACTERS, NO PEOPLE, NO ANIMALS. Just the empty environment/location.`;
             const imageUrl = await generateImage(prompt, project.aspectRatio);
             addCost(COST_IMAGE);
@@ -376,7 +385,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             if (takeSetting?.imageUrl) referenceImages.push(takeSetting.imageUrl);
             takeCharacters.forEach(c => { if (c.imageUrl) referenceImages.push(c.imageUrl); });
 
-            const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}. Frame Inicial.`;
+            const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Público Alvo: ${project.targetAudience || 'Adultos'}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}. Frame Inicial.`;
             const startFrameUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
             addCost(COST_IMAGE);
             
@@ -440,7 +449,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             takeCharacters.forEach(c => { if (c.imageUrl) referenceImages.push(c.imageUrl); });
             if (tInfo.startFrame) referenceImages.push(tInfo.startFrame);
 
-            const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}. Frame Final. Deve ser uma continuação coerente do frame inicial.`;
+            const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Público Alvo: ${project.targetAudience || 'Adultos'}. Cena: ${scene?.title}. Ação: ${take.action}. Câmara: ${take.camera}. Frame Final. Deve ser uma continuação coerente do frame inicial.`;
             const endFrameUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
             addCost(COST_IMAGE);
             
@@ -510,7 +519,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           addLog(taskName);
           updateAutomation({ currentTask: taskName });
           
-          const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Ação: ${tInfo.action}. Câmara: ${tInfo.camera}.`;
+          const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Público Alvo: ${project.targetAudience || 'Adultos'}. Ação: ${tInfo.action}. Câmara: ${tInfo.camera}.`;
           const operation = await generateVideo(prompt, tInfo.start, tInfo.end, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
           

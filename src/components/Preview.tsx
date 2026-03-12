@@ -41,14 +41,13 @@ const TRANSITION_TYPES: { id: TransitionType; name: string }[] = [
 ];
 
 const SUGGESTED_LANGUAGES = [
+  { code: "pt-PT", name: "Português (Portugal)" },
   { code: "en", name: "Inglês" },
-  { code: "pt", name: "Português" },
+  { code: "pt-BR", name: "Português (Brasil)" },
   { code: "es", name: "Espanhol" },
   { code: "fr", name: "Francês" },
   { code: "de", name: "Alemão" },
   { code: "it", name: "Italiano" },
-  { code: "ja", name: "Japonês" },
-  { code: "zh", name: "Chinês" },
 ];
 
 export default function Preview({ project, setProject }: PreviewProps) {
@@ -78,7 +77,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
   ];
 
   const currentClip = movieClips[currentClipIndex];
-  const subtitleSettings = project.subtitleSettings || { enabled: false, language: project.language || 'pt' };
+  const subtitleSettings = {
+    enabled: false,
+    language: project.language || 'pt-PT',
+    translations: {},
+    ...project.subtitleSettings
+  };
 
   const transitionVariants = {
     cut: {
@@ -130,13 +134,16 @@ export default function Preview({ project, setProject }: PreviewProps) {
   const exitTransition = (currentClip as any).transition || project.globalTransition || 'cut';
 
   const handleToggleSubtitles = () => {
-    setProject(prev => ({
-      ...prev,
-      subtitleSettings: {
-        ...(prev.subtitleSettings || { language: prev.language || 'pt', enabled: false }),
-        enabled: !prev.subtitleSettings?.enabled
-      }
-    }));
+    setProject(prev => {
+      const currentEnabled = prev.subtitleSettings?.enabled || false;
+      return {
+        ...prev,
+        subtitleSettings: {
+          ...(prev.subtitleSettings || { language: prev.language || 'pt-PT' }),
+          enabled: !currentEnabled
+        }
+      };
+    });
   };
 
   const handleUpdateTransition = (takeId: string, transition: TransitionType) => {
@@ -329,14 +336,15 @@ export default function Preview({ project, setProject }: PreviewProps) {
           if (subtitleSettings.enabled) {
             const text = subtitleSettings.translatedLanguage && subtitleSettings.translations?.[clip.id] 
               ? subtitleSettings.translations[clip.id] 
-              : (clip.dialogue && clip.dialogue !== "Nenhum" ? clip.dialogue : null);
+              : (clip.dialogue && clip.dialogue !== "Nenhum" && clip.dialogue !== "" ? clip.dialogue : null);
 
             if (text) {
-              ctx.font = "bold 32px sans-serif";
+              ctx.font = "bold 48px sans-serif";
               ctx.textAlign = "center";
-              ctx.shadowColor = "black";
-              ctx.shadowBlur = 8;
-              ctx.lineWidth = 4;
+              ctx.textBaseline = "bottom";
+              ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+              ctx.shadowBlur = 12;
+              ctx.lineWidth = 6;
               ctx.strokeStyle = "black";
               ctx.strokeText(text, canvas.width / 2, canvas.height - 60);
               ctx.fillStyle = "white";
@@ -398,6 +406,21 @@ export default function Preview({ project, setProject }: PreviewProps) {
   };
 
   const handleTranslateSubtitles = async (targetLangCode: string) => {
+    // If selecting the same as project language, we can just clear translations
+    // or if it's already translated to this, do nothing
+    if (targetLangCode === 'original') {
+      setProject(prev => ({
+        ...prev,
+        subtitleSettings: {
+          ...(prev.subtitleSettings || { language: prev.language || 'pt-PT', enabled: true }),
+          enabled: true,
+          translatedLanguage: undefined,
+          translations: {}
+        }
+      }));
+      return;
+    }
+
     setIsTranslating(true);
     try {
       const targetLangName = SUGGESTED_LANGUAGES.find(l => l.code === targetLangCode)?.name || targetLangCode;
@@ -406,11 +429,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
       const takesToTranslate = allTakes.filter(t => t.dialogue && t.dialogue !== "Nenhum");
       
       for (const take of takesToTranslate) {
-        const isPTPT = targetLangName === "Português (Portugal)";
+        const isPTPT = targetLangName === "Português (Portugal)" || targetLangCode === "pt-PT";
         const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : targetLangName;
         
         const prompt = `Traduz o seguinte diálogo de filme de ${project.language || 'Português'} para ${langSpec}. 
         Diálogo: "${take.dialogue}"
+        Público Alvo: ${project.targetAudience || 'Adultos'}
         ${isPTPT ? "IMPORTANTE: Usa estritamente Português de Portugal (ex: 'ecrã' em vez de 'tela', 'tu estás' em vez de 'você está', etc.)." : ""}
         Responde apenas com a tradução direta, sem aspas ou explicações.`;
         
@@ -421,7 +445,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
       setProject(prev => ({
         ...prev,
         subtitleSettings: {
-          ...(prev.subtitleSettings || { language: prev.language || 'pt', enabled: true }),
+          ...(prev.subtitleSettings || { language: prev.language || 'pt-PT', enabled: true }),
           enabled: true,
           translatedLanguage: targetLangCode,
           translations
@@ -470,7 +494,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
       return subtitleSettings.translations[currentClip.id];
     }
     
-    return currentClip.dialogue && currentClip.dialogue !== "Nenhum" ? currentClip.dialogue : null;
+    return currentClip.dialogue && currentClip.dialogue !== "Nenhum" && currentClip.dialogue !== "" ? currentClip.dialogue : null;
   };
 
   return (
@@ -597,8 +621,8 @@ export default function Preview({ project, setProject }: PreviewProps) {
                   
                   {/* Subtitle Overlay */}
                   {subtitleSettings.enabled && getSubtitleText() && (
-                    <div className="absolute bottom-12 left-0 right-0 flex justify-center px-8 pointer-events-none">
-                      <div className="bg-black/70 backdrop-blur-sm text-white px-4 py-2 rounded-lg text-center text-sm md:text-base font-medium max-w-[80%] shadow-lg border border-white/10">
+                    <div className="absolute bottom-12 left-0 right-0 flex justify-center px-8 pointer-events-none z-50">
+                      <div className="text-white px-6 py-3 text-center text-sm md:text-lg font-bold max-w-[85%] drop-shadow-[0_2px_4px_rgba(0,0,0,1)] [text-shadow:_0_1px_8px_rgb(0_0_0_/_100%)] leading-relaxed">
                         {getSubtitleText()}
                       </div>
                     </div>
@@ -762,13 +786,20 @@ export default function Preview({ project, setProject }: PreviewProps) {
             </div>
 
             <div className="space-y-4">
-              <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Língua Original</p>
-                <div className="flex items-center justify-between">
+              <button
+                onClick={() => handleTranslateSubtitles('original')}
+                className={`w-full p-4 rounded-2xl border transition-all flex items-center justify-between ${
+                  !subtitleSettings.translatedLanguage 
+                    ? "bg-indigo-50 border-indigo-200" 
+                    : "bg-zinc-50 border-zinc-100 hover:border-zinc-200"
+                }`}
+              >
+                <div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1 text-left">Língua Original</p>
                   <span className="text-sm font-medium text-zinc-700">{project.language || "Português"}</span>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 </div>
-              </div>
+                {!subtitleSettings.translatedLanguage && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+              </button>
 
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Tradução Automática</p>

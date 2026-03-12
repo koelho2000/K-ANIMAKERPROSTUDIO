@@ -26,6 +26,7 @@ const initialProject: Project = {
   language: "Português (Portugal)",
   duration: "1 a 5 minutos",
   aspectRatio: "16:9",
+  targetAudience: "Adultos",
   videoModel: "flow",
   sceneDetailLevel: "medium",
   takeDetailLevel: "medium",

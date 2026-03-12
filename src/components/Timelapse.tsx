@@ -19,7 +19,12 @@ import {
   Loader2,
   Volume2
 } from "lucide-react";
-import { generateNarrationText, generateNarrationAudio } from "../services/geminiService";
+import { 
+  generateNarrationText, 
+  generateNarrationAudio,
+  generateSubtitles,
+  getVoiceForSettings
+} from "../services/geminiService";
 
 interface TimelapseProps {
   project: Project;
@@ -39,8 +44,11 @@ interface TimelineEvent {
 export default function Timelapse({ project, setProject }: TimelapseProps) {
   const [selectedEventIndex, setSelectedEventIndex] = useState<number>(0);
   const [isGeneratingNarration, setIsGeneratingNarration] = useState(false);
+  const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+  const [isGeneratingAllSubs, setIsGeneratingAllSubs] = useState(false);
   const [narrationText, setNarrationText] = useState("");
+  const [subtitleText, setSubtitleText] = useState("");
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const timelineEvents = useMemo(() => {
@@ -70,6 +78,7 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
 
   useEffect(() => {
     setNarrationText(selectedEvent.take.narration || "");
+    setSubtitleText(selectedEvent.take.dialogue || "");
   }, [selectedEvent.take.id]);
 
   const handleGenerateNarration = async () => {
@@ -83,14 +92,19 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
       const text = await generateNarrationText(
         selectedEvent.take.action,
         project.language,
-        `Filme: ${project.title}. Conceito: ${project.concept}`,
+        `Filme: ${project.title}. Conceito: ${project.concept}. Público Alvo: ${project.targetAudience || 'Adultos'}`,
         previousNarrations,
         selectedEvent.take.duration || 5 // Default to 5s if not set
       );
       
       setNarrationText(text);
       
-      const audioUrl = await generateNarrationAudio(text);
+      const voiceName = getVoiceForSettings(
+        project.narrationSettings?.gender || 'female',
+        project.narrationSettings?.ageGroup || 'adult'
+      );
+      
+      const audioUrl = await generateNarrationAudio(text, voiceName);
       
       const updatedScenes = [...project.scenes];
       updatedScenes[selectedEvent.sceneIndex].takes[selectedEvent.takeIndex] = {
@@ -109,7 +123,11 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
 
   const handleSaveNarration = async () => {
     try {
-      const audioUrl = await generateNarrationAudio(narrationText);
+      const voiceName = getVoiceForSettings(
+        project.narrationSettings?.gender || 'female',
+        project.narrationSettings?.ageGroup || 'adult'
+      );
+      const audioUrl = await generateNarrationAudio(narrationText, voiceName);
       const updatedScenes = [...project.scenes];
       updatedScenes[selectedEvent.sceneIndex].takes[selectedEvent.takeIndex] = {
         ...selectedEvent.take,
@@ -130,6 +148,78 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
     link.click();
   };
 
+  const handleGenerateSubtitles = async () => {
+    setIsGeneratingSubtitles(true);
+    try {
+      const text = await generateSubtitles(
+        selectedEvent.take.action,
+        selectedEvent.take.narration || "",
+        project.language,
+        `Filme: ${project.title}. Conceito: ${project.concept}. Público Alvo: ${project.targetAudience || 'Adultos'}`,
+        selectedEvent.take.videoUrl,
+        selectedEvent.take.narrationAudioUrl
+      );
+      
+      setSubtitleText(text);
+      
+      const updatedScenes = [...project.scenes];
+      updatedScenes[selectedEvent.sceneIndex].takes[selectedEvent.takeIndex] = {
+        ...selectedEvent.take,
+        dialogue: text
+      };
+      
+      setProject({ ...project, scenes: updatedScenes });
+    } catch (error) {
+      console.error("Erro ao gerar legendas:", error);
+    } finally {
+      setIsGeneratingSubtitles(false);
+    }
+  };
+
+  const handleSaveSubtitles = () => {
+    const updatedScenes = [...project.scenes];
+    updatedScenes[selectedEvent.sceneIndex].takes[selectedEvent.takeIndex] = {
+      ...selectedEvent.take,
+      dialogue: subtitleText
+    };
+    setProject({ ...project, scenes: updatedScenes });
+  };
+
+  const handleGenerateAllSubtitles = async () => {
+    if (isGeneratingAllSubs) return;
+    setIsGeneratingAllSubs(true);
+    
+    try {
+      const updatedScenes = [...project.scenes];
+
+      for (let sIdx = 0; sIdx < updatedScenes.length; sIdx++) {
+        for (let tIdx = 0; tIdx < updatedScenes[sIdx].takes.length; tIdx++) {
+          const take = updatedScenes[sIdx].takes[tIdx];
+          
+          const text = await generateSubtitles(
+            take.action,
+            take.narration || "",
+            project.language,
+            `Filme: ${project.title}. Conceito: ${project.concept}. Público Alvo: ${project.targetAudience || 'Adultos'}`,
+            take.videoUrl,
+            take.narrationAudioUrl
+          );
+          
+          updatedScenes[sIdx].takes[tIdx] = {
+            ...take,
+            dialogue: text
+          };
+        }
+      }
+      
+      setProject({ ...project, scenes: updatedScenes });
+    } catch (error) {
+      console.error("Erro ao gerar todas as legendas:", error);
+    } finally {
+      setIsGeneratingAllSubs(false);
+    }
+  };
+
   const handleGenerateAllNarrations = async () => {
     if (isGeneratingAll) return;
     setIsGeneratingAll(true);
@@ -137,6 +227,11 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
     try {
       const updatedScenes = [...project.scenes];
       let currentNarrations: string[] = [];
+
+      const voiceName = getVoiceForSettings(
+        project.narrationSettings?.gender || 'female',
+        project.narrationSettings?.ageGroup || 'adult'
+      );
 
       for (let sIdx = 0; sIdx < updatedScenes.length; sIdx++) {
         for (let tIdx = 0; tIdx < updatedScenes[sIdx].takes.length; tIdx++) {
@@ -149,12 +244,12 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
           const text = await generateNarrationText(
             take.action,
             project.language,
-            `Filme: ${project.title}. Conceito: ${project.concept}`,
+            `Filme: ${project.title}. Conceito: ${project.concept}. Público Alvo: ${project.targetAudience || 'Adultos'}`,
             currentNarrations,
             take.duration || 5
           );
           
-          const audioUrl = await generateNarrationAudio(text);
+          const audioUrl = await generateNarrationAudio(text, voiceName);
           
           updatedScenes[sIdx].takes[tIdx] = {
             ...take,
@@ -218,18 +313,32 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
             <span>{timelineEvents[timelineEvents.length - 1].endTime}s Total</span>
           </div>
         </div>
-        <button
-          onClick={handleGenerateAllNarrations}
-          disabled={isGeneratingAll}
-          className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 disabled:opacity-50"
-        >
-          {isGeneratingAll ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Mic className="w-4 h-4" />
-          )}
-          {isGeneratingAll ? "A Gerar Tudo..." : "Gerar Todas as Narrações"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleGenerateAllSubtitles}
+            disabled={isGeneratingAllSubs}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50"
+          >
+            {isGeneratingAllSubs ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            {isGeneratingAllSubs ? "A Gerar Legendas..." : "Gerar Todas as Legendas"}
+          </button>
+          <button
+            onClick={handleGenerateAllNarrations}
+            disabled={isGeneratingAll}
+            className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 disabled:opacity-50"
+          >
+            {isGeneratingAll ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Mic className="w-4 h-4" />
+            )}
+            {isGeneratingAll ? "A Gerar Tudo..." : "Gerar Todas as Narrações"}
+          </button>
+        </div>
       </div>
 
       {/* Timeline Navigation */}
@@ -473,30 +582,113 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
               )}
             </section>
 
-            {/* Narration Section */}
+            {/* Subtitles Section */}
             <section className="pt-6 border-t border-zinc-100">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center">
-                    <Mic className="w-4 h-4 text-rose-600" />
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4 text-indigo-600" />
                   </div>
-                  <h3 className="font-bold text-zinc-900">Narração IA</h3>
-                  <span className="text-[10px] font-mono bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded">
-                    {selectedEvent.take.duration || 5}s
-                  </span>
+                  <h3 className="font-bold text-zinc-900">Legendas IA</h3>
                 </div>
                 <button
-                  onClick={handleGenerateNarration}
-                  disabled={isGeneratingNarration}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors disabled:opacity-50"
+                  onClick={handleGenerateSubtitles}
+                  disabled={isGeneratingSubtitles}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
                 >
-                  {isGeneratingNarration ? (
+                  {isGeneratingSubtitles ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
                     <Sparkles className="w-3.5 h-3.5" />
                   )}
-                  {selectedEvent.take.narration ? "Regerar" : "Gerar"}
+                  {selectedEvent.take.dialogue ? "Regerar" : "Gerar"}
                 </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="relative">
+                  <textarea
+                    value={subtitleText}
+                    onChange={(e) => setSubtitleText(e.target.value)}
+                    placeholder="O texto das legendas aparecerá aqui..."
+                    className="w-full h-20 p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-sm text-zinc-600 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none"
+                  />
+                  {subtitleText !== selectedEvent.take.dialogue && (
+                    <button
+                      onClick={handleSaveSubtitles}
+                      className="absolute bottom-2 right-2 p-1.5 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 transition-colors"
+                      title="Salvar Alterações"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Narration Section */}
+            <section className="pt-6 border-t border-zinc-100">
+              <div className="flex flex-col gap-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center">
+                      <Mic className="w-4 h-4 text-rose-600" />
+                    </div>
+                    <h3 className="font-bold text-zinc-900">Narração IA</h3>
+                  </div>
+                  <button
+                    onClick={handleGenerateNarration}
+                    disabled={isGeneratingNarration}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors disabled:opacity-50"
+                  >
+                    {isGeneratingNarration ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5" />
+                    )}
+                    {selectedEvent.take.narration ? "Regerar" : "Gerar"}
+                  </button>
+                </div>
+
+                {/* Voice Settings */}
+                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Género</label>
+                    <select 
+                      value={project.narrationSettings?.gender || 'female'}
+                      onChange={(e) => setProject({
+                        ...project,
+                        narrationSettings: {
+                          ...(project.narrationSettings || { ageGroup: 'adult' }),
+                          gender: e.target.value as any
+                        }
+                      })}
+                      className="w-full bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-rose-500"
+                    >
+                      <option value="male">Homem</option>
+                      <option value="female">Mulher</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Idade</label>
+                    <select 
+                      value={project.narrationSettings?.ageGroup || 'adult'}
+                      onChange={(e) => setProject({
+                        ...project,
+                        narrationSettings: {
+                          ...(project.narrationSettings || { gender: 'female' }),
+                          ageGroup: e.target.value as any
+                        }
+                      })}
+                      className="w-full bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-rose-500"
+                    >
+                      <option value="child">Criança</option>
+                      <option value="youth">Jovem</option>
+                      <option value="adult">Adulto</option>
+                      <option value="senior">Sénior</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-4">

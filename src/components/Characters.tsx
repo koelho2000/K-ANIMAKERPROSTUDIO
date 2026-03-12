@@ -199,6 +199,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
         Língua: ${langSpec}
+        Público Alvo: ${project.targetAudience || 'Adultos'}
         Guião: ${project.script}
         
         ${isPTPT ? "IMPORTANTE: Todos os textos devem ser em Português de Portugal." : ""}
@@ -257,6 +258,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
     const prompt = `Character design for an animated film. 
       Estilo Visual: ${project.filmStyle}. 
       Visual Description: ${character.description}. 
+      Público Alvo: ${project.targetAudience || 'Adultos'}.
       One single front-facing view of the character, full body, neutral background.`;
     
     setEditingPrompt({ id: character.id, prompt, type: 'main' });
@@ -293,6 +295,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
 
     const prompt = `Character design turnaround sheet based on the provided character image. 
       Estilo Visual: ${project.filmStyle}. 
+      Público Alvo: ${project.targetAudience || 'Adultos'}.
       Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
       Maintain perfect consistency with the reference image. 
       Neutral background, highly detailed.`;
@@ -345,6 +348,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
           const prompt = `Character design for an animated film. 
             Estilo Visual: ${project.filmStyle}. 
             Visual Description: ${char.description}. 
+            Público Alvo: ${project.targetAudience || 'Adultos'}.
             One single front-facing view of the character, full body, neutral background.`;
           setActivePrompt(prompt);
           const imageUrl = await generateImage(prompt, "1:1");
@@ -358,6 +362,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
           setGeneratingViewsId(char.id);
           const viewsPrompt = `Character design turnaround sheet based on the provided character image. 
             Estilo Visual: ${project.filmStyle}. 
+            Público Alvo: ${project.targetAudience || 'Adultos'}.
             Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
             Maintain perfect consistency with the reference image. 
             Neutral background, highly detailed.`;
