@@ -11,6 +11,7 @@ import {
   SkipForward, 
   SkipBack,
   Volume2,
+  Mic,
   Settings as SettingsIcon,
   Globe,
   Scissors,
@@ -55,10 +56,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isNarrationEnabled, setIsNarrationEnabled] = useState(true);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportFormat, setExportFormat] = useState<'json' | 'mp4'>('json');
   const [exportStatus, setExportStatus] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
+  const narrationAudioRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -239,6 +242,8 @@ export default function Preview({ project, setProject }: PreviewProps) {
     
     const renderClip = async (index: number, prevTransition: TransitionType) => {
       const clip = movieClips[index];
+      if (!clip.videoUrl) return;
+      
       const transition = (clip as any).transition || project.globalTransition || 'cut';
       
       setExportStatus(`A renderizar Clip ${index + 1} de ${totalClips}...`);
@@ -253,12 +258,26 @@ export default function Preview({ project, setProject }: PreviewProps) {
       
       const source = audioCtx.createMediaElementSource(video);
       source.connect(audioDest);
+
+      let narrationSource: MediaElementAudioSourceNode | null = null;
+      let narrationAudio: HTMLAudioElement | null = null;
+
+      if (isNarrationEnabled && (clip as Take).narrationAudioUrl) {
+        narrationAudio = document.createElement('audio');
+        narrationAudio.src = (clip as Take).narrationAudioUrl!;
+        narrationAudio.crossOrigin = "anonymous";
+        narrationSource = audioCtx.createMediaElementSource(narrationAudio);
+        narrationSource.connect(audioDest);
+      }
       
       await new Promise((resolve, reject) => {
         video.onloadedmetadata = () => resolve(null);
         video.onerror = (e) => reject(e);
       });
 
+      if (narrationAudio) {
+        await narrationAudio.play();
+      }
       await video.play();
 
       return new Promise<void>((resolve) => {
@@ -270,6 +289,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
             video.src = "";
             video.load();
             source.disconnect();
+            if (narrationAudio) {
+              narrationAudio.pause();
+              narrationAudio.src = "";
+              narrationAudio.load();
+              narrationSource?.disconnect();
+            }
             resolve();
             return;
           }
@@ -424,6 +449,9 @@ export default function Preview({ project, setProject }: PreviewProps) {
   useEffect(() => {
     if (isPlayingFullMovie && videoRef.current) {
       videoRef.current.play().catch(e => console.error("Auto-play failed", e));
+      if (isNarrationEnabled && narrationAudioRef.current && (currentClip as Take).narrationAudioUrl) {
+        narrationAudioRef.current.play().catch(e => console.error("Narration auto-play failed", e));
+      }
     }
   }, [currentClipIndex, isPlayingFullMovie]);
 
@@ -520,15 +548,24 @@ export default function Preview({ project, setProject }: PreviewProps) {
                         <div className="absolute inset-0 bg-white -z-10" />
                       )}
                       
-                      <video
-                        ref={videoRef}
-                        src={currentClip.videoUrl}
-                        className="w-full h-full object-contain"
-                        onEnded={isPlayingFullMovie ? handleNextClip : undefined}
-                        controls={!isPlayingFullMovie}
-                        autoPlay={isPlayingFullMovie}
-                        muted={false}
-                      />
+                      {(currentClip as any)?.videoUrl && (
+                        <video
+                          ref={videoRef}
+                          src={currentClip.videoUrl}
+                          className="w-full h-full object-contain"
+                          onEnded={isPlayingFullMovie ? handleNextClip : undefined}
+                          controls={!isPlayingFullMovie}
+                          autoPlay={isPlayingFullMovie}
+                          muted={false}
+                        />
+                      )}
+                      {isNarrationEnabled && (currentClip as Take).narrationAudioUrl && (
+                        <audio
+                          ref={narrationAudioRef}
+                          src={(currentClip as Take).narrationAudioUrl}
+                          autoPlay={isPlayingFullMovie}
+                        />
+                      )}
                     </motion.div>
                   </AnimatePresence>
                   
@@ -660,6 +697,29 @@ export default function Preview({ project, setProject }: PreviewProps) {
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+                <Mic className="w-5 h-5 text-rose-600" />
+                Narração IA
+              </h3>
+              <button
+                onClick={() => setIsNarrationEnabled(!isNarrationEnabled)}
+                className={`w-12 h-6 rounded-full transition-all relative ${
+                  isNarrationEnabled ? "bg-rose-600" : "bg-zinc-200"
+                }`}
+              >
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                  isNarrationEnabled ? "left-7" : "left-1"
+                }`} />
+              </button>
+            </div>
+            <p className="text-[10px] text-zinc-400 italic">
+              Ativa ou desativa a narração gerada por IA durante a reprodução e exportação.
+            </p>
+          </div>
+
+          {/* Subtitles Card */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-zinc-900 flex items-center gap-2">
                 <Languages className="w-5 h-5 text-indigo-600" />
                 Legendas
               </h3>
@@ -761,7 +821,9 @@ export default function Preview({ project, setProject }: PreviewProps) {
                   className="w-full bg-black rounded-xl overflow-hidden border border-zinc-200 relative"
                   style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
                 >
-                  <video src={clip.videoUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  {clip.videoUrl && (
+                    <video src={clip.videoUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  )}
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <Play className="w-8 h-8 text-white fill-white" />
                   </div>

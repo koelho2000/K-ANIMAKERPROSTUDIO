@@ -144,6 +144,8 @@ export interface Take {
   lastStartFramePrompt?: string;
   lastEndFramePrompt?: string;
   lastVideoPrompt?: string;
+  narration?: string;
+  narrationAudioUrl?: string;
   duration?: number; // duration in seconds
   transition?: TransitionType;
   analysis?: {

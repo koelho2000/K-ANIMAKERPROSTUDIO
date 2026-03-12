@@ -11,6 +11,7 @@ import Preview from "./components/Preview";
 import Summary from "./components/Summary";
 import Welcome from "./components/Welcome";
 import MediaLibrary from "./components/MediaLibrary";
+import Timelapse from "./components/Timelapse";
 import MassProductionOverlay from "./components/MassProductionOverlay";
 import { Project } from "./types";
 import { v4 as uuidv4 } from "uuid";
@@ -104,6 +105,9 @@ export default function App() {
         )}
         {currentStep === 10 && (
           <MediaLibrary project={project} setProject={setProject} />
+        )}
+        {currentStep === 11 && (
+          <Timelapse project={project} setProject={setProject} />
         )}
       </main>
 

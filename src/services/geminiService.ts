@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { VideoModel } from "../types";
 
 export const getApiKey = () => {
@@ -488,4 +488,124 @@ export const validateApiKey = async (key: string) => {
     }
     return { valid: false, message };
   }
+};
+
+export const generateNarrationText = async (
+  action: string,
+  language: string,
+  context: string,
+  previousNarrations: string[] = []
+) => {
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const prompt = `Gera um texto de narração curto (máximo 2 frases) para um take de um filme.
+    Acção do Take: "${action}"
+    Língua: ${language}
+    Contexto do Filme: ${context}
+    Narração anterior (para manter consistência): ${previousNarrations.slice(-2).join(" | ")}
+    
+    O narrador deve ser expressivo e a entoação deve condizer com a acção. 
+    Responde APENAS com o texto da narração.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: prompt,
+    });
+    return response.text || "";
+  });
+};
+
+// Helper to convert base64 to Uint8Array
+const base64ToUint8Array = (base64: string) => {
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+};
+
+// Helper to convert Uint8Array to base64
+const uint8ArrayToBase64 = (bytes: Uint8Array) => {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+};
+
+// Helper to create a WAV header for 16-bit mono PCM
+function createWavHeader(pcmLength: number, sampleRate: number = 24000): Uint8Array {
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+
+  /* RIFF identifier */
+  view.setUint32(0, 0x52494646, false); // "RIFF"
+  /* file length */
+  view.setUint32(4, 36 + pcmLength, true);
+  /* RIFF type */
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+  /* format chunk identifier */
+  view.setUint32(12, 0x666d7420, false); // "fmt "
+  /* format chunk length */
+  view.setUint32(16, 16, true);
+  /* sample format (raw) */
+  view.setUint16(20, 1, true);
+  /* channel count */
+  view.setUint16(22, 1, true);
+  /* sample rate */
+  view.setUint32(24, sampleRate, true);
+  /* byte rate (sample rate * block align) */
+  view.setUint32(28, sampleRate * 2, true);
+  /* block align (channel count * bytes per sample) */
+  view.setUint16(32, 2, true);
+  /* bits per sample */
+  view.setUint16(34, 16, true);
+  /* data chunk identifier */
+  view.setUint32(36, 0x64617461, false); // "data"
+  /* data chunk length */
+  view.setUint32(40, pcmLength, true);
+
+  return new Uint8Array(header);
+}
+
+export const generateNarrationAudio = async (text: string, voiceName: string = 'Kore') => {
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName },
+          },
+        },
+      },
+    });
+
+    const part = response.candidates?.[0]?.content?.parts?.[0];
+    const base64Audio = part?.inlineData?.data;
+    const mimeType = part?.inlineData?.mimeType || "audio/pcm";
+
+    if (base64Audio) {
+      // If it's PCM, we need to wrap it in a WAV header for the browser to play it
+      if (mimeType.includes("pcm")) {
+        const pcmData = base64ToUint8Array(base64Audio);
+        const wavHeader = createWavHeader(pcmData.length, 24000);
+        const wavData = new Uint8Array(wavHeader.length + pcmData.length);
+        wavData.set(wavHeader);
+        wavData.set(pcmData, wavHeader.length);
+        const finalBase64 = uint8ArrayToBase64(wavData);
+        return `data:audio/wav;base64,${finalBase64}`;
+      }
+      
+      // Otherwise use the provided mime type
+      return `data:${mimeType};base64,${base64Audio}`;
+    }
+    throw new Error("Falha ao gerar áudio da narração.");
+  });
 };

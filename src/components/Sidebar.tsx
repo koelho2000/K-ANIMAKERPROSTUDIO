@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
   Settings2,
+  Clock,
 } from "lucide-react";
 import { Project } from "../types";
 import { AUTOMATION_PHASES } from "../constants";
@@ -47,6 +48,7 @@ const steps = [
   { id: 8, name: "Pré-visualização", icon: Play },
   { id: 9, name: "Quadro Resumo", icon: LayoutList },
   { id: 10, name: "Biblioteca de Media", icon: Library },
+  { id: 11, name: "Timelapse", icon: Clock },
 ];
 
 export default function Sidebar({
