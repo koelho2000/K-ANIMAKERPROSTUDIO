@@ -19,6 +19,7 @@ import {
   ArrowRightLeft,
   Download
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { generateText } from "../services/geminiService";
 import { TransitionType } from "../types";
 
@@ -75,6 +76,55 @@ export default function Preview({ project, setProject }: PreviewProps) {
 
   const currentClip = movieClips[currentClipIndex];
   const subtitleSettings = project.subtitleSettings || { enabled: false, language: project.language || 'pt' };
+
+  const transitionVariants = {
+    cut: {
+      initial: { opacity: 1 },
+      animate: { opacity: 1 },
+      exit: { opacity: 1 },
+    },
+    fade: {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+    },
+    'fade-black': {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+    },
+    'fade-white': {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+    },
+    'wipe-left': {
+      initial: { clipPath: 'inset(0 0 0 100%)' },
+      animate: { clipPath: 'inset(0 0 0 0%)' },
+      exit: { clipPath: 'inset(0 100% 0 0%)' },
+    },
+    'wipe-right': {
+      initial: { clipPath: 'inset(0 100% 0 0%)' },
+      animate: { clipPath: 'inset(0 0 0 0%)' },
+      exit: { clipPath: 'inset(0 0 0 100%)' },
+    },
+    'zoom-in': {
+      initial: { scale: 0.8, opacity: 0 },
+      animate: { scale: 1, opacity: 1 },
+      exit: { scale: 1.2, opacity: 0 },
+    },
+    'zoom-out': {
+      initial: { scale: 1.2, opacity: 0 },
+      animate: { scale: 1, opacity: 1 },
+      exit: { scale: 0.8, opacity: 0 },
+    },
+  };
+
+  const currentTransition = currentClipIndex > 0 
+    ? (movieClips[currentClipIndex - 1] as any).transition || project.globalTransition || 'cut'
+    : 'cut';
+
+  const exitTransition = (currentClip as any).transition || project.globalTransition || 'cut';
 
   const handleToggleSubtitles = () => {
     setProject(prev => ({
@@ -150,8 +200,16 @@ export default function Preview({ project, setProject }: PreviewProps) {
     canvas.width = 1280;
     canvas.height = Math.round(1280 * (h / w));
 
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioDest = audioCtx.createMediaStreamDestination();
+
     const stream = canvas.captureStream(30); // 30 FPS
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+    const combinedStream = new MediaStream([
+      ...stream.getVideoTracks(),
+      ...audioDest.stream.getAudioTracks()
+    ]);
+
+    const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus' });
     recorderRef.current = recorder;
     chunksRef.current = [];
 
@@ -170,23 +228,17 @@ export default function Preview({ project, setProject }: PreviewProps) {
       document.body.removeChild(a);
       setIsExporting(false);
       setExportStatus("");
-      alert("Exportação MP4 (WebM) concluída! O vídeo foi gerado com todas as transições e legendas.");
+      audioCtx.close();
+      alert("Exportação MP4 (WebM) concluída! O vídeo foi gerado com som, transições e legendas.");
     };
 
     recorder.start();
 
     // Rendering Loop
-    let clipIdx = 0;
     const totalClips = movieClips.length;
     
-    const renderClip = async (index: number) => {
-      if (index >= totalClips) {
-        recorder.stop();
-        return;
-      }
-
+    const renderClip = async (index: number, prevTransition: TransitionType) => {
       const clip = movieClips[index];
-      const nextClip = movieClips[index + 1];
       const transition = (clip as any).transition || project.globalTransition || 'cut';
       
       setExportStatus(`A renderizar Clip ${index + 1} de ${totalClips}...`);
@@ -195,8 +247,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
       const video = document.createElement('video');
       video.src = clip.videoUrl;
       video.crossOrigin = "anonymous";
-      video.muted = true;
+      video.muted = false;
       video.playsInline = true;
+      video.volume = 1.0;
+      
+      const source = audioCtx.createMediaElementSource(video);
+      source.connect(audioDest);
       
       await new Promise((resolve, reject) => {
         video.onloadedmetadata = () => resolve(null);
@@ -213,12 +269,36 @@ export default function Preview({ project, setProject }: PreviewProps) {
             video.pause();
             video.src = "";
             video.load();
+            source.disconnect();
             resolve();
             return;
           }
 
           ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Apply Transformations for Zoom transitions
+          const timePassed = video.currentTime;
+          const timeLeft = video.duration - video.currentTime;
+          let scale = 1;
+          let offsetX = 0;
+          let offsetY = 0;
+
+          if (timePassed < 0.5 && prevTransition.startsWith('zoom')) {
+            const p = timePassed / 0.5;
+            scale = prevTransition === 'zoom-in' ? 0.8 + (0.2 * p) : 1.2 - (0.2 * p);
+          } else if (timeLeft < 0.5 && transition.startsWith('zoom')) {
+            const p = 1 - (timeLeft / 0.5);
+            scale = transition === 'zoom-in' ? 1 + (0.2 * p) : 1 - (0.2 * p);
+          }
+
+          ctx.save();
+          if (scale !== 1) {
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(scale, scale);
+            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+          }
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
 
           // Draw Subtitles
           if (subtitleSettings.enabled) {
@@ -240,27 +320,56 @@ export default function Preview({ project, setProject }: PreviewProps) {
             }
           }
 
-          // Handle Transitions (Simple Fade Out at the end)
-          const timeLeft = video.duration - video.currentTime;
-          if (timeLeft < 0.5 && transition !== 'cut') {
-            if (transition === 'fade' || transition === 'fade-black') {
-              ctx.fillStyle = `rgba(0, 0, 0, ${1 - (timeLeft / 0.5)})`;
+          // Handle "IN" Transitions
+          if (timePassed < 0.5 && prevTransition !== 'cut') {
+            const p = 1 - (timePassed / 0.5);
+            if (prevTransition === 'fade' || prevTransition === 'fade-black') {
+              ctx.fillStyle = `rgba(0, 0, 0, ${p})`;
               ctx.fillRect(0, 0, canvas.width, canvas.height);
-            } else if (transition === 'fade-white') {
-              ctx.fillStyle = `rgba(255, 255, 255, ${1 - (timeLeft / 0.5)})`;
+            } else if (prevTransition === 'fade-white') {
+              ctx.fillStyle = `rgba(255, 255, 255, ${p})`;
               ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (prevTransition === 'wipe-left') {
+              ctx.fillStyle = 'black';
+              ctx.fillRect(0, 0, canvas.width * p, canvas.height);
+            } else if (prevTransition === 'wipe-right') {
+              ctx.fillStyle = 'black';
+              ctx.fillRect(canvas.width * (1 - p), 0, canvas.width * p, canvas.height);
             }
           }
 
-          requestAnimationFrame(drawFrame);
+          // Handle "OUT" Transitions
+          if (timeLeft < 0.5 && transition !== 'cut') {
+            const p = 1 - (timeLeft / 0.5);
+            if (transition === 'fade' || transition === 'fade-black') {
+              ctx.fillStyle = `rgba(0, 0, 0, ${p})`;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (transition === 'fade-white') {
+              ctx.fillStyle = `rgba(255, 255, 255, ${p})`;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (transition === 'wipe-left') {
+              ctx.fillStyle = 'black';
+              ctx.fillRect(canvas.width * (1 - p), 0, canvas.width * p, canvas.height);
+            } else if (transition === 'wipe-right') {
+              ctx.fillStyle = 'black';
+              ctx.fillRect(0, 0, canvas.width * p, canvas.height);
+            }
+          }
+
+          frameId = requestAnimationFrame(drawFrame);
         };
-        drawFrame();
+        frameId = requestAnimationFrame(drawFrame);
       });
     };
 
     for (let i = 0; i < totalClips; i++) {
-      await renderClip(i);
+      const prevTransition = i > 0 ? (movieClips[i-1] as any).transition || project.globalTransition || 'cut' : 'cut';
+      await renderClip(i, prevTransition);
     }
+    
+    setExportProgress(100);
+    setExportStatus("A finalizar ficheiro...");
+    recorder.stop();
   };
 
   const handleTranslateSubtitles = async (targetLangCode: string) => {
@@ -385,15 +494,40 @@ export default function Preview({ project, setProject }: PreviewProps) {
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-800 overflow-hidden relative">
             {movieClips.length > 0 ? (
-              <div className="relative group">
-                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black flex items-center justify-center`}>
-                  <video
-                    ref={videoRef}
-                    src={currentClip.videoUrl}
-                    className="w-full h-full object-contain"
-                    onEnded={isPlayingFullMovie ? handleNextClip : undefined}
-                    controls={!isPlayingFullMovie}
-                  />
+              <div className="relative group overflow-hidden">
+                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black flex items-center justify-center relative`}>
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={currentClipIndex}
+                      variants={transitionVariants}
+                      initial={currentTransition === 'cut' ? false : "initial"}
+                      animate="animate"
+                      exit="exit"
+                      transition={{ 
+                        duration: currentTransition === 'cut' ? 0 : 0.5,
+                        ease: "easeInOut"
+                      }}
+                      className="absolute inset-0 w-full h-full flex items-center justify-center"
+                    >
+                      {/* Background for fade-black/white */}
+                      {(currentTransition === 'fade-black' || exitTransition === 'fade-black') && (
+                        <div className="absolute inset-0 bg-black -z-10" />
+                      )}
+                      {(currentTransition === 'fade-white' || exitTransition === 'fade-white') && (
+                        <div className="absolute inset-0 bg-white -z-10" />
+                      )}
+                      
+                      <video
+                        ref={videoRef}
+                        src={currentClip.videoUrl}
+                        className="w-full h-full object-contain"
+                        onEnded={isPlayingFullMovie ? handleNextClip : undefined}
+                        controls={!isPlayingFullMovie}
+                        autoPlay={isPlayingFullMovie}
+                        muted={false}
+                      />
+                    </motion.div>
+                  </AnimatePresence>
                   
                   {/* Subtitle Overlay */}
                   {subtitleSettings.enabled && getSubtitleText() && (
