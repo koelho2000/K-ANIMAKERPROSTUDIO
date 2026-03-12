@@ -10,7 +10,7 @@ declare global {
 export type TransitionType = 'cut' | 'fade' | 'fade-black' | 'fade-white' | 'wipe-left' | 'wipe-right' | 'zoom-in' | 'zoom-out';
 export type VideoModel = 'veo-3.1' | 'veo-fast' | 'flow';
 
-export type AutomationPhase = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type AutomationPhase = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 export type AutomationStatus = 'idle' | 'running' | 'paused' | 'waiting_validation' | 'completed';
 
 export interface AutomationState {

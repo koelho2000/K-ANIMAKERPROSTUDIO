@@ -24,7 +24,11 @@ import {
   generateImage, 
   generateVideo, 
   pollVideoOperation,
-  getGenAI
+  getGenAI,
+  generateNarrationText,
+  generateNarrationAudio,
+  generateSubtitles,
+  getVoiceForSettings
 } from "../services/geminiService";
 
 interface MassProductionOverlayProps {
@@ -585,6 +589,122 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         if (automation.autoMode) validatePhase();
       }
       else if (automation.currentPhase === 10) {
+        addLog("Iniciando Fase 10: Geração de Narração IA...");
+        
+        const allTakes: { sceneId: string, takeId: string, action: string, duration?: number }[] = [];
+        project.scenes.forEach(scene => {
+          scene.takes.forEach(take => {
+            if (!take.narrationAudioUrl) {
+              allTakes.push({ 
+                sceneId: scene.id, 
+                takeId: take.id, 
+                action: take.action,
+                duration: take.duration
+              });
+            }
+          });
+        });
+
+        if (allTakes.length === 0) {
+          updateAutomation({ progress: 100, status: automation.autoMode ? "running" : "waiting_validation" });
+          addLog("Todas as narrações já existem ou nenhum take encontrado.");
+          if (automation.autoMode) validatePhase();
+          return;
+        }
+
+        let completed = 0;
+        let currentNarrations: string[] = [];
+        const voiceName = getVoiceForSettings(
+          project.narrationSettings?.gender || 'female',
+          project.narrationSettings?.ageGroup || 'adult'
+        );
+
+        for (const tInfo of allTakes) {
+          addLog(`Gerando narração para Take ${completed + 1}/${allTakes.length}...`);
+          
+          const text = await generateNarrationText(
+            tInfo.action,
+            project.language,
+            `Filme: ${project.title}. Conceito: ${project.concept}. Público Alvo: ${project.targetAudience || 'Adultos'}`,
+            currentNarrations,
+            tInfo.duration || 5
+          );
+          
+          const audioUrl = await generateNarrationAudio(text, voiceName);
+          currentNarrations.push(text);
+
+          setProject(prev => ({
+            ...prev,
+            scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
+              ...s,
+              takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, narration: text, narrationAudioUrl: audioUrl, updatedAt: Date.now() } : t)
+            } : s)
+          }));
+
+          completed++;
+          updateAutomation({ progress: Math.round((completed / allTakes.length) * 100) });
+        }
+
+        updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
+        addLog("Fase 10 concluída: Todas as narrações geradas.");
+        if (automation.autoMode) validatePhase();
+      }
+      else if (automation.currentPhase === 11) {
+        addLog("Iniciando Fase 11: Geração de Legendas IA...");
+        
+        const allTakes: { sceneId: string, takeId: string, action: string, narration?: string, videoUrl?: string, audioUrl?: string }[] = [];
+        project.scenes.forEach(scene => {
+          scene.takes.forEach(take => {
+            if (!take.dialogue) {
+              allTakes.push({ 
+                sceneId: scene.id, 
+                takeId: take.id, 
+                action: take.action,
+                narration: take.narration,
+                videoUrl: take.videoUrl,
+                audioUrl: take.narrationAudioUrl
+              });
+            }
+          });
+        });
+
+        if (allTakes.length === 0) {
+          updateAutomation({ progress: 100, status: automation.autoMode ? "running" : "waiting_validation" });
+          addLog("Todas as legendas já existem ou nenhum take encontrado.");
+          if (automation.autoMode) validatePhase();
+          return;
+        }
+
+        let completed = 0;
+        for (const tInfo of allTakes) {
+          addLog(`Gerando legendas para Take ${completed + 1}/${allTakes.length}...`);
+          
+          const text = await generateSubtitles(
+            tInfo.action,
+            tInfo.narration || "",
+            project.language,
+            `Filme: ${project.title}. Conceito: ${project.concept}. Público Alvo: ${project.targetAudience || 'Adultos'}`,
+            tInfo.videoUrl,
+            tInfo.audioUrl
+          );
+
+          setProject(prev => ({
+            ...prev,
+            scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
+              ...s,
+              takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, dialogue: text, updatedAt: Date.now() } : t)
+            } : s)
+          }));
+
+          completed++;
+          updateAutomation({ progress: Math.round((completed / allTakes.length) * 100) });
+        }
+
+        updateAutomation({ status: automation.autoMode ? "running" : "waiting_validation" });
+        addLog("Fase 11 concluída: Todas as legendas geradas.");
+        if (automation.autoMode) validatePhase();
+      }
+      else if (automation.currentPhase === 12) {
         addLog("Iniciando Montagem Final do Filme...");
         updateAutomation({ progress: 50 });
         
@@ -592,7 +712,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         await new Promise(resolve => setTimeout(resolve, 3000));
         
         updateAutomation({ progress: 100, status: "completed" });
-        addLog("Fase 10 concluída: Filme montado e pronto para visualização!");
+        addLog("Fase 12 concluída: Filme montado e pronto para visualização!");
         
         // Auto-navigate to Preview step if in auto mode
         if (automation.autoMode) {
