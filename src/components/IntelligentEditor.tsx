@@ -16,6 +16,7 @@ interface IntelligentEditorProps {
   aspectRatio: string;
   initialMode?: 'edit' | 'extend';
   defaultVideoModel?: VideoModel;
+  nextMediaUrl?: string;
   onSave: (newUrl: string, newVideoObject?: any) => void;
   onClose: () => void;
 }
@@ -25,6 +26,7 @@ export default function IntelligentEditor({
   aspectRatio, 
   initialMode = 'edit', 
   defaultVideoModel = 'flow',
+  nextMediaUrl,
   onSave, 
   onClose 
 }: IntelligentEditorProps) {
@@ -39,6 +41,7 @@ export default function IntelligentEditor({
   const [videoModel, setVideoModel] = useState<VideoModel>(defaultVideoModel);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
+  const [showNextPreview, setShowNextPreview] = useState(false);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -289,6 +292,38 @@ export default function IntelligentEditor({
                   <div className="absolute top-4 left-4 px-3 py-1 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
                     Original
                   </div>
+                  
+                  {mode === 'extend' && nextMediaUrl && (
+                    <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+                      <button
+                        onClick={() => setShowNextPreview(!showNextPreview)}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${
+                          showNextPreview 
+                            ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg' 
+                            : 'bg-black/60 text-white border-white/10 hover:bg-black/80 backdrop-blur-md'
+                        }`}
+                      >
+                        <Film className="w-3 h-3" />
+                        {showNextPreview ? 'Ocultar Take Seguinte' : 'Ver Take Seguinte'}
+                      </button>
+                      
+                      {showNextPreview && (
+                        <div className="w-64 aspect-video bg-zinc-900 rounded-xl overflow-hidden shadow-2xl border border-white/10 animate-in zoom-in-95 duration-200">
+                          <video 
+                            src={nextMediaUrl} 
+                            controls 
+                            autoPlay
+                            muted
+                            loop
+                            className="w-full h-full object-contain"
+                          />
+                          <div className="absolute top-2 left-2 px-2 py-0.5 bg-indigo-600/80 backdrop-blur-md rounded text-[8px] font-bold text-white uppercase tracking-tighter">
+                            Take Seguinte (Referência)
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 {editedUrl && (

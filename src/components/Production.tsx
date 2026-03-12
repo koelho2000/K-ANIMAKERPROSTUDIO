@@ -68,7 +68,16 @@ export default function Production({ project, setProject }: ProductionProps) {
   );
   const [infoModalTake, setInfoModalTake] = useState<Take | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
-  const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string; videoObject?: any; initialMode?: 'edit' | 'extend' } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ 
+    id: string; 
+    url: string; 
+    type: 'image' | 'video'; 
+    title: string; 
+    source: string; 
+    videoObject?: any; 
+    initialMode?: 'edit' | 'extend';
+    nextMediaUrl?: string;
+  } | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -856,6 +865,17 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       alert("É necessário ter um vídeo gerado para o poder extender.");
       return;
     }
+
+    // Find next take for reference
+    const takeIndex = scene.takes.findIndex(t => t.id === takeId);
+    let nextMediaUrl = scene.takes[takeIndex + 1]?.videoUrl;
+    
+    // If last take of scene, check first take of next scene
+    if (!nextMediaUrl) {
+      const sceneIndex = project.scenes.findIndex(s => s.id === sceneId);
+      nextMediaUrl = project.scenes[sceneIndex + 1]?.takes[0]?.videoUrl;
+    }
+
     setEditingItem({
       id: `take-video-${take.id}`,
       url: take.videoUrl!,
@@ -863,7 +883,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       title: `Take - Vídeo`,
       source: 'Produção',
       videoObject: take.videoObject,
-      initialMode: 'extend'
+      initialMode: 'extend',
+      nextMediaUrl
     });
   };
 
@@ -1776,14 +1797,24 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             className="w-full h-full object-cover"
                           />
                           <button
-                            onClick={() => setEditingItem({
-                              id: `take-video-${take.id}`,
-                              url: take.videoUrl!,
-                              type: 'video',
-                              title: `Take ${index + 1} - Vídeo`,
-                              source: 'Produção',
-                              videoObject: take.videoObject
-                            })}
+                            onClick={() => {
+                              const currentScene = project.scenes.find(s => s.id === expandedSceneId);
+                              let nextMediaUrl = currentScene?.takes[index + 1]?.videoUrl;
+                              if (!nextMediaUrl && currentScene) {
+                                const sceneIndex = project.scenes.indexOf(currentScene);
+                                nextMediaUrl = project.scenes[sceneIndex + 1]?.takes[0]?.videoUrl;
+                              }
+                              
+                              setEditingItem({
+                                id: `take-video-${take.id}`,
+                                url: take.videoUrl!,
+                                type: 'video',
+                                title: `Take ${index + 1} - Vídeo`,
+                                source: 'Produção',
+                                videoObject: take.videoObject,
+                                nextMediaUrl
+                              });
+                            }}
                             className="absolute top-2 right-10 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20 flex items-center justify-center"
                             title="Edição Inteligente"
                           >
@@ -1982,6 +2013,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           aspectRatio={project.aspectRatio}
           initialMode={editingItem.initialMode}
           defaultVideoModel={project.videoModel}
+          nextMediaUrl={editingItem.nextMediaUrl}
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}
         />
