@@ -479,7 +479,7 @@ export default function Sidebar({
       </div>
 
       <div className="p-2 text-[10px] text-zinc-500 text-center">
-        V2.0.0 • Gemini & Veo
+        V3.0.0 • Gemini & Veo
       </div>
 
       <ApiKeyModal

@@ -905,7 +905,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
               Pode fechar esta janela a qualquer momento para verificar os menus. O progresso será mantido.
             </span>
           </div>
-          <span className="font-mono">K-ANIMAKER PRO V2.0.0</span>
+          <span className="font-mono">K-ANIMAKER PRO V3.0.0</span>
         </div>
       </div>
     </div>
