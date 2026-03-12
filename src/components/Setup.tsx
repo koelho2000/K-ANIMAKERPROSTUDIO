@@ -436,6 +436,95 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
           </div>
         </div>
 
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <label className="block text-sm font-medium text-zinc-700">
+              Modelo de Renderização de Vídeo
+            </label>
+            <div className="group relative">
+              <HelpCircle className="w-4 h-4 text-zinc-400 cursor-help" />
+              <div className="absolute left-0 bottom-full mb-2 w-72 p-4 bg-zinc-900 text-white text-[10px] rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-2xl border border-white/10">
+                <p className="font-bold mb-2 text-indigo-400 flex items-center gap-2">
+                  <Info className="w-3 h-3" />
+                  Guia de Seleção de Modelos
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <p className="font-bold text-zinc-100 mb-1">Veo 3.1 (Preview)</p>
+                    <p className="text-zinc-400 leading-relaxed">Topo de linha para cinema. Suporta 4K, proporções flexíveis e áudio sincronizado nativo.</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-zinc-100 mb-1">Veo 3 Fast</p>
+                    <p className="text-zinc-400 leading-relaxed">Otimizado para velocidade. Ideal para iterações rápidas e prototipagem.</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-zinc-100 mb-1">Google Flow</p>
+                    <p className="text-zinc-400 leading-relaxed">Ambiente para cineastas. Mantém consistência de personagens e extensões de clipes.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              onClick={() => setProject(prev => ({ ...prev, videoModel: 'veo-3.1' }))}
+              className={`p-5 rounded-2xl border-2 text-left transition-all relative overflow-hidden group ${
+                project.videoModel === 'veo-3.1' 
+                  ? "border-indigo-600 bg-indigo-50/50 shadow-md" 
+                  : "border-zinc-100 hover:border-zinc-200 bg-white"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-[10px] font-bold uppercase tracking-widest ${project.videoModel === 'veo-3.1' ? 'text-indigo-600' : 'text-zinc-400'}`}>Premium</span>
+                {project.videoModel === 'veo-3.1' && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+              </div>
+              <h4 className="font-bold text-zinc-900 mb-1">Veo 3.1</h4>
+              <p className="text-[10px] text-zinc-500 leading-relaxed">Cinematográfico, 4K e áudio nativo.</p>
+              {project.videoModel === 'veo-3.1' && (
+                <div className="absolute top-0 right-0 w-12 h-12 bg-indigo-600/5 rounded-bl-full -mr-4 -mt-4" />
+              )}
+            </button>
+
+            <button
+              onClick={() => setProject(prev => ({ ...prev, videoModel: 'veo-fast' }))}
+              className={`p-5 rounded-2xl border-2 text-left transition-all relative overflow-hidden group ${
+                project.videoModel === 'veo-fast' 
+                  ? "border-amber-600 bg-amber-50/50 shadow-md" 
+                  : "border-zinc-100 hover:border-zinc-200 bg-white"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-[10px] font-bold uppercase tracking-widest ${project.videoModel === 'veo-fast' ? 'text-amber-600' : 'text-zinc-400'}`}>Rápido</span>
+                {project.videoModel === 'veo-fast' && <CheckCircle2 className="w-4 h-4 text-amber-600" />}
+              </div>
+              <h4 className="font-bold text-zinc-900 mb-1">Veo 3 Fast</h4>
+              <p className="text-[10px] text-zinc-500 leading-relaxed">Iterações rápidas e prototipagem.</p>
+              {project.videoModel === 'veo-fast' && (
+                <div className="absolute top-0 right-0 w-12 h-12 bg-amber-600/5 rounded-bl-full -mr-4 -mt-4" />
+              )}
+            </button>
+
+            <button
+              onClick={() => setProject(prev => ({ ...prev, videoModel: 'flow' }))}
+              className={`p-5 rounded-2xl border-2 text-left transition-all relative overflow-hidden group ${
+                project.videoModel === 'flow' 
+                  ? "border-emerald-600 bg-emerald-50/50 shadow-md" 
+                  : "border-zinc-100 hover:border-zinc-200 bg-white"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-[10px] font-bold uppercase tracking-widest ${project.videoModel === 'flow' ? 'text-emerald-600' : 'text-zinc-400'}`}>Cineasta</span>
+                {project.videoModel === 'flow' && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+              </div>
+              <h4 className="font-bold text-zinc-900 mb-1">Google Flow</h4>
+              <p className="text-[10px] text-zinc-500 leading-relaxed">Consistência e extensões de clipes.</p>
+              {project.videoModel === 'flow' && (
+                <div className="absolute top-0 right-0 w-12 h-12 bg-emerald-600/5 rounded-bl-full -mr-4 -mt-4" />
+              )}
+            </button>
+          </div>
+        </div>
+
         {/* Duration and Detail Section */}
         <div className="pt-6 border-t border-zinc-100">
           <div className="flex items-center justify-between mb-6">

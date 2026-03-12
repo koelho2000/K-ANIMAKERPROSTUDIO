@@ -502,6 +502,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
         <IntelligentEditor 
           mediaItem={editingItem}
           aspectRatio={project.aspectRatio}
+          defaultVideoModel={project.videoModel}
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}
         />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Project, AutomationPhase, AutomationStatus } from "../types";
+import { Project, AutomationPhase, AutomationStatus, VideoModel } from "../types";
 import { AUTOMATION_PHASES } from "../constants";
 import { 
   Play, 
@@ -52,7 +52,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
   };
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [globalVideoModel, setGlobalVideoModel] = useState<'veo' | 'flow'>('flow');
+  const [globalVideoModel, setGlobalVideoModel] = useState<VideoModel>(project.videoModel || 'flow');
   const [showInternalSettings, setShowInternalSettings] = useState(false);
 
   const updateAutomation = (updates: Partial<typeof automation>) => {
@@ -730,27 +730,37 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
                   Fase {automation.currentPhase}: {PHASES[automation.currentPhase - 1].name}
                 </h3>
                 <div className="flex items-center gap-4">
-                  {(automation.currentPhase === 5 || automation.currentPhase === 6) && automation.status === "idle" && (
+                  {(automation.currentPhase === 5 || automation.currentPhase === 6 || automation.currentPhase === 7 || automation.currentPhase === 8) && automation.status === "idle" && (
                     <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-700">
                       <button
-                        onClick={() => setGlobalVideoModel('flow')}
+                        onClick={() => setGlobalVideoModel('veo-3.1')}
                         className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                          globalVideoModel === 'flow'
+                          globalVideoModel === 'veo-3.1'
                             ? "bg-indigo-600 text-white shadow-lg"
                             : "text-zinc-500 hover:text-zinc-300"
                         }`}
                       >
-                        FLOW (Rápido)
+                        VEO 3.1
                       </button>
                       <button
-                        onClick={() => setGlobalVideoModel('veo')}
+                        onClick={() => setGlobalVideoModel('veo-fast')}
                         className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                          globalVideoModel === 'veo'
+                          globalVideoModel === 'veo-fast'
+                            ? "bg-amber-600 text-white shadow-lg"
+                            : "text-zinc-500 hover:text-zinc-300"
+                        }`}
+                      >
+                        VEO FAST
+                      </button>
+                      <button
+                        onClick={() => setGlobalVideoModel('flow')}
+                        className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                          globalVideoModel === 'flow'
                             ? "bg-emerald-600 text-white shadow-lg"
                             : "text-zinc-500 hover:text-zinc-300"
                         }`}
                       >
-                        VEO (Qualidade)
+                        FLOW
                       </button>
                     </div>
                   )}
@@ -784,7 +794,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
                         • {automation.currentTask}
                         {automation.currentPhase === 8 && (
                           <span className="ml-1 px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[8px] font-bold uppercase">
-                            Motor: {globalVideoModel === 'veo' ? 'Veo' : 'Flow'}
+                            Motor: {globalVideoModel === 'veo-3.1' ? 'Veo 3.1' : globalVideoModel === 'veo-fast' ? 'Veo Fast' : 'Flow'}
                           </span>
                         )}
                       </span>

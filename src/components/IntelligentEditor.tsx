@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Eraser, Pen, Sparkles, Check, Loader2, RotateCcw, Undo } from "lucide-react";
-import { generateImage, generateVideo, pollVideoOperation } from "../services/geminiService";
+import { X, Eraser, Pen, Sparkles, Check, Loader2, RotateCcw, Undo, PlusCircle, Film, HelpCircle, Info } from "lucide-react";
+import { generateImage, generateVideo, pollVideoOperation, extendVideo } from "../services/geminiService";
+import ProgressBar from "./ProgressBar";
+import { VideoModel } from "../types";
 
 interface IntelligentEditorProps {
   mediaItem: {
@@ -9,23 +11,55 @@ interface IntelligentEditorProps {
     type: 'image' | 'video';
     title: string;
     source: string;
+    videoObject?: any;
   };
   aspectRatio: string;
-  onSave: (newUrl: string) => void;
+  initialMode?: 'edit' | 'extend';
+  defaultVideoModel?: VideoModel;
+  onSave: (newUrl: string, newVideoObject?: any) => void;
   onClose: () => void;
 }
 
-export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onClose }: IntelligentEditorProps) {
+export default function IntelligentEditor({ 
+  mediaItem, 
+  aspectRatio, 
+  initialMode = 'edit', 
+  defaultVideoModel = 'flow',
+  onSave, 
+  onClose 
+}: IntelligentEditorProps) {
   const [prompt, setPrompt] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [editedUrl, setEditedUrl] = useState<string | null>(null);
+  const [editedVideoObject, setEditedVideoObject] = useState<any>(null);
   const [brushSize, setBrushSize] = useState(20);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasMask, setHasMask] = useState(false);
+  const [mode, setMode] = useState<'edit' | 'extend'>(initialMode);
+  const [videoModel, setVideoModel] = useState<VideoModel>(defaultVideoModel);
+  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState("");
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isProcessing) {
+      setProgress(0);
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 98) return prev;
+          const increment = prev < 20 ? Math.random() * 2 : Math.random() * 0.4;
+          return prev + increment;
+        });
+      }, 1000);
+    } else {
+      setProgress(100);
+    }
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   useEffect(() => {
     if (mediaItem.type === 'image') {
@@ -138,9 +172,10 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
     }
   };
 
-  const handleEdit = async () => {
+  const handleProcess = async () => {
     if (!prompt) return;
     setIsProcessing(true);
+    setStatus("A processar...");
     try {
       if (mediaItem.type === 'image') {
         const maskCanvas = maskCanvasRef.current;
@@ -157,22 +192,35 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
         const result = await generateImage(finalPrompt, aspectRatio, referenceImages);
         setEditedUrl(result);
       } else {
-        // For video editing
-        const operation = await generateVideo(`${prompt} (baseado no vídeo fornecido)`, mediaItem.url, undefined, 'flow', aspectRatio);
-        const result = await pollVideoOperation(operation);
-        setEditedUrl(result.videoUrl);
+        if (mode === 'edit') {
+          setStatus("A editar vídeo...");
+          const operation = await generateVideo(`${prompt} (baseado no vídeo fornecido)`, mediaItem.url, undefined, videoModel, aspectRatio);
+          const result = await pollVideoOperation(operation);
+          setEditedUrl(result.videoUrl);
+          setEditedVideoObject(result.videoObject);
+        } else {
+          setStatus("A extender vídeo...");
+          if (!mediaItem.videoObject) {
+            throw new Error("Objeto de vídeo não encontrado para extensão.");
+          }
+          const operation = await extendVideo(prompt, mediaItem.videoObject, videoModel, aspectRatio);
+          const result = await pollVideoOperation(operation);
+          setEditedUrl(result.videoUrl);
+          setEditedVideoObject(result.videoObject);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro na edição inteligente:", error);
-      alert("Erro ao processar a edição inteligente. Por favor, tenta novamente.");
+      alert(`Erro ao processar: ${error.message || "Por favor, tenta novamente."}`);
     } finally {
       setIsProcessing(false);
+      setStatus("");
     }
   };
 
   const handleConfirm = () => {
     if (editedUrl) {
-      onSave(editedUrl);
+      onSave(editedUrl, editedVideoObject);
       onClose();
     }
   };
@@ -188,7 +236,11 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
             </div>
             <div>
               <h3 className="text-lg font-bold text-zinc-900">Edição Inteligente</h3>
-              <p className="text-xs text-zinc-500">Usa a caneta para marcar áreas e descreve as alterações.</p>
+              <p className="text-xs text-zinc-500">
+                {mediaItem.type === 'image' 
+                  ? "Usa a caneta para marcar áreas e descreve as alterações."
+                  : "Edita o conteúdo do vídeo ou extende a sua duração."}
+              </p>
             </div>
           </div>
           <button 
@@ -227,12 +279,30 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
                 )}
               </div>
             ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <video 
-                  src={mediaItem.url} 
-                  controls 
-                  className="max-w-full max-h-full rounded-lg shadow-2xl"
-                />
+              <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+                <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl">
+                  <video 
+                    src={mediaItem.url} 
+                    controls 
+                    className="w-full h-full object-contain"
+                  />
+                  <div className="absolute top-4 left-4 px-3 py-1 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
+                    Original
+                  </div>
+                </div>
+                
+                {editedUrl && (
+                  <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4">
+                    <video 
+                      src={editedUrl} 
+                      controls 
+                      className="w-full h-full object-contain"
+                    />
+                    <div className="absolute top-4 left-4 px-3 py-1 bg-indigo-600/80 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
+                      {mode === 'edit' ? 'Editado' : 'Extendido'}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -265,35 +335,114 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
           {/* Sidebar Controls */}
           <div className="w-80 border-l border-zinc-100 flex flex-col bg-white">
             <div className="p-6 flex-1 space-y-6 overflow-y-auto">
+              {/* Mode Selector for Video */}
+              {mediaItem.type === 'video' && (
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Modo de Operação</label>
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-100 rounded-xl">
+                    <button
+                      onClick={() => setMode('edit')}
+                      className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        mode === 'edit' ? 'bg-white text-indigo-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
+                      }`}
+                    >
+                      <Pen className="w-3 h-3" />
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => setMode('extend')}
+                      className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        mode === 'extend' ? 'bg-white text-emerald-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
+                      }`}
+                    >
+                      <PlusCircle className="w-3 h-3" />
+                      Extender
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Model Selector for Video */}
+              {mediaItem.type === 'video' && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Modelo de Renderização</label>
+                    <div className="group relative">
+                      <HelpCircle className="w-3 h-3 text-zinc-400 cursor-help" />
+                      <div className="absolute right-0 bottom-full mb-2 w-64 p-3 bg-zinc-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl border border-white/10">
+                        <p className="font-bold mb-1 text-indigo-400">Guia Rápido:</p>
+                        <ul className="space-y-1.5">
+                          <li><span className="font-bold">Veo 3.1:</span> Máxima qualidade cinematográfica e áudio sincronizado.</li>
+                          <li><span className="font-bold">Veo Fast:</span> Otimizado para velocidade e iterações.</li>
+                          <li><span className="font-bold">Flow:</span> Consistência de personagens e extensões.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      onClick={() => setVideoModel('veo-3.1')}
+                      className={`flex items-center justify-between px-3 py-2 text-[10px] font-bold rounded-xl border-2 transition-all ${
+                        videoModel === 'veo-3.1' ? 'border-indigo-600 bg-indigo-50 text-indigo-600' : 'border-zinc-100 text-zinc-500 hover:border-zinc-200'
+                      }`}
+                    >
+                      <span>VEO 3.1 (Cinematográfico)</span>
+                      {videoModel === 'veo-3.1' && <Check className="w-3 h-3" />}
+                    </button>
+                    <button
+                      onClick={() => setVideoModel('veo-fast')}
+                      className={`flex items-center justify-between px-3 py-2 text-[10px] font-bold rounded-xl border-2 transition-all ${
+                        videoModel === 'veo-fast' ? 'border-amber-600 bg-amber-50 text-amber-600' : 'border-zinc-100 text-zinc-500 hover:border-zinc-200'
+                      }`}
+                    >
+                      <span>VEO FAST (Rápido)</span>
+                      {videoModel === 'veo-fast' && <Check className="w-3 h-3" />}
+                    </button>
+                    <button
+                      onClick={() => setVideoModel('flow')}
+                      className={`flex items-center justify-between px-3 py-2 text-[10px] font-bold rounded-xl border-2 transition-all ${
+                        videoModel === 'flow' ? 'border-emerald-600 bg-emerald-50 text-emerald-600' : 'border-zinc-100 text-zinc-500 hover:border-zinc-200'
+                      }`}
+                    >
+                      <span>FLOW (Consistência)</span>
+                      {videoModel === 'flow' && <Check className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
-                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Instruções de Edição</label>
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                  {mode === 'edit' ? 'Instruções de Edição' : 'Instruções de Extensão'}
+                </label>
                 <textarea 
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Ex: Altera a cor da camisola para vermelho e adiciona óculos de sol..."
+                  placeholder={mode === 'edit' 
+                    ? "Ex: Altera a cor da camisola para vermelho..." 
+                    : "Ex: A personagem continua a caminhar e sorri..."}
                   className="w-full h-40 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
                 />
               </div>
 
-              {editedUrl && (
-                <div className="space-y-3 animate-in slide-in-from-bottom-4">
-                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Resultado</label>
-                  <div className="aspect-square bg-zinc-100 rounded-2xl overflow-hidden border border-zinc-200 shadow-inner">
-                    {mediaItem.type === 'image' ? (
-                      <img src={editedUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <video src={editedUrl} className="w-full h-full object-cover" controls />
-                    )}
-                  </div>
+              {isProcessing && (
+                <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+                  <ProgressBar 
+                    progress={progress} 
+                    label={status} 
+                    modelName={videoModel === 'flow' ? 'Flow' : 'Veo'} 
+                  />
                 </div>
               )}
             </div>
 
             <div className="p-6 border-t border-zinc-100 space-y-3 bg-zinc-50/50">
               <button
-                onClick={handleEdit}
+                onClick={handleProcess}
                 disabled={isProcessing || !prompt}
-                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                  mode === 'edit' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
+                }`}
               >
                 {isProcessing ? (
                   <>
@@ -302,8 +451,8 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5" />
-                    Gerar Alteração
+                    {mode === 'edit' ? <Sparkles className="w-5 h-5" /> : <PlusCircle className="w-5 h-5" />}
+                    {mode === 'edit' ? 'Gerar Alteração' : 'Gerar Extensão'}
                   </>
                 )}
               </button>

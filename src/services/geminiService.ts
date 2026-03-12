@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { VideoModel } from "../types";
 
 export const getApiKey = () => {
   // 1. Try to get from localStorage (manually entered by user)
@@ -164,7 +165,7 @@ export const generateVideo = async (
   prompt: string,
   startImageBase64?: string,
   endImageBase64?: string,
-  model: 'veo' | 'flow' = 'flow',
+  model: VideoModel = 'flow',
   aspectRatio: string = "16:9",
 ) => {
   return withRetry(async () => {
@@ -176,7 +177,15 @@ export const generateVideo = async (
       aspectRatio: aspectRatio,
     };
 
-    const modelName = model === 'veo' ? 'veo-3.1-generate-preview' : 'veo-3.1-fast-generate-preview';
+    let modelName = 'veo-3.1-fast-generate-preview'; // Default to flow/fast
+    
+    if (model === 'veo-3.1') {
+      modelName = 'veo-3.1-generate-preview';
+    } else if (model === 'veo-fast') {
+      modelName = 'veo-3.1-fast-generate-preview';
+    } else if (model === 'flow') {
+      modelName = 'veo-3.1-fast-generate-preview';
+    }
 
     const finalPrompt = `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the video frames.`;
 
@@ -319,6 +328,7 @@ export const pollVideoOperation = async (operationOrName: any) => {
 export const extendVideo = async (
   prompt: string,
   previousVideo: any,
+  model: VideoModel = 'veo-3.1',
   aspectRatio: string = "16:9",
 ) => {
   return withRetry(async () => {
@@ -330,8 +340,18 @@ export const extendVideo = async (
       aspectRatio: aspectRatio,
     };
 
+    let modelName = 'veo-3.1-fast-generate-preview';
+    
+    if (model === 'veo-3.1') {
+      modelName = 'veo-3.1-generate-preview';
+    } else if (model === 'veo-fast') {
+      modelName = 'veo-3.1-fast-generate-preview';
+    } else if (model === 'flow') {
+      modelName = 'veo-3.1-fast-generate-preview';
+    }
+
     const request: any = {
-      model: 'veo-3.1-generate-preview',
+      model: modelName,
       prompt,
       video: previousVideo,
       config,

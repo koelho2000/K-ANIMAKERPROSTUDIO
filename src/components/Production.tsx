@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Project, Scene, Take, Character, Setting } from "../types";
+import { Project, Scene, Take, Character, Setting, VideoModel } from "../types";
 import {
   generateImage,
   generateVideo,
@@ -28,7 +28,6 @@ import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
-import VideoExtender from "./VideoExtender";
 
 interface ProductionProps {
   project: Project;
@@ -69,8 +68,7 @@ export default function Production({ project, setProject }: ProductionProps) {
   );
   const [infoModalTake, setInfoModalTake] = useState<Take | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
-  const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string } | null>(null);
-  const [extendingTake, setExtendingTake] = useState<{ sceneId: string; take: Take } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string; videoObject?: any; initialMode?: 'edit' | 'extend' } | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -556,7 +554,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     }
   };
 
-  const handleUpdateTakeModel = (sceneId: string, takeId: string, model: 'veo' | 'flow') => {
+  const handleUpdateTakeModel = (sceneId: string, takeId: string, model: VideoModel) => {
     const updatedScenes = project.scenes.map((s) => {
       if (s.id === sceneId) {
         return {
@@ -571,7 +569,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setProject({ ...project, scenes: updatedScenes });
   };
 
-  const handleSaveEdit = (newUrl: string) => {
+  const handleSaveEdit = (newUrl: string, newVideoObject?: any) => {
     if (!editingItem) return;
 
     const id = editingItem.id;
@@ -595,7 +593,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         if (t.id === takeId) {
           if (type === 'start') return { ...t, startFrameUrl: newUrl, updatedAt: Date.now() };
           if (type === 'end') return { ...t, endFrameUrl: newUrl, updatedAt: Date.now() };
-          if (type === 'video') return { ...t, videoUrl: newUrl, videoOperationId: undefined, updatedAt: Date.now() };
+          if (type === 'video') return { ...t, videoUrl: newUrl, videoObject: newVideoObject || t.videoObject, videoOperationId: undefined, updatedAt: Date.now() };
         }
         return t;
       })
@@ -654,7 +652,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             prompt,
             take.startFrameUrl,
             take.endFrameUrl,
-            take.videoModel || 'flow',
+            take.videoModel || project.videoModel || 'flow',
             project.aspectRatio
           );
 
@@ -770,7 +768,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         editedPrompt,
         take.startFrameUrl,
         take.endFrameUrl,
-        take.videoModel || 'flow',
+        take.videoModel || project.videoModel || 'flow',
         project.aspectRatio
       );
       setVideoStatus("A aguardar renderização (2-5 min)...");
@@ -855,10 +853,18 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     const scene = project.scenes.find((s) => s.id === sceneId);
     const take = scene?.takes.find((t) => t.id === takeId);
     if (!scene || !take || !take.videoObject) {
-      alert("É necessário ter um vídeo gerado com o modelo VEO para o poder extender.");
+      alert("É necessário ter um vídeo gerado para o poder extender.");
       return;
     }
-    setExtendingTake({ sceneId, take });
+    setEditingItem({
+      id: `take-video-${take.id}`,
+      url: take.videoUrl!,
+      type: 'video',
+      title: `Take - Vídeo`,
+      source: 'Produção',
+      videoObject: take.videoObject,
+      initialMode: 'extend'
+    });
   };
 
   const handleAnalyzeTake = async (sceneId: string, takeId: string) => {
@@ -1668,24 +1674,34 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                       <div className="flex items-center gap-2">
                         <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
                           <button
-                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'flow')}
+                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo-3.1')}
                             className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
-                              (take.videoModel || 'flow') === 'flow'
+                              (take.videoModel || project.videoModel) === 'veo-3.1'
                                 ? "bg-white text-indigo-600 shadow-sm"
                                 : "text-zinc-400 hover:text-zinc-600"
                             }`}
                           >
-                            FLOW
+                            VEO 3.1
                           </button>
                           <button
-                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo')}
+                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo-fast')}
                             className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
-                              take.videoModel === 'veo'
+                              (take.videoModel || project.videoModel) === 'veo-fast'
+                                ? "bg-white text-amber-600 shadow-sm"
+                                : "text-zinc-400 hover:text-zinc-600"
+                            }`}
+                          >
+                            FAST
+                          </button>
+                          <button
+                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'flow')}
+                            className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
+                              (take.videoModel || project.videoModel) === 'flow'
                                 ? "bg-white text-emerald-600 shadow-sm"
                                 : "text-zinc-400 hover:text-zinc-600"
                             }`}
                           >
-                            VEO
+                            FLOW
                           </button>
                         </div>
                         <button
@@ -1765,7 +1781,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                               url: take.videoUrl!,
                               type: 'video',
                               title: `Take ${index + 1} - Vídeo`,
-                              source: 'Produção'
+                              source: 'Produção',
+                              videoObject: take.videoObject
                             })}
                             className="absolute top-2 right-10 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20 flex items-center justify-center"
                             title="Edição Inteligente"
@@ -1788,7 +1805,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           <ProgressBar
                             progress={videoProgress}
                             label={videoStatus || "A renderizar vídeo..."}
-                            modelName={(take.videoModel || 'flow') === 'veo' ? 'Veo' : 'Flow'}
+                            modelName={(take.videoModel || project.videoModel) === 'veo-3.1' ? 'Veo 3.1' : (take.videoModel || project.videoModel) === 'veo-fast' ? 'Veo Fast' : 'Flow'}
                           />
                           <p className="mt-2 text-[8px] text-zinc-500 italic">
                             Isto pode demorar 2-5 min. Podes continuar a trabalhar.
@@ -1963,34 +1980,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         <IntelligentEditor 
           mediaItem={editingItem}
           aspectRatio={project.aspectRatio}
+          initialMode={editingItem.initialMode}
+          defaultVideoModel={project.videoModel}
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}
-        />
-      )}
-
-      {extendingTake && (
-        <VideoExtender
-          videoUrl={extendingTake.take.videoUrl!}
-          videoObject={extendingTake.take.videoObject}
-          aspectRatio={project.aspectRatio}
-          onClose={() => setExtendingTake(null)}
-          onSave={(newUrl, newObject) => {
-            const updatedScenes = project.scenes.map((s) => {
-              if (s.id === extendingTake.sceneId) {
-                return {
-                  ...s,
-                  takes: s.takes.map((t) =>
-                    t.id === extendingTake.take.id
-                      ? { ...t, videoUrl: newUrl, videoObject: newObject, updatedAt: Date.now() }
-                      : t
-                  ),
-                };
-              }
-              return s;
-            });
-            setProject({ ...project, scenes: updatedScenes });
-            setExtendingTake(null);
-          }}
         />
       )}
     </div>

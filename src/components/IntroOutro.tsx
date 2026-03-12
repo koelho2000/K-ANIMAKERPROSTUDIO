@@ -190,7 +190,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
         }
       }
 
-      const operation = await generateVideo(editedPrompt, currentData.imageUrl, undefined, currentData.videoModel || 'flow', project.aspectRatio);
+      const operation = await generateVideo(editedPrompt, currentData.imageUrl, undefined, currentData.videoModel || project.videoModel || 'flow', project.aspectRatio);
       
       updateData({ videoOperationId: operation.name, lastVideoPrompt: editedPrompt });
       
@@ -425,24 +425,34 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                   <div className="flex items-center gap-2">
                     <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
                       <button
-                        onClick={() => updateData({ videoModel: 'flow' })}
+                        onClick={() => updateData({ videoModel: 'veo-3.1' })}
                         className={`px-2 py-1 text-[9px] font-bold rounded-md transition-all ${
-                          (currentData.videoModel || 'flow') === 'flow'
+                          (currentData.videoModel || project.videoModel) === 'veo-3.1'
                             ? "bg-white text-indigo-600 shadow-sm"
                             : "text-zinc-400 hover:text-zinc-600"
                         }`}
                       >
-                        FLOW
+                        VEO 3.1
                       </button>
                       <button
-                        onClick={() => updateData({ videoModel: 'veo' })}
+                        onClick={() => updateData({ videoModel: 'veo-fast' })}
                         className={`px-2 py-1 text-[9px] font-bold rounded-md transition-all ${
-                          currentData.videoModel === 'veo'
+                          (currentData.videoModel || project.videoModel) === 'veo-fast'
+                            ? "bg-white text-amber-600 shadow-sm"
+                            : "text-zinc-400 hover:text-zinc-600"
+                        }`}
+                      >
+                        FAST
+                      </button>
+                      <button
+                        onClick={() => updateData({ videoModel: 'flow' })}
+                        className={`px-2 py-1 text-[9px] font-bold rounded-md transition-all ${
+                          (currentData.videoModel || project.videoModel) === 'flow'
                             ? "bg-white text-emerald-600 shadow-sm"
                             : "text-zinc-400 hover:text-zinc-600"
                         }`}
                       >
-                        VEO
+                        FLOW
                       </button>
                     </div>
                     <button
@@ -486,7 +496,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                         <ProgressBar 
                           progress={progress} 
                           label="A renderizar vídeo..." 
-                          modelName={(currentData.videoModel || 'flow') === 'veo' ? 'Veo' : 'Flow'} 
+                          modelName={(currentData.videoModel || project.videoModel) === 'veo-3.1' ? 'Veo 3.1' : (currentData.videoModel || project.videoModel) === 'veo-fast' ? 'Veo Fast' : 'Flow'} 
                         />
                         <p className="mt-2 text-[10px] text-zinc-500">Isto pode demorar alguns minutos. Estamos a adicionar movimento e atmosfera.</p>
                       </div>
