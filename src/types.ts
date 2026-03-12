@@ -33,6 +33,8 @@ export interface Project {
   language: string;
   duration: string;
   aspectRatio: '9:16' | '16:9' | '4:3' | '1:1';
+  sceneDetailLevel: 'low' | 'medium' | 'high';
+  takeDetailLevel: 'low' | 'medium' | 'high';
   script: string;
   characters: Character[];
   settings: Setting[];

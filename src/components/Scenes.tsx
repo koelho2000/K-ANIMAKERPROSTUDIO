@@ -13,6 +13,8 @@ import {
   Users,
   MapPin,
   Maximize2,
+  Info,
+  Zap,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Type } from "@google/genai";
@@ -33,6 +35,18 @@ export default function Scenes({ project, setProject }: ScenesProps) {
   const [isGeneratingAllTakes, setIsGeneratingAllTakes] = useState(false);
   const [expandedSceneId, setExpandedSceneId] = useState<string | null>(null);
   const [showCameraHelp, setShowCameraHelp] = useState(false);
+
+  const getTargetCounts = () => {
+    const sceneCounts = { low: 3, medium: 6, high: 12 };
+    const takeCounts = { low: 2, medium: 4, high: 8 };
+    
+    const scenes = sceneCounts[project.sceneDetailLevel];
+    const takes = takeCounts[project.takeDetailLevel];
+    
+    return { scenes, takes };
+  };
+
+  const { scenes: targetScenes, takes: targetTakes } = getTargetCounts();
 
   const cameraTypes = [
     { name: "Extreme Close-Up (ECU)", desc: "Foca num detalhe muito pequeno (ex: olhos)." },
@@ -80,10 +94,12 @@ export default function Scenes({ project, setProject }: ScenesProps) {
     setIsGeneratingScenes(true);
     try {
       const prompt = `
-        Com base no seguinte guião de filme de animação, divide a história em cenas lógicas.
+        Com base no seguinte guião de filme de animação, divide a história em exatamente ${targetScenes} cenas lógicas.
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
         Guião: ${project.script}
+        
+        IMPORTANTE: Deves gerar exatamente ${targetScenes} cenas para cumprir o nível de detalhe solicitado pelo utilizador.
       `;
 
       const schema = {
@@ -141,7 +157,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         .join("\n");
 
       const prompt = `
-        Para a seguinte cena de um filme de animação, divide-a em "takes" ou planos de câmara individuais.
+        Para a seguinte cena de um filme de animação, divide-a em exatamente ${targetTakes} "takes" ou planos de câmara individuais.
         Cena: ${scene.title}
         Descrição: ${scene.description}
         Tipo de filme: ${project.filmType}
@@ -153,6 +169,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         Contexto de Cenários:
         ${settingsContext}
 
+        IMPORTANTE: Deves gerar exatamente ${targetTakes} takes para cumprir o nível de detalhe solicitado pelo utilizador.
         Para cada take, define a ação, o movimento/tipo de câmara, som ambiente, música e diálogo (se houver).
         Garante que as ações respeitam as descrições das personagens e cenários fornecidos.
       `;
@@ -548,6 +565,25 @@ export default function Scenes({ project, setProject }: ScenesProps) {
             )}
             Gerar Cenas Automaticamente
           </button>
+        </div>
+      </div>
+
+      <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
+            <Info className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-indigo-900">Configuração de Detalhe Ativa</p>
+            <p className="text-xs text-indigo-700">
+              Alvo: <span className="font-bold">{targetScenes} Cenas</span> com <span className="font-bold">{targetTakes} Takes</span> cada.
+              Nível: {project.sceneDetailLevel === 'low' ? 'Mínimo' : project.sceneDetailLevel === 'medium' ? 'Médio' : 'Máximo'} / {project.takeDetailLevel === 'low' ? 'Mínimo' : project.takeDetailLevel === 'medium' ? 'Médio' : 'Máximo'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-indigo-100 shadow-sm">
+          <Zap className="w-4 h-4 text-indigo-500" />
+          <span className="text-sm font-bold text-zinc-700">Total: {targetScenes * targetTakes} Takes</span>
         </div>
       </div>
 

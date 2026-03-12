@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Project } from "../types";
-import { Settings, Zap, AlertCircle, CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { Settings, Zap, AlertCircle, CheckCircle2, Loader2, Sparkles, HelpCircle, Info } from "lucide-react";
 import { getGenAI } from "../services/geminiService";
 
 interface SetupProps {
@@ -11,6 +11,7 @@ interface SetupProps {
 
 export default function Setup({ project, setProject, onStartMassProduction }: SetupProps) {
   const [isValidating, setIsValidating] = useState(false);
+  const [showDurationHelp, setShowDurationHelp] = useState(false);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -84,6 +85,58 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
     if (status === 'ok') return <CheckCircle2 className="w-4 h-4" />;
     if (status === 'warning' || status === 'error') return <AlertCircle className="w-4 h-4" />;
     return null;
+  };
+
+  const getDetailValue = (level: 'low' | 'medium' | 'high') => {
+    if (level === 'low') return 0;
+    if (level === 'medium') return 1;
+    return 2;
+  };
+
+  const getDetailLevelFromValue = (value: number): 'low' | 'medium' | 'high' => {
+    if (value === 0) return 'low';
+    if (value === 1) return 'medium';
+    return 'high';
+  };
+
+  const getTargetCounts = () => {
+    const durationMap: Record<string, number> = {
+      "1 minuto": 60,
+      "1 a 5 minutos": 180,
+      "5 a 15 minutos": 600,
+      "15 a 30 minutos": 1350,
+      "30 a 60 minutos": 2700,
+      "60 a 90 minutos": 4500,
+      "90 a 120 minutos": 6300,
+    };
+
+    const baseSeconds = durationMap[project.duration] || 180;
+    // Each take is 5s. Intro/Outro are 5s each (10s total).
+    const totalTakesBase = Math.max(1, (baseSeconds - 10) / 5);
+    const baseSqrt = Math.sqrt(totalTakesBase);
+
+    const multipliers = { low: 0.7, medium: 1.0, high: 1.4 };
+    
+    const sceneMultiplier = multipliers[project.sceneDetailLevel];
+    const takeMultiplier = multipliers[project.takeDetailLevel];
+    
+    const scenes = Math.max(1, Math.round(baseSqrt * sceneMultiplier));
+    const takes = Math.max(1, Math.round(baseSqrt * takeMultiplier));
+    
+    return { scenes, takes };
+  };
+
+  const calculateTotalDuration = () => {
+    const { scenes, takes } = getTargetCounts();
+    const takeDuration = 5; // 5 seconds per take
+    const introDuration = 5;
+    const creditsDuration = 5;
+    
+    const totalSeconds = introDuration + (scenes * takes * takeDuration) + creditsDuration;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    
+    return `${minutes}m ${seconds}s`;
   };
 
   const isConfigComplete = project.title.trim() !== "" && 
@@ -289,7 +342,39 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
               <option value="Noir">Noir</option>
               <option value="Cyberpunk">Cyberpunk</option>
               <option value="Épico">Épico</option>
+              <option value="Romance">Romance</option>
             </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Duração do Filme (Intervalo)
+            </label>
+            <select
+              name="duration"
+              value={project.duration}
+              onChange={handleChange}
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
+            >
+              <option value="1 minuto">1 minuto</option>
+              <option value="1 a 5 minutos">1 a 5 minutos</option>
+              <option value="5 a 15 minutos">5 a 15 minutos</option>
+              <option value="15 a 30 minutos">15 a 30 minutos</option>
+              <option value="30 a 60 minutos">30 a 60 minutos</option>
+              <option value="60 a 90 minutos">60 a 90 minutos</option>
+              <option value="90 a 120 minutos">90 a 120 minutos</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Duração Final Calculada
+            </label>
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-700 font-bold">
+              <Zap className="w-4 h-4 text-indigo-500" />
+              {calculateTotalDuration()}
+            </div>
           </div>
         </div>
 
@@ -311,25 +396,6 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
               <option value="Francês">Francês</option>
               <option value="Japonês">Japonês</option>
               <option value="Alemão">Alemão</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-2">
-              Duração
-            </label>
-            <select
-              name="duration"
-              value={project.duration}
-              onChange={handleChange}
-              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
-            >
-              <option value="1 minuto">1 minuto</option>
-              <option value="1 a 5 minutos">1 a 5 minutos</option>
-              <option value="5 a 15 minutos">5 a 15 minutos</option>
-              <option value="15 a 30 minutos">15 a 30 minutos</option>
-              <option value="30 a 60 minutos">30 a 60 minutos</option>
-              <option value="60 a 90 minutos">60 a 90 minutos</option>
-              <option value="90 a 120 minutos">90 a 120 minutos</option>
             </select>
           </div>
           <div>
@@ -367,6 +433,87 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
               <option value="zoom-in">Zoom In</option>
               <option value="zoom-out">Zoom Out</option>
             </select>
+          </div>
+        </div>
+
+        {/* Duration and Detail Section */}
+        <div className="pt-6 border-t border-zinc-100">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold text-zinc-900">Duração e Nível de Detalhe</h3>
+              <button 
+                onClick={() => setShowDurationHelp(!showDurationHelp)}
+                className="p-1 text-zinc-400 hover:text-indigo-600 transition-colors"
+              >
+                <HelpCircle className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">
+              <Info className="w-3 h-3" />
+              Base: {getTargetCounts().scenes} Cenas x {getTargetCounts().takes} Takes
+            </div>
+          </div>
+
+          {showDurationHelp && (
+            <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-sm text-indigo-900 animate-in fade-in slide-in-from-top-2">
+              <p className="font-bold mb-2">Como funciona o cálculo?</p>
+              <ul className="list-disc list-inside space-y-1 opacity-80">
+                <li>O utilizador define o <strong>intervalo de duração</strong> pretendido.</li>
+                <li>Os slides de detalhe ajustam a <strong>estrutura</strong> do filme dentro desse intervalo.</li>
+                <li>Cada Take tem uma duração base de <strong>5 segundos</strong>.</li>
+                <li>A Intro e os Créditos têm <strong>5 segundos</strong> cada.</li>
+                <li><strong>Nível de Cenas:</strong> Define a fragmentação da história em mais ou menos locais/momentos.</li>
+                <li><strong>Nível de Takes:</strong> Define a densidade de planos de câmara por cada cena.</li>
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-8">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-medium text-zinc-700">Nível de Detalhe das Cenas</label>
+                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2 py-1 rounded">
+                  {project.sceneDetailLevel === 'low' ? 'Mínimo' : project.sceneDetailLevel === 'medium' ? 'Médio' : 'Máximo'}
+                </span>
+              </div>
+              <input 
+                type="range"
+                min="0"
+                max="2"
+                step="1"
+                value={getDetailValue(project.sceneDetailLevel)}
+                onChange={(e) => setProject(prev => ({ ...prev, sceneDetailLevel: getDetailLevelFromValue(parseInt(e.target.value)) }))}
+                className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              />
+              <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-widest px-1">
+                <span>Mínimo</span>
+                <span>Médio</span>
+                <span>Máximo</span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-medium text-zinc-700">Nível de Detalhe dos Takes</label>
+                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2 py-1 rounded">
+                  {project.takeDetailLevel === 'low' ? 'Mínimo' : project.takeDetailLevel === 'medium' ? 'Médio' : 'Máximo'}
+                </span>
+              </div>
+              <input 
+                type="range"
+                min="0"
+                max="2"
+                step="1"
+                value={getDetailValue(project.takeDetailLevel)}
+                onChange={(e) => setProject(prev => ({ ...prev, takeDetailLevel: getDetailLevelFromValue(parseInt(e.target.value)) }))}
+                className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              />
+              <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-widest px-1">
+                <span>Mínimo</span>
+                <span>Médio</span>
+                <span>Máximo</span>
+              </div>
+            </div>
           </div>
         </div>
 

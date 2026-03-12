@@ -28,6 +28,7 @@ import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
+import VideoExtender from "./VideoExtender";
 
 interface ProductionProps {
   project: Project;
@@ -69,6 +70,7 @@ export default function Production({ project, setProject }: ProductionProps) {
   const [infoModalTake, setInfoModalTake] = useState<Take | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string } | null>(null);
+  const [extendingTake, setExtendingTake] = useState<{ sceneId: string; take: Take } | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -849,95 +851,14 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     }
   };
 
-  const handleExtendTake = async (sceneId: string, takeId: string) => {
+  const handleExtendTake = (sceneId: string, takeId: string) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     const take = scene?.takes.find((t) => t.id === takeId);
     if (!scene || !take || !take.videoObject) {
       alert("É necessário ter um vídeo gerado com o modelo VEO para o poder extender.");
       return;
     }
-
-    const extensionPrompt = prompt("Descreve o que acontece nos próximos 7 segundos (ex: a personagem continua a andar e sorri):");
-    if (!extensionPrompt) return;
-
-    setGeneratingVideoId(takeId);
-    setVideoStatus("A preparar extensão do vídeo...");
-    try {
-      // Check if API key is selected
-      const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
-      const hasSystemKey = await (window as any).aistudio?.hasSelectedApiKey?.();
-      
-      if (!hasManualKey && !hasSystemKey) {
-        if ((window as any).aistudio?.openSelectKey) {
-          await (window as any).aistudio.openSelectKey();
-        } else {
-          alert("Por favor, configura a tua Chave API Gemini primeiro.");
-          return;
-        }
-      }
-
-      const operation = await extendVideo(
-        extensionPrompt,
-        take.videoObject,
-        project.aspectRatio
-      );
-      setVideoStatus("A aguardar extensão (2-5 min)...");
-
-      // Save operation name
-      const updatedScenes = project.scenes.map((s) => {
-        if (s.id === sceneId) {
-          return {
-            ...s,
-            takes: s.takes.map((t) =>
-              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: (t.lastVideoPrompt || "") + " | EXTENSION: " + extensionPrompt } : t,
-            ),
-          };
-        }
-        return s;
-      });
-      setProject({ ...project, scenes: updatedScenes });
-
-      // Start polling
-      const { videoUrl, videoObject } = await pollVideoOperation(operation);
-      setVideoStatus("Extensão concluída!");
-
-      // Update with final video URL and object
-      setProject(prev => ({
-        ...prev,
-        scenes: prev.scenes.map((s) => {
-          if (s.id === sceneId) {
-            return {
-              ...s,
-              takes: s.takes.map((t) =>
-                t.id === takeId
-                  ? { ...t, videoUrl, videoObject, videoOperationId: undefined }
-                  : t,
-              ),
-            };
-          }
-          return s;
-        })
-      }));
-    } catch (error: any) {
-      console.error(error);
-      alert(`Erro ao extender vídeo: ${error.message || 'Verifica a consola.'}`);
-      
-      // Clear operation id on error
-      const errorScenes = project.scenes.map((s) => {
-        if (s.id === sceneId) {
-          return {
-            ...s,
-            takes: s.takes.map((t) =>
-              t.id === takeId ? { ...t, videoOperationId: undefined } : t,
-            ),
-          };
-        }
-        return s;
-      });
-      setProject({ ...project, scenes: errorScenes });
-    } finally {
-      setGeneratingVideoId(null);
-    }
+    setExtendingTake({ sceneId, take });
   };
 
   const handleAnalyzeTake = async (sceneId: string, takeId: string) => {
@@ -2044,6 +1965,32 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           aspectRatio={project.aspectRatio}
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}
+        />
+      )}
+
+      {extendingTake && (
+        <VideoExtender
+          videoUrl={extendingTake.take.videoUrl!}
+          videoObject={extendingTake.take.videoObject}
+          aspectRatio={project.aspectRatio}
+          onClose={() => setExtendingTake(null)}
+          onSave={(newUrl, newObject) => {
+            const updatedScenes = project.scenes.map((s) => {
+              if (s.id === extendingTake.sceneId) {
+                return {
+                  ...s,
+                  takes: s.takes.map((t) =>
+                    t.id === extendingTake.take.id
+                      ? { ...t, videoUrl: newUrl, videoObject: newObject, updatedAt: Date.now() }
+                      : t
+                  ),
+                };
+              }
+              return s;
+            });
+            setProject({ ...project, scenes: updatedScenes });
+            setExtendingTake(null);
+          }}
         />
       )}
     </div>

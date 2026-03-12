@@ -78,8 +78,18 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    const maskCanvas = maskCanvasRef.current;
+    if (!maskCanvas) return;
+    const ctx = maskCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = maskCanvas.getBoundingClientRect();
+    const x = ('touches' in e) ? e.touches[0].clientX - rect.left : (e as React.MouseEvent).clientX - rect.left;
+    const y = ('touches' in e) ? e.touches[0].clientY - rect.top : (e as React.MouseEvent).clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
     setIsDrawing(true);
-    draw(e);
   };
 
   const stopDrawing = () => {
@@ -114,8 +124,6 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
 
     ctx.lineTo(x, y);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x, y);
   };
 
   const clearMask = () => {
@@ -124,6 +132,7 @@ export default function IntelligentEditor({ mediaItem, aspectRatio, onSave, onCl
       const ctx = maskCanvas.getContext('2d');
       if (ctx) {
         ctx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+        ctx.beginPath();
         setHasMask(false);
       }
     }
