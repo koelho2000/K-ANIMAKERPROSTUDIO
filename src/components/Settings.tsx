@@ -66,12 +66,18 @@ export default function Settings({ project, setProject }: SettingsProps) {
   const handleGenerateSettings = async () => {
     setIsGenerating(true);
     try {
+      const isPTPT = project.language === "Português (Portugal)";
+      const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
+      
       const prompt = `
         Com base no seguinte guião de filme de animação, extrai os cenários principais e descreve-os visualmente.
         Foca-te apenas no ambiente e arquitetura. É CRÍTICO que a descrição NÃO inclua personagens, apenas o cenário vazio.
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
+        Língua: ${langSpec}
         Guião: ${project.script}
+        
+        ${isPTPT ? "IMPORTANTE: Todos os textos devem ser em Português de Portugal." : ""}
       `;
 
       const schema = {
@@ -216,7 +222,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
       });
 
       // 1. Get description from image
-      const newDescription = await describeSettingFromImage(base64, project.filmType, project.filmStyle);
+      const newDescription = await describeSettingFromImage(base64, project.filmType, project.filmStyle, project.language);
 
       // 2. Update setting
       const updatedSettings = project.settings.map((s) =>

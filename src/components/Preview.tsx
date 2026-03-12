@@ -406,8 +406,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
       const takesToTranslate = allTakes.filter(t => t.dialogue && t.dialogue !== "Nenhum");
       
       for (const take of takesToTranslate) {
-        const prompt = `Traduz o seguinte diálogo de filme de ${project.language || 'Português'} para ${targetLangName}. 
+        const isPTPT = targetLangName === "Português (Portugal)";
+        const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : targetLangName;
+        
+        const prompt = `Traduz o seguinte diálogo de filme de ${project.language || 'Português'} para ${langSpec}. 
         Diálogo: "${take.dialogue}"
+        ${isPTPT ? "IMPORTANTE: Usa estritamente Português de Portugal (ex: 'ecrã' em vez de 'tela', 'tu estás' em vez de 'você está', etc.)." : ""}
         Responde apenas com a tradução direta, sem aspas ou explicações.`;
         
         const translated = await generateText(prompt);
@@ -432,6 +436,10 @@ export default function Preview({ project, setProject }: PreviewProps) {
   };
 
   const handleNextClip = () => {
+    if (narrationAudioRef.current) {
+      narrationAudioRef.current.pause();
+      narrationAudioRef.current.currentTime = 0;
+    }
     if (currentClipIndex < movieClips.length - 1) {
       setCurrentClipIndex(prev => prev + 1);
     } else {
@@ -554,6 +562,24 @@ export default function Preview({ project, setProject }: PreviewProps) {
                           src={currentClip.videoUrl}
                           className="w-full h-full object-contain"
                           onEnded={isPlayingFullMovie ? handleNextClip : undefined}
+                          onPlay={() => {
+                            if (isNarrationEnabled && narrationAudioRef.current) {
+                              narrationAudioRef.current.play().catch(e => console.error("Narration play failed", e));
+                            }
+                          }}
+                          onPause={() => {
+                            if (narrationAudioRef.current) {
+                              narrationAudioRef.current.pause();
+                            }
+                          }}
+                          onSeeked={() => {
+                            if (isNarrationEnabled && narrationAudioRef.current && videoRef.current) {
+                              // Only sync if within bounds
+                              if (videoRef.current.currentTime < narrationAudioRef.current.duration) {
+                                narrationAudioRef.current.currentTime = videoRef.current.currentTime;
+                              }
+                            }
+                          }}
                           controls={!isPlayingFullMovie}
                           autoPlay={isPlayingFullMovie}
                           muted={false}

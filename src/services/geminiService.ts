@@ -362,11 +362,13 @@ export const extendVideo = async (
   });
 };
 
-export const describeCharacterFromImage = async (base64Image: string, filmType?: string, filmStyle?: string) => {
+export const describeCharacterFromImage = async (base64Image: string, filmType?: string, filmStyle?: string, language: string = "Português (Portugal)") => {
   return withRetry(async () => {
     const ai = getGenAI();
     const [mimeType, base64Data] = base64Image.split(";base64,");
     
+    const isPTPT = language === "Português (Portugal)";
+    const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : language;
     const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
 
     const response = await ai.models.generateContent({
@@ -380,7 +382,7 @@ export const describeCharacterFromImage = async (base64Image: string, filmType?:
             },
           },
           {
-            text: `Descreve detalhadamente esta personagem de animação.${context} Inclui a sua aparência física, vestuário, cores principais e personalidade sugerida pela imagem. A descrição deve ser em Português e adequada para ser usada como prompt de geração de imagem.`,
+            text: `Descreve detalhadamente esta personagem de animação.${context} Inclui a sua aparência física, vestuário, cores principais e personalidade sugerida pela imagem. A descrição deve ser em ${langSpec} e adequada para ser usada como prompt de geração de imagem. ${isPTPT ? "Usa estritamente Português de Portugal." : ""}`,
           },
         ],
       },
@@ -390,11 +392,13 @@ export const describeCharacterFromImage = async (base64Image: string, filmType?:
   });
 };
 
-export const describeSettingFromImage = async (base64Image: string, filmType?: string, filmStyle?: string) => {
+export const describeSettingFromImage = async (base64Image: string, filmType?: string, filmStyle?: string, language: string = "Português (Portugal)") => {
   return withRetry(async () => {
     const ai = getGenAI();
     const [mimeType, base64Data] = base64Image.split(";base64,");
     
+    const isPTPT = language === "Português (Portugal)";
+    const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : language;
     const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
 
     const response = await ai.models.generateContent({
@@ -408,7 +412,7 @@ export const describeSettingFromImage = async (base64Image: string, filmType?: s
             },
           },
           {
-            text: `Descreve detalhadamente este cenário ou localização para um filme de animação.${context} Foca-te na arquitetura, iluminação, cores, atmosfera e detalhes ambientais. NÃO incluas personagens na descrição. A descrição deve ser em Português e adequada para ser usada como prompt de geração de imagem.`,
+            text: `Descreve detalhadamente este cenário ou localização para um filme de animação.${context} Foca-te na arquitetura, iluminação, cores, atmosfera e detalhes ambientais. NÃO incluas personagens na descrição. A descrição deve ser em ${langSpec} e adequada para ser usada como prompt de geração de imagem. ${isPTPT ? "Usa estritamente Português de Portugal." : ""}`,
           },
         ],
       },
@@ -494,18 +498,28 @@ export const generateNarrationText = async (
   action: string,
   language: string,
   context: string,
-  previousNarrations: string[] = []
+  previousNarrations: string[] = [],
+  targetDuration?: number
 ) => {
   return withRetry(async () => {
     const ai = getGenAI();
-    const prompt = `Gera um texto de narração curto (máximo 2 frases) para um take de um filme.
+    const isPTPT = language === "Português (Portugal)";
+    const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : language;
+    
+    const durationContext = targetDuration 
+      ? `O take tem uma duração de EXATAMENTE ${targetDuration} segundos. O texto deve ser lido confortavelmente nesse tempo (aproximadamente ${Math.max(1, Math.floor(targetDuration * 2.5))} palavras).`
+      : "Gera um texto de narração curto (máximo 2 frases).";
+
+    const prompt = `Gera um texto de narração para um take de um filme.
     Acção do Take: "${action}"
-    Língua: ${language}
+    Língua: ${langSpec}
     Contexto do Filme: ${context}
     Narração anterior (para manter consistência): ${previousNarrations.slice(-2).join(" | ")}
     
+    ${durationContext}
+    ${isPTPT ? "IMPORTANTE: Usa estritamente Português de Portugal (ex: 'ecrã' em vez de 'tela', 'tu estás' em vez de 'você está', etc.)." : ""}
     O narrador deve ser expressivo e a entoação deve condizer com a acção. 
-    Responde APENAS com o texto da narração.`;
+    Responde APENAS com o texto da narração, sem aspas ou comentários.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3.1-pro-preview",

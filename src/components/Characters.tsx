@@ -190,12 +190,18 @@ export default function Characters({ project, setProject }: CharactersProps) {
   const handleGenerateCharacters = async () => {
     setIsGenerating(true);
     try {
+      const isPTPT = project.language === "Português (Portugal)";
+      const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
+      
       const prompt = `
         Com base no seguinte guião de filme de animação, extrai as personagens principais e descreve-as visualmente e psicologicamente.
         Para cada personagem, define também as características da sua voz para dobragem (língua/país, idade aproximada e personalidade vocal).
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
+        Língua: ${langSpec}
         Guião: ${project.script}
+        
+        ${isPTPT ? "IMPORTANTE: Todos os textos devem ser em Português de Portugal." : ""}
       `;
 
       const schema = {
@@ -403,7 +409,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
       });
 
       // 1. Get description from image
-      const newDescription = await describeCharacterFromImage(base64, project.filmType, project.filmStyle);
+      const newDescription = await describeCharacterFromImage(base64, project.filmType, project.filmStyle, project.language);
 
       // 2. Update character
       const updatedCharacter: Character = {

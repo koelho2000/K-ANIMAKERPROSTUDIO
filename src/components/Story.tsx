@@ -32,6 +32,9 @@ export default function Story({ project, setProject }: StoryProps) {
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
+      const isPTPT = project.language === "Português (Portugal)";
+      const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
+      
       const prompt = `
         Gera um guião detalhado (story script) para um filme de animação com as seguintes características:
         - Título: ${project.title}
@@ -39,9 +42,10 @@ export default function Story({ project, setProject }: StoryProps) {
         - Conceito/Tema: ${project.concept}
         - Tipo de Filme: ${project.filmType}
         - Estilo de Filme: ${project.filmStyle}
-        - Língua/Nacionalidade: ${project.language}
+        - Língua/Nacionalidade: ${langSpec}
         - Duração Esperada: ${project.duration}
 
+        ${isPTPT ? "IMPORTANTE: O guião deve ser escrito estritamente em Português de Portugal (ex: 'ecrã' em vez de 'tela', 'comboio' em vez de 'trem', 'autocarro' em vez de 'ônibus', etc.)." : ""}
         O guião deve incluir uma estrutura de 3 atos, descrições ricas dos ambientes e o arco narrativo principal.
       `;
       const script = await generateText(

@@ -84,7 +84,8 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
         selectedEvent.take.action,
         project.language,
         `Filme: ${project.title}. Conceito: ${project.concept}`,
-        previousNarrations
+        previousNarrations,
+        selectedEvent.take.duration || 5 // Default to 5s if not set
       );
       
       setNarrationText(text);
@@ -149,7 +150,8 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
             take.action,
             project.language,
             `Filme: ${project.title}. Conceito: ${project.concept}`,
-            currentNarrations
+            currentNarrations,
+            take.duration || 5
           );
           
           const audioUrl = await generateNarrationAudio(text);
@@ -479,6 +481,9 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
                     <Mic className="w-4 h-4 text-rose-600" />
                   </div>
                   <h3 className="font-bold text-zinc-900">Narração IA</h3>
+                  <span className="text-[10px] font-mono bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded">
+                    {selectedEvent.take.duration || 5}s
+                  </span>
                 </div>
                 <button
                   onClick={handleGenerateNarration}
@@ -502,6 +507,16 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
                     placeholder="O texto da narração aparecerá aqui..."
                     className="w-full h-24 p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-sm text-zinc-600 focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none resize-none"
                   />
+                  <div className="flex justify-between items-center mt-1 px-1">
+                    <span className={`text-[9px] font-medium ${
+                      narrationText.split(/\s+/).filter(Boolean).length > (selectedEvent.take.duration || 5) * 3 
+                        ? "text-rose-500" 
+                        : "text-zinc-400"
+                    }`}>
+                      {narrationText.split(/\s+/).filter(Boolean).length} palavras 
+                      (Sugerido: ~{Math.floor((selectedEvent.take.duration || 5) * 2.5)})
+                    </span>
+                  </div>
                   {narrationText !== selectedEvent.take.narration && (
                     <button
                       onClick={handleSaveNarration}

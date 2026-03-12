@@ -93,12 +93,17 @@ export default function Scenes({ project, setProject }: ScenesProps) {
   const handleGenerateScenes = async () => {
     setIsGeneratingScenes(true);
     try {
+      const isPTPT = project.language === "Português (Portugal)";
+      const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
+      
       const prompt = `
         Com base no seguinte guião de filme de animação, divide a história em exatamente ${targetScenes} cenas lógicas.
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
+        Língua: ${langSpec}
         Guião: ${project.script}
         
+        ${isPTPT ? "IMPORTANTE: Todos os textos devem ser em Português de Portugal (ex: 'ecrã' em vez de 'tela')." : ""}
         IMPORTANTE: Deves gerar exatamente ${targetScenes} cenas para cumprir o nível de detalhe solicitado pelo utilizador.
       `;
 
@@ -149,6 +154,9 @@ export default function Scenes({ project, setProject }: ScenesProps) {
   const handleGenerateTakes = async (scene: Scene, silent = false) => {
     if (!silent) setGeneratingTakesId(scene.id);
     try {
+      const isPTPT = project.language === "Português (Portugal)";
+      const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
+      
       const charactersContext = project.characters
         .map((c) => `${c.name}: ${c.description}`)
         .join("\n");
@@ -162,7 +170,9 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         Descrição: ${scene.description}
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
+        Língua: ${langSpec}
         
+        ${isPTPT ? "IMPORTANTE: Todos os textos (acção, câmara, som, música, diálogo) devem ser em Português de Portugal." : ""}
         Contexto de Personagens:
         ${charactersContext}
         

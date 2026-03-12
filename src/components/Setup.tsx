@@ -34,6 +34,8 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
     
     setIsValidating(true);
     try {
+      const isPTPT = project.language === "Português (Portugal)";
+      const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
       const ai = getGenAI();
       const prompt = `Avalia a consistência e suficiência dos seguintes campos para um projeto de filme de animação:
       
@@ -41,6 +43,7 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
       Ideia Central: "${project.idea}"
       Conceito: "${project.concept}"
       Duração Selecionada: "${project.duration}"
+      Língua: "${langSpec}"
       
       Critérios:
       1. O título é apelativo e faz sentido com o conceito?
@@ -57,7 +60,8 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
         "concept": { "status": "ok" | "warning" | "error", "message": "string" }
       }
       
-      As mensagens devem ser em Português, curtas e construtivas.`;
+      As mensagens devem ser em ${langSpec}, curtas e construtivas.
+      ${isPTPT ? "IMPORTANTE: Utiliza Português de Portugal (PT-PT)." : ""}`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
