@@ -17,6 +17,7 @@ import ProgressBar from "./ProgressBar";
 import { describeSettingFromImage } from "../services/geminiService";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
+import IntelligentEditor from "./IntelligentEditor";
 
 interface SettingsProps {
   project: Project;
@@ -34,6 +35,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<{ id: string; prompt: string } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string } | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -260,6 +262,16 @@ export default function Settings({ project, setProject }: SettingsProps) {
     });
   };
 
+  const handleSaveEdit = (newUrl: string) => {
+    if (!editingItem) return;
+
+    const setId = editingItem.id.replace('set-img-', '');
+    const updatedSettings = project.settings.map((s) =>
+      s.id === setId ? { ...s, imageUrl: newUrl, updatedAt: Date.now() } : s
+    );
+    setProject({ ...project, settings: updatedSettings });
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-8 space-y-8">
       <div className="flex items-center justify-between">
@@ -343,6 +355,19 @@ export default function Settings({ project, setProject }: SettingsProps) {
                     }}
                   />
                   <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                    <button
+                      onClick={() => setEditingItem({
+                        id: `set-img-${setting.id}`,
+                        url: setting.imageUrl!,
+                        type: 'image',
+                        title: `${setting.name} - Concept Art`,
+                        source: 'Cenários'
+                      })}
+                      className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors"
+                      title="Edição Inteligente"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => setSelectedImage({ url: setting.imageUrl!, title: `${setting.name} - Concept Art` })}
                       className="bg-white/90 text-zinc-700 p-2 rounded-lg hover:bg-white hover:text-indigo-600 shadow-sm transition-colors"
@@ -472,6 +497,15 @@ export default function Settings({ project, setProject }: SettingsProps) {
         title="Editar Prompt de Cenário"
         description="Ajusta o prompt para obteres o melhor resultado visual."
       />
+
+      {editingItem && (
+        <IntelligentEditor 
+          mediaItem={editingItem}
+          aspectRatio={project.aspectRatio}
+          onSave={handleSaveEdit}
+          onClose={() => setEditingItem(null)}
+        />
+      )}
     </div>
   );
 }

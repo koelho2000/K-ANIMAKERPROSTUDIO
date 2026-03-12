@@ -100,7 +100,7 @@ export default function App() {
           <Summary project={project} />
         )}
         {currentStep === 10 && (
-          <MediaLibrary project={project} />
+          <MediaLibrary project={project} setProject={setProject} />
         )}
       </main>
 

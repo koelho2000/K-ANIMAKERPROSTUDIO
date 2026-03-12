@@ -10,11 +10,14 @@ import {
   Library,
   CheckSquare,
   Square,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles
 } from "lucide-react";
+import IntelligentEditor from "./IntelligentEditor";
 
 interface MediaLibraryProps {
   project: Project;
+  setProject: React.Dispatch<React.SetStateAction<Project>>;
 }
 
 interface MediaItem {
@@ -25,8 +28,9 @@ interface MediaItem {
   source: string;
 }
 
-export default function MediaLibrary({ project }: MediaLibraryProps) {
+export default function MediaLibrary({ project, setProject }: MediaLibraryProps) {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
+  const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<'all' | 'image' | 'video'>('all');
 
@@ -193,6 +197,54 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
     setSelectedIds(newSelected);
   };
 
+  const handleSaveEdit = (newUrl: string) => {
+    if (!editingItem) return;
+
+    setProject(prev => {
+      const newProject = { ...prev };
+      const id = editingItem.id;
+
+      if (id.startsWith('char-img-')) {
+        const charId = id.replace('char-img-', '');
+        newProject.characters = newProject.characters.map(c => c.id === charId ? { ...c, imageUrl: newUrl } : c);
+      } else if (id.startsWith('char-views-')) {
+        const charId = id.replace('char-views-', '');
+        newProject.characters = newProject.characters.map(c => c.id === charId ? { ...c, viewsImageUrl: newUrl } : c);
+      } else if (id.startsWith('set-img-')) {
+        const setId = id.replace('set-img-', '');
+        newProject.settings = newProject.settings.map(s => s.id === setId ? { ...s, imageUrl: newUrl } : s);
+      } else if (id.startsWith('take-start-')) {
+        const takeId = id.replace('take-start-', '');
+        newProject.scenes = newProject.scenes.map(s => ({
+          ...s,
+          takes: s.takes.map(t => t.id === takeId ? { ...t, startFrameUrl: newUrl } : t)
+        }));
+      } else if (id.startsWith('take-end-')) {
+        const takeId = id.replace('take-end-', '');
+        newProject.scenes = newProject.scenes.map(s => ({
+          ...s,
+          takes: s.takes.map(t => t.id === takeId ? { ...t, endFrameUrl: newUrl } : t)
+        }));
+      } else if (id.startsWith('take-video-')) {
+        const takeId = id.replace('take-video-', '');
+        newProject.scenes = newProject.scenes.map(s => ({
+          ...s,
+          takes: s.takes.map(t => t.id === takeId ? { ...t, videoUrl: newUrl } : t)
+        }));
+      } else if (id === 'intro-img') {
+        if (newProject.intro) newProject.intro.imageUrl = newUrl;
+      } else if (id === 'intro-video') {
+        if (newProject.intro) newProject.intro.videoUrl = newUrl;
+      } else if (id === 'outro-img') {
+        if (newProject.outro) newProject.outro.imageUrl = newUrl;
+      } else if (id === 'outro-video') {
+        if (newProject.outro) newProject.outro.videoUrl = newUrl;
+      }
+
+      return newProject;
+    });
+  };
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -321,6 +373,13 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
                 {/* Overlay Actions */}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <button 
+                    onClick={() => setEditingItem(item)}
+                    className="p-2 bg-indigo-600 rounded-full text-white hover:scale-110 transition-transform"
+                    title="Edição Inteligente"
+                  >
+                    <Sparkles className="w-5 h-5" />
+                  </button>
+                  <button 
                     onClick={() => setSelectedItem(item)}
                     className="p-2 bg-white rounded-full text-zinc-900 hover:scale-110 transition-transform"
                     title="Maximizar"
@@ -360,6 +419,15 @@ export default function MediaLibrary({ project }: MediaLibraryProps) {
       )}
 
       {/* Full Screen Preview Modal */}
+      {editingItem && (
+        <IntelligentEditor 
+          mediaItem={editingItem}
+          aspectRatio={project.aspectRatio}
+          onSave={handleSaveEdit}
+          onClose={() => setEditingItem(null)}
+        />
+      )}
+
       {selectedItem && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4 md:p-10 animate-in fade-in duration-300">
           <button 

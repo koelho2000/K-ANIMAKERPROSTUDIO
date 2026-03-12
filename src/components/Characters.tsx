@@ -25,6 +25,7 @@ import { Type } from "@google/genai";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
+import IntelligentEditor from "./IntelligentEditor";
 
 interface CharactersProps {
   project: Project;
@@ -47,6 +48,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<{ id: string; prompt: string; type: 'main' | 'views' } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string } | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -499,6 +501,20 @@ export default function Characters({ project, setProject }: CharactersProps) {
     });
   };
 
+  const handleSaveEdit = (newUrl: string) => {
+    if (!editingItem) return;
+
+    const charId = editingItem.id.replace('char-img-', '').replace('char-views-', '');
+    const isViews = editingItem.id.startsWith('char-views-');
+
+    const updatedCharacters = project.characters.map((c) =>
+      c.id === charId 
+        ? { ...c, [isViews ? 'viewsImageUrl' : 'imageUrl']: newUrl, updatedAt: Date.now() } 
+        : c
+    );
+    setProject({ ...project, characters: updatedCharacters });
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-8 space-y-8">
       <div className="flex items-center justify-between">
@@ -603,6 +619,19 @@ export default function Characters({ project, setProject }: CharactersProps) {
               <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-30">
                 {char.imageUrl && (
                   <>
+                    <button
+                      onClick={() => setEditingItem({
+                        id: `char-img-${char.id}`,
+                        url: char.imageUrl!,
+                        type: 'image',
+                        title: `${char.name} - Concept Art`,
+                        source: 'Personagens'
+                      })}
+                      className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors"
+                      title="Edição Inteligente"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => setSelectedImage({ url: char.imageUrl!, title: `${char.name} - Concept Art` })}
                       className="bg-white/90 text-zinc-700 p-2 rounded-lg hover:bg-white hover:text-indigo-600 shadow-sm transition-colors"
@@ -785,6 +814,19 @@ export default function Characters({ project, setProject }: CharactersProps) {
                 {char.viewsImageUrl && (
                   <div className="flex gap-2">
                     <button
+                      onClick={() => setEditingItem({
+                        id: `char-views-${char.id}`,
+                        url: char.viewsImageUrl!,
+                        type: 'image',
+                        title: `${char.name} - Vistas`,
+                        source: 'Personagens'
+                      })}
+                      className="text-indigo-600 hover:text-indigo-700 transition-colors"
+                      title="Edição Inteligente"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => setSelectedImage({ url: char.viewsImageUrl!, title: `${char.name} - Vistas` })}
                       className="text-zinc-400 hover:text-indigo-600 transition-colors"
                       title="Maximizar"
@@ -878,6 +920,15 @@ export default function Characters({ project, setProject }: CharactersProps) {
         title={editingPrompt?.type === 'main' ? "Editar Prompt de Personagem" : "Editar Prompt de Vistas (Turnaround)"}
         description="Ajusta o prompt para obteres o melhor resultado visual."
       />
+
+      {editingItem && (
+        <IntelligentEditor 
+          mediaItem={editingItem}
+          aspectRatio="1:1"
+          onSave={handleSaveEdit}
+          onClose={() => setEditingItem(null)}
+        />
+      )}
     </div>
   );
 }

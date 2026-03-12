@@ -27,6 +27,7 @@ import {
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
+import IntelligentEditor from "./IntelligentEditor";
 
 interface ProductionProps {
   project: Project;
@@ -67,6 +68,7 @@ export default function Production({ project, setProject }: ProductionProps) {
   );
   const [infoModalTake, setInfoModalTake] = useState<Take | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string } | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -564,6 +566,38 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       }
       return s;
     });
+    setProject({ ...project, scenes: updatedScenes });
+  };
+
+  const handleSaveEdit = (newUrl: string) => {
+    if (!editingItem) return;
+
+    const id = editingItem.id;
+    let takeId = '';
+    let type: 'start' | 'end' | 'video' = 'start';
+
+    if (id.startsWith('take-start-')) {
+      takeId = id.replace('take-start-', '');
+      type = 'start';
+    } else if (id.startsWith('take-end-')) {
+      takeId = id.replace('take-end-', '');
+      type = 'end';
+    } else if (id.startsWith('take-video-')) {
+      takeId = id.replace('take-video-', '');
+      type = 'video';
+    }
+
+    const updatedScenes = project.scenes.map((s) => ({
+      ...s,
+      takes: s.takes.map((t) => {
+        if (t.id === takeId) {
+          if (type === 'start') return { ...t, startFrameUrl: newUrl, updatedAt: Date.now() };
+          if (type === 'end') return { ...t, endFrameUrl: newUrl, updatedAt: Date.now() };
+          if (type === 'video') return { ...t, videoUrl: newUrl, videoOperationId: undefined, updatedAt: Date.now() };
+        }
+        return t;
+      })
+    }));
     setProject({ ...project, scenes: updatedScenes });
   };
 
@@ -1512,7 +1546,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                         </button>
                       </div>
                     </div>
-                    <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group`}>
+                    <div 
+                      className="w-full bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group"
+                      style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
+                    >
                       {take.startFrameUrl ? (
                         <>
                           <img
@@ -1532,6 +1569,19 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                               }
                             }}
                           />
+                          <button
+                            onClick={() => setEditingItem({
+                              id: `take-start-${take.id}`,
+                              url: take.startFrameUrl!,
+                              type: 'image',
+                              title: `Take ${index + 1} - Frame Inicial`,
+                              source: 'Produção'
+                            })}
+                            className="absolute top-2 right-[72px] bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20"
+                            title="Edição Inteligente"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => setSelectedImage({ url: take.startFrameUrl!, title: `Take ${index + 1} - Frame Inicial` })}
                             className="absolute top-2 right-2 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20"
@@ -1611,7 +1661,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                         </button>
                       </div>
                     </div>
-                    <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group`}>
+                    <div 
+                      className="w-full bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group"
+                      style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
+                    >
                       {take.endFrameUrl ? (
                         <>
                           <img
@@ -1631,6 +1684,19 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                               }
                             }}
                           />
+                          <button
+                            onClick={() => setEditingItem({
+                              id: `take-end-${take.id}`,
+                              url: take.endFrameUrl!,
+                              type: 'image',
+                              title: `Take ${index + 1} - Frame Final`,
+                              source: 'Produção'
+                            })}
+                            className="absolute top-2 right-[72px] bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20"
+                            title="Edição Inteligente"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => setSelectedImage({ url: take.endFrameUrl!, title: `Take ${index + 1} - Frame Final` })}
                             className="absolute top-2 right-2 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20"
@@ -1761,7 +1827,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                         )}
                       </div>
                     </div>
-                    <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative group`}>
+                    <div 
+                      className="w-full bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative group"
+                      style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
+                    >
                       {take.videoUrl ? (
                         <>
                           <video
@@ -1769,6 +1838,19 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             controls
                             className="w-full h-full object-cover"
                           />
+                          <button
+                            onClick={() => setEditingItem({
+                              id: `take-video-${take.id}`,
+                              url: take.videoUrl!,
+                              type: 'video',
+                              title: `Take ${index + 1} - Vídeo`,
+                              source: 'Produção'
+                            })}
+                            className="absolute top-2 right-10 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20 flex items-center justify-center"
+                            title="Edição Inteligente"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                          </button>
                           <a
                             href={take.videoUrl}
                             download={`take-${index + 1}-video.mp4`}
@@ -1955,6 +2037,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         title="Validar Prompt de Vídeo"
         description="Edita o prompt para garantir que a animação do vídeo corresponde à tua visão."
       />
+
+      {editingItem && (
+        <IntelligentEditor 
+          mediaItem={editingItem}
+          aspectRatio={project.aspectRatio}
+          onSave={handleSaveEdit}
+          onClose={() => setEditingItem(null)}
+        />
+      )}
     </div>
   );
 }

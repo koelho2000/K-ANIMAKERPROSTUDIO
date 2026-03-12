@@ -348,6 +348,26 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
               <option value="1:1">1:1 (Quadrado / Instagram)</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Transição Global
+            </label>
+            <select
+              name="globalTransition"
+              value={project.globalTransition || 'cut'}
+              onChange={handleChange}
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
+            >
+              <option value="cut">Corte Seco (Cut)</option>
+              <option value="fade">Dissolver (Fade)</option>
+              <option value="fade-black">Fade para Preto</option>
+              <option value="fade-white">Fade para Branco</option>
+              <option value="wipe-left">Wipe Esquerda</option>
+              <option value="wipe-right">Wipe Direita</option>
+              <option value="zoom-in">Zoom In</option>
+              <option value="zoom-out">Zoom Out</option>
+            </select>
+          </div>
         </div>
 
         {/* Mass Production Activation */}

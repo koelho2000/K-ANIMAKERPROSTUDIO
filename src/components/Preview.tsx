@@ -495,7 +495,10 @@ export default function Preview({ project, setProject }: PreviewProps) {
           <div className="bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-800 overflow-hidden relative">
             {movieClips.length > 0 ? (
               <div className="relative group overflow-hidden">
-                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black flex items-center justify-center relative`}>
+                <div 
+                  className="w-full bg-black flex items-center justify-center relative"
+                  style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
+                >
                   <AnimatePresence mode="wait">
                     <motion.div
                       key={currentClipIndex}
@@ -566,7 +569,10 @@ export default function Preview({ project, setProject }: PreviewProps) {
                 </div>
               </div>
             ) : (
-              <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-zinc-800 flex flex-col items-center justify-center text-zinc-500`}>
+              <div 
+                className="w-full bg-zinc-800 flex flex-col items-center justify-center text-zinc-500"
+                style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
+              >
                 <PlayCircle className="w-16 h-16 mb-4 opacity-50" />
                 <p>Ainda não existem conteúdos renderizados.</p>
               </div>
@@ -751,7 +757,10 @@ export default function Preview({ project, setProject }: PreviewProps) {
                   currentClipIndex === i && !isPlayingFullMovie ? "ring-2 ring-indigo-500 ring-offset-4 rounded-xl" : ""
                 }`}
               >
-                <div className={`aspect-[${(project.aspectRatio || '16:9').replace(':', '/')}] bg-black rounded-xl overflow-hidden border border-zinc-200 relative`}>
+                <div 
+                  className="w-full bg-black rounded-xl overflow-hidden border border-zinc-200 relative"
+                  style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
+                >
                   <video src={clip.videoUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <Play className="w-8 h-8 text-white fill-white" />

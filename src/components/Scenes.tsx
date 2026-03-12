@@ -274,9 +274,11 @@ export default function Scenes({ project, setProject }: ScenesProps) {
     }
   };
 
-  const handleExtendScene = async (sceneId: string) => {
+  const handleExtendScene = async (sceneId: string, percentage: number) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     if (!scene) return;
+
+    const numNewTakes = Math.max(1, Math.round(scene.takes.length * (percentage / 100)));
 
     setGeneratingTakesId(sceneId);
     try {
@@ -290,7 +292,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
       const currentTakesContext = scene.takes.map((t, i) => `Take ${i+1}: ${t.action}`).join("\n");
 
       const prompt = `
-        Aumenta o detalhe da seguinte cena de um filme de animação, gerando MAIS takes (planos de câmara) adicionais para tornar a cena mais rica e cinematográfica.
+        Aumenta o detalhe da seguinte cena de um filme de animação, gerando exatamente ${numNewTakes} takes (planos de câmara) adicionais para tornar a cena mais rica e cinematográfica.
         
         Cena: ${scene.title}
         Descrição: ${scene.description}
@@ -306,7 +308,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         Contexto de Cenários:
         ${settingsContext}
 
-        Gera novos takes que complementem os atuais ou que dividam a ação de forma mais detalhada. 
+        Gera exatamente ${numNewTakes} novos takes que complementem os atuais ou que dividam a ação de forma mais detalhada. 
         Retorna APENAS os novos takes que devem ser ADICIONADOS à cena.
       `;
 
@@ -629,22 +631,30 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                   {scene.takes.length} Takes
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExtendScene(scene.id);
-                    }}
-                    disabled={generatingTakesId === scene.id || scene.takes.length === 0}
-                    className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-indigo-600 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                    title="Adicionar mais takes para detalhar a cena"
-                  >
-                    {generatingTakesId === scene.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Maximize2 className="w-4 h-4" />
+                  <div className="flex items-center bg-white border border-zinc-200 rounded-lg overflow-hidden">
+                    <div className="px-2 py-1 text-[10px] font-bold text-zinc-400 border-r border-zinc-100 bg-zinc-50 uppercase">
+                      Extender
+                    </div>
+                    {[25, 50, 75, 100].map((pct) => (
+                      <button
+                        key={pct}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExtendScene(scene.id, pct);
+                        }}
+                        disabled={generatingTakesId === scene.id || scene.takes.length === 0}
+                        className="px-2 py-1.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 border-r border-zinc-100 last:border-r-0 transition-colors disabled:opacity-50"
+                        title={`Adicionar +${pct}% de takes (${Math.max(1, Math.round(scene.takes.length * (pct / 100)))} novos)`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                    {generatingTakesId === scene.id && (
+                      <div className="px-2 py-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
+                      </div>
                     )}
-                    Extender
-                  </button>
+                  </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -844,6 +854,32 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                               }
                               className="w-full text-sm text-zinc-800 bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded-lg p-2 outline-none transition-colors"
                             />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">
+                              Transição (Saída)
+                            </label>
+                            <select
+                              value={take.transition || 'cut'}
+                              onChange={(e) =>
+                                updateTake(
+                                  scene.id,
+                                  take.id,
+                                  "transition",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full text-sm text-zinc-800 bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded-lg p-2 outline-none transition-colors"
+                            >
+                              <option value="cut">Corte Seco (Cut)</option>
+                              <option value="fade">Dissolver (Fade)</option>
+                              <option value="fade-black">Fade para Preto</option>
+                              <option value="fade-white">Fade para Branco</option>
+                              <option value="wipe-left">Wipe Esquerda</option>
+                              <option value="wipe-right">Wipe Direita</option>
+                              <option value="zoom-in">Zoom In</option>
+                              <option value="zoom-out">Zoom Out</option>
+                            </select>
                           </div>
 
                           {/* Characters Selection */}
