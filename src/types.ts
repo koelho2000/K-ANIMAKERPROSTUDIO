@@ -37,6 +37,8 @@ export interface Project {
   duration: string;
   aspectRatio: '9:16' | '16:9' | '4:3' | '1:1';
   targetAudience?: TargetAudience;
+  director?: string;
+  author?: string;
   sceneDetailLevel: 'low' | 'medium' | 'high';
   takeDetailLevel: 'low' | 'medium' | 'high';
   script: string;
@@ -63,6 +65,7 @@ export interface Project {
   };
   globalTransition?: TransitionType;
   videoModel?: VideoModel;
+  ebook?: EBook;
   intro?: {
     type: string;
     prompt: string;
@@ -85,6 +88,7 @@ export interface Project {
     company?: string;
     director?: string;
     producer?: string;
+    author?: string;
     thankYouMessage?: string;
   };
 }
@@ -161,4 +165,19 @@ export interface Take {
     feedback: string;
     suggestions: string[];
   };
+}
+
+export interface EBookPage {
+  id: string;
+  sceneId?: string;
+  title: string;
+  content: string;
+  imageUrl?: string;
+  type: 'cover' | 'sub-cover' | 'content' | 'back-cover';
+}
+
+export interface EBook {
+  pages: EBookPage[];
+  generatedAt?: number;
+  withImages: boolean;
 }

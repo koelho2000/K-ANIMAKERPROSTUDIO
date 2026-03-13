@@ -1107,7 +1107,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                               Transição (Saída)
                             </label>
                             <select
-                              value={take.transition || 'cut'}
+                              value={take?.transition || 'cut'}
                               onChange={(e) =>
                                 updateTake(
                                   scene.id,

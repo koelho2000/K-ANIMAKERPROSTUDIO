@@ -12,6 +12,7 @@ import Summary from "./components/Summary";
 import Welcome from "./components/Welcome";
 import MediaLibrary from "./components/MediaLibrary";
 import Timelapse from "./components/Timelapse";
+import EBook from "./components/EBook";
 import MassProductionOverlay from "./components/MassProductionOverlay";
 import { Project } from "./types";
 import { v4 as uuidv4 } from "uuid";
@@ -109,6 +110,9 @@ export default function App() {
         )}
         {currentStep === 11 && (
           <Timelapse project={project} setProject={setProject} />
+        )}
+        {currentStep === 12 && (
+          <EBook project={project} setProject={setProject} />
         )}
       </main>
 

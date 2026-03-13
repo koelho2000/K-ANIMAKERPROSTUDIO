@@ -311,9 +311,33 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                     <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Realização</label>
                     <input
                       type="text"
-                      value={project.outro?.director || ""}
-                      onChange={(e) => updateData({ director: e.target.value })}
+                      value={project.director || project.outro?.director || ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setProject(prev => ({
+                          ...prev,
+                          director: val,
+                          outro: { ...prev.outro!, director: val }
+                        }));
+                      }}
                       placeholder="Nome do Realizador"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Autor / Argumentista</label>
+                    <input
+                      type="text"
+                      value={project.author || project.outro?.author || ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setProject(prev => ({
+                          ...prev,
+                          author: val,
+                          outro: { ...prev.outro!, author: val }
+                        }));
+                      }}
+                      placeholder="Nome do Autor"
                       className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
                     />
                   </div>

@@ -127,11 +127,11 @@ export default function Preview({ project, setProject }: PreviewProps) {
     },
   };
 
-  const currentTransition = currentClipIndex > 0 
-    ? (movieClips[currentClipIndex - 1] as any).transition || project.globalTransition || 'cut'
+  const currentTransition = currentClipIndex > 0 && movieClips[currentClipIndex - 1]
+    ? (movieClips[currentClipIndex - 1] as any)?.transition || project.globalTransition || 'cut'
     : 'cut';
 
-  const exitTransition = (currentClip as any).transition || project.globalTransition || 'cut';
+  const exitTransition = (currentClip as any)?.transition || project.globalTransition || 'cut';
 
   const handleToggleSubtitles = () => {
     setProject(prev => {
@@ -251,7 +251,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
       const clip = movieClips[index];
       if (!clip.videoUrl) return;
       
-      const transition = (clip as any).transition || project.globalTransition || 'cut';
+      const transition = (clip as any)?.transition || project.globalTransition || 'cut';
       
       setExportStatus(`A renderizar Clip ${index + 1} de ${totalClips}...`);
       setExportProgress((index / totalClips) * 100);
@@ -396,7 +396,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
     };
 
     for (let i = 0; i < totalClips; i++) {
-      const prevTransition = i > 0 ? (movieClips[i-1] as any).transition || project.globalTransition || 'cut' : 'cut';
+      const prevTransition = i > 0 && movieClips[i-1] ? (movieClips[i-1] as any)?.transition || project.globalTransition || 'cut' : 'cut';
       await renderClip(i, prevTransition);
     }
     
@@ -900,7 +900,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
                   <div className="h-px flex-1 bg-zinc-100" />
                   <div className="relative group/trans">
                     <select
-                      value={(clip as Take).transition || project.globalTransition || 'cut'}
+                      value={(clip as any)?.transition || project.globalTransition || 'cut'}
                       onChange={(e) => handleUpdateTransition(clip.id, e.target.value as TransitionType)}
                       className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-[9px] font-bold text-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none pr-6 cursor-pointer hover:bg-white transition-colors"
                     >

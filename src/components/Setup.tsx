@@ -246,6 +246,35 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
           )}
         </div>
 
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Realizador
+            </label>
+            <input
+              type="text"
+              name="director"
+              value={project.director || ""}
+              onChange={handleChange}
+              placeholder="Nome do Realizador"
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Autor
+            </label>
+            <input
+              type="text"
+              name="author"
+              value={project.author || ""}
+              onChange={handleChange}
+              placeholder="Nome do Autor"
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+            />
+          </div>
+        </div>
+
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-zinc-700">

@@ -19,6 +19,7 @@ import {
   ChevronUp,
   Settings2,
   Clock,
+  BookOpen,
 } from "lucide-react";
 import { Project } from "../types";
 import { AUTOMATION_PHASES } from "../constants";
@@ -49,6 +50,7 @@ const steps = [
   { id: 9, name: "Quadro Resumo", icon: LayoutList },
   { id: 10, name: "Biblioteca de Media", icon: Library },
   { id: 11, name: "Timelapse", icon: Clock },
+  { id: 12, name: "EBook", icon: BookOpen },
 ];
 
 export default function Sidebar({
