@@ -14,3 +14,20 @@ export const AUTOMATION_PHASES = [
   { id: 11, name: "Legendas IA (Texto)", icon: Languages },
   { id: 12, name: "Montagem Final do Filme", icon: Film },
 ];
+
+export const ARTISTIC_STYLES = [
+  "Nenhum (Usar Descrição)",
+  "Real",
+  "Ultra Realista",
+  "Disney",
+  "Pixar",
+  "Aguarela",
+  "Esboço",
+  "Cartoon",
+  "Comic",
+  "Noir",
+  "Cyberpunk",
+  "Tim Burton",
+  "Gótico",
+  "Isométrico"
+];

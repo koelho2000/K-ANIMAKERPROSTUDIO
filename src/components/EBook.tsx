@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Project, EBook, EBookPage } from "../types";
-import { Book, Image as ImageIcon, Sparkles, Loader2, ChevronLeft, ChevronRight, Edit3, Save, RefreshCw, Trash2, BookOpen, User, PenTool, Building2 } from "lucide-react";
-import { getGenAI } from "../services/geminiService";
+import { Book, Image as ImageIcon, Sparkles, Loader2, ChevronLeft, ChevronRight, Edit3, Save, RefreshCw, Trash2, BookOpen, User, PenTool, Building2, Search, X, Maximize2, Layout, Clock, CheckCircle2, Circle } from "lucide-react";
+import { getGenAI, generateImage } from "../services/geminiService";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -17,6 +17,54 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editTitle, setEditTitle] = useState("");
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [pageSize, setPageSize] = useState<'A4' | 'A5'>('A5');
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [regenOptions, setRegenOptions] = useState({
+    detailLevel: 'medium',
+    textLength: 'medium',
+    descriptionLevel: 'medium',
+    actionLevel: 'medium'
+  });
+  const [generationLogs, setGenerationLogs] = useState<{ task: string; status: 'waiting' | 'running' | 'completed' }[]>([]);
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+
+  const allProjectImages = [
+    ...(project.intro?.imageUrl ? [{ url: project.intro.imageUrl, source: 'Intro' }] : []),
+    ...(project.outro?.imageUrl ? [{ url: project.outro.imageUrl, source: 'Outro' }] : []),
+    ...project.characters.filter(c => c.imageUrl).map(c => ({ url: c.imageUrl!, source: `Personagem: ${c.name}` })),
+    ...project.settings.filter(s => s.imageUrl).map(s => ({ url: s.imageUrl!, source: `Cenário: ${s.name}` })),
+    ...project.scenes.flatMap(s => s.takes.flatMap(t => [
+      ...(t.startFrameUrl ? [{ url: t.startFrameUrl, source: `Cena: ${s.title} (Início)` }] : []),
+      ...(t.endFrameUrl ? [{ url: t.endFrameUrl, source: `Cena: ${s.title} (Fim)` }] : [])
+    ]))
+  ];
+
+  const handleGeneratePageImage = async (pageId: string) => {
+    const page = project.ebook?.pages.find(p => p.id === pageId);
+    if (!page) return;
+
+    setIsGeneratingImage(true);
+    try {
+      const prompt = `Ilustração para um EBook de animação. Estilo: ${project.filmStyle}. Cena: ${page.title}. Descrição: ${page.content}`;
+      const imageUrl = await generateImage(prompt, project.aspectRatio);
+      
+      setProject(prev => ({
+        ...prev,
+        ebook: prev.ebook ? {
+          ...prev.ebook,
+          pages: prev.ebook.pages.map(p => p.id === pageId ? { ...p, imageUrl } : p)
+        } : undefined
+      }));
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar imagem para a página.");
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
 
   const handleGenerateEBook = async () => {
     if (project.scenes.length === 0) {
@@ -25,7 +73,28 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
     }
 
     setIsGenerating(true);
+    setGenerationStartTime(Date.now());
+    setElapsedTime(0);
+    
+    const tasks = [
+      { task: "Analisar estrutura do projeto", status: 'waiting' as const },
+      { task: "Gerar capa e introdução", status: 'waiting' as const },
+      ...project.scenes.map((s, i) => ({ task: `Escrever Cena ${i + 1}: ${s.title}`, status: 'waiting' as const })),
+      { task: "Gerar contra-capa e créditos", status: 'waiting' as const },
+      { task: "Processar ilustrações e layout", status: 'waiting' as const }
+    ];
+    setGenerationLogs(tasks);
+
+    const timer = setInterval(() => {
+      setElapsedTime(prev => prev + 1);
+    }, 1000);
+
     try {
+      const updateTaskStatus = (index: number, status: 'waiting' | 'running' | 'completed') => {
+        setGenerationLogs(prev => prev.map((t, i) => i === index ? { ...t, status } : t));
+      };
+
+      updateTaskStatus(0, 'running');
       const ai = getGenAI();
       const isPTPT = project.language === "Português (Portugal)";
       const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
@@ -37,6 +106,7 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
       Público Alvo: "${project.targetAudience}"
       Realizador: "${project.director || 'N/A'}"
       Autor: "${project.author || 'N/A'}"
+      Formato: ${pageSize} em ${orientation}
       
       Cenas:
       ${project.scenes.map((s, i) => `Cena ${i + 1}: ${s.title} - ${s.description}`).join('\n')}
@@ -61,6 +131,9 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
       Língua: ${langSpec}
       ${isPTPT ? "IMPORTANTE: Utiliza Português de Portugal (PT-PT)." : ""}`;
 
+      updateTaskStatus(0, 'completed');
+      updateTaskStatus(1, 'running');
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
@@ -68,13 +141,19 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
       });
 
       const result = JSON.parse(response.text || "{}");
+      updateTaskStatus(1, 'completed');
       
-      const pages: EBookPage[] = result.pages.map((p: any, index: number) => {
+      const pages: EBookPage[] = [];
+      
+      for (let i = 0; i < result.pages.length; i++) {
+        const p = result.pages[i];
+        const taskIndex = i === 0 ? 1 : (p.type === 'back-cover' ? tasks.length - 2 : i + 1);
+        if (taskIndex < tasks.length) updateTaskStatus(taskIndex, 'running');
+
         let imageUrl = undefined;
         if (withImages) {
           if (p.type === 'content' && p.sceneId) {
-            // Try to find an image from the scene's takes
-            const scene = project.scenes.find(s => s.id === p.sceneId || project.scenes[index-2]?.id === p.sceneId);
+            const scene = project.scenes.find(s => s.id === p.sceneId);
             if (scene) {
               const takeWithImage = scene.takes.find(t => t.startFrameUrl || t.endFrameUrl);
               imageUrl = takeWithImage?.startFrameUrl || takeWithImage?.endFrameUrl;
@@ -84,27 +163,35 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
           }
         }
 
-        return {
+        pages.push({
           id: uuidv4(),
           ...p,
           imageUrl
-        };
-      });
+        });
+        
+        if (taskIndex < tasks.length) updateTaskStatus(taskIndex, 'completed');
+      }
 
+      updateTaskStatus(tasks.length - 1, 'running');
       setProject(prev => ({
         ...prev,
         ebook: {
           pages,
           generatedAt: Date.now(),
-          withImages
+          withImages,
+          pageSize,
+          orientation
         }
       }));
+      updateTaskStatus(tasks.length - 1, 'completed');
       setCurrentPageIndex(0);
     } catch (error) {
       console.error("Erro ao gerar EBook:", error);
       alert("Ocorreu um erro ao gerar o EBook. Tenta novamente.");
     } finally {
+      clearInterval(timer);
       setIsGenerating(false);
+      setGenerationStartTime(null);
     }
   };
 
@@ -122,6 +209,12 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
       Tipo de Página: ${page.type}
       Título Atual: ${page.title}
       Conteúdo Atual: ${page.content}
+      
+      Preferências de Regeneração:
+      - Nível de Detalhe: ${regenOptions.detailLevel}
+      - Extensão do Texto: ${regenOptions.textLength}
+      - Nível de Descrição: ${regenOptions.descriptionLevel}
+      - Nível de Acção: ${regenOptions.actionLevel}
       
       Contexto do Projeto:
       Título: "${project.title}"
@@ -200,16 +293,40 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
           </p>
         </div>
         {!project.ebook ? (
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-white border border-zinc-200 rounded-xl px-4 py-2">
-              <ImageIcon className="w-4 h-4 text-zinc-400" />
-              <span className="text-sm font-medium text-zinc-700">Com Imagens</span>
-              <button
-                onClick={() => setWithImages(!withImages)}
-                className={`w-10 h-5 rounded-full transition-all relative ${withImages ? 'bg-indigo-600' : 'bg-zinc-200'}`}
-              >
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${withImages ? 'left-6' : 'left-1'}`} />
-              </button>
+          <div className="flex flex-col items-end gap-4">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 bg-white border border-zinc-200 rounded-xl px-4 py-2">
+                <Layout className="w-4 h-4 text-zinc-400" />
+                <select 
+                  value={pageSize} 
+                  onChange={(e) => setPageSize(e.target.value as any)}
+                  className="text-sm font-medium text-zinc-700 outline-none bg-transparent"
+                >
+                  <option value="A4">A4</option>
+                  <option value="A5">A5</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2 bg-white border border-zinc-200 rounded-xl px-4 py-2">
+                <Maximize2 className="w-4 h-4 text-zinc-400" />
+                <select 
+                  value={orientation} 
+                  onChange={(e) => setOrientation(e.target.value as any)}
+                  className="text-sm font-medium text-zinc-700 outline-none bg-transparent"
+                >
+                  <option value="portrait">Vertical</option>
+                  <option value="landscape">Horizontal</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2 bg-white border border-zinc-200 rounded-xl px-4 py-2">
+                <ImageIcon className="w-4 h-4 text-zinc-400" />
+                <span className="text-sm font-medium text-zinc-700">Com Imagens</span>
+                <button
+                  onClick={() => setWithImages(!withImages)}
+                  className={`w-10 h-5 rounded-full transition-all relative ${withImages ? 'bg-indigo-600' : 'bg-zinc-200'}`}
+                >
+                  <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${withImages ? 'left-6' : 'left-1'}`} />
+                </button>
+              </div>
             </div>
             <button
               onClick={handleGenerateEBook}
@@ -241,7 +358,7 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Virtual Book Display */}
           <div className="lg:col-span-8 flex flex-col items-center gap-6">
-            <div className="relative w-full aspect-[3/4] max-w-md bg-white rounded-r-2xl shadow-2xl border-l-8 border-indigo-900 overflow-hidden group">
+            <div className={`relative w-full ${project.ebook.orientation === 'landscape' ? 'aspect-[4/3]' : 'aspect-[3/4]'} max-w-md bg-white rounded-r-2xl shadow-2xl border-l-8 border-indigo-900 overflow-hidden group`}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentPageIndex}
@@ -392,14 +509,90 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
                       <Edit3 className="w-4 h-4" />
                       Editar Texto
                     </button>
-                    <button
-                      onClick={() => currentPage && handleRegeneratePage(currentPage.id)}
-                      disabled={isGenerating}
-                      className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 rounded-xl text-sm font-bold transition-all border border-zinc-100"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                      Regerar com IA
-                    </button>
+
+                    <div className="mt-4 p-4 bg-zinc-50 rounded-xl border border-zinc-100 space-y-3">
+                      <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Opções de IA</h4>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Detalhe</label>
+                          <select 
+                            value={regenOptions.detailLevel}
+                            onChange={(e) => setRegenOptions(prev => ({ ...prev, detailLevel: e.target.value }))}
+                            className="w-full text-xs bg-white border border-zinc-200 rounded-lg p-1.5 outline-none"
+                          >
+                            <option value="low">Baixo</option>
+                            <option value="medium">Médio</option>
+                            <option value="high">Alto</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Extensão</label>
+                          <select 
+                            value={regenOptions.textLength}
+                            onChange={(e) => setRegenOptions(prev => ({ ...prev, textLength: e.target.value }))}
+                            className="w-full text-xs bg-white border border-zinc-200 rounded-lg p-1.5 outline-none"
+                          >
+                            <option value="short">Curto</option>
+                            <option value="medium">Médio</option>
+                            <option value="long">Longo</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Descrição</label>
+                          <select 
+                            value={regenOptions.descriptionLevel}
+                            onChange={(e) => setRegenOptions(prev => ({ ...prev, descriptionLevel: e.target.value }))}
+                            className="w-full text-xs bg-white border border-zinc-200 rounded-lg p-1.5 outline-none"
+                          >
+                            <option value="low">Pouca</option>
+                            <option value="medium">Média</option>
+                            <option value="high">Muita</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Acção</label>
+                          <select 
+                            value={regenOptions.actionLevel}
+                            onChange={(e) => setRegenOptions(prev => ({ ...prev, actionLevel: e.target.value }))}
+                            className="w-full text-xs bg-white border border-zinc-200 rounded-lg p-1.5 outline-none"
+                          >
+                            <option value="low">Pouca</option>
+                            <option value="medium">Média</option>
+                            <option value="high">Muita</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => currentPage && handleRegeneratePage(currentPage.id)}
+                        disabled={isGenerating}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-indigo-100 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
+                        Regerar com IA
+                      </button>
+                    </div>
+
+                    {currentPage && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setShowMediaLibrary(true)}
+                          className="flex items-center justify-center gap-2 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-sm font-bold transition-all border border-indigo-100"
+                        >
+                          <ImageIcon className="w-4 h-4" />
+                          Biblioteca
+                        </button>
+                        <button
+                          onClick={() => handleGeneratePageImage(currentPage.id)}
+                          disabled={isGeneratingImage}
+                          className="flex items-center justify-center gap-2 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-sm font-bold transition-all border border-emerald-100 disabled:opacity-50"
+                        >
+                          {isGeneratingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                          Gerar Nova
+                        </button>
+                      </div>
+                    )}
                     
                     {currentPage?.type === 'content' && (
                       <div className="mt-4 pt-4 border-t border-zinc-100">
@@ -486,6 +679,145 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
           </button>
         </div>
       )}
+
+      {/* Progress Overlay */}
+      <AnimatePresence>
+        {isGenerating && generationLogs.length > 0 && (
+          <div className="fixed inset-0 bg-zinc-900/90 backdrop-blur-md z-[200] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="p-8 border-b border-zinc-100 bg-zinc-50/50">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                      <Sparkles className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-zinc-900">Gerando o teu EBook</h3>
+                      <p className="text-sm text-zinc-500">Isto pode demorar alguns minutos...</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-black text-indigo-600">
+                      {Math.round((generationLogs.filter(l => l.status === 'completed').length / generationLogs.length) * 100)}%
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                      <Clock className="w-3 h-3" />
+                      {Math.floor(elapsedTime / 60)}:{(elapsedTime % 60).toString().padStart(2, '0')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-3 bg-zinc-100 rounded-full overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-indigo-600"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(generationLogs.filter(l => l.status === 'completed').length / generationLogs.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-4 max-h-[400px] custom-scrollbar">
+                {generationLogs.map((log, i) => (
+                  <div key={i} className={`flex items-center gap-4 transition-all ${log.status === 'waiting' ? 'opacity-30' : 'opacity-100'}`}>
+                    {log.status === 'completed' ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                    ) : log.status === 'running' ? (
+                      <Loader2 className="w-5 h-5 text-indigo-600 animate-spin shrink-0" />
+                    ) : (
+                      <Circle className="w-5 h-5 text-zinc-300 shrink-0" />
+                    )}
+                    <span className={`text-sm font-medium ${log.status === 'running' ? 'text-indigo-600 font-bold' : 'text-zinc-600'}`}>
+                      {log.task}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-6 bg-zinc-50 border-t border-zinc-100 text-center">
+                <p className="text-xs text-zinc-400 font-medium italic">
+                  "A paciência é a arte de ter esperança." — Luc de Clapiers
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Media Library Modal */}
+      <AnimatePresence>
+        {showMediaLibrary && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl"
+            >
+              <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <div>
+                  <h3 className="text-xl font-bold text-zinc-900">Biblioteca de Media</h3>
+                  <p className="text-sm text-zinc-500">Seleciona uma imagem do teu projeto para esta página.</p>
+                </div>
+                <button
+                  onClick={() => setShowMediaLibrary(false)}
+                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6 text-zinc-500" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {allProjectImages.length > 0 ? (
+                    allProjectImages.map((img, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          if (currentPage) {
+                            setProject(prev => ({
+                              ...prev,
+                              ebook: prev.ebook ? {
+                                ...prev.ebook,
+                                pages: prev.ebook.pages.map(p => p.id === currentPage.id ? { ...p, imageUrl: img.url } : p)
+                              } : undefined
+                            }));
+                            setShowMediaLibrary(false);
+                          }
+                        }}
+                        className="group relative aspect-video rounded-xl overflow-hidden border-2 border-transparent hover:border-indigo-600 transition-all bg-zinc-100"
+                      >
+                        <img src={img.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
+                          <span className="text-[10px] text-white font-bold truncate">{img.source}</span>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="col-span-full py-12 text-center text-zinc-400">
+                      <ImageIcon className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                      <p>Ainda não tens imagens no teu projeto.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-zinc-100 bg-zinc-50/50 flex justify-end">
+                <button
+                  onClick={() => setShowMediaLibrary(false)}
+                  className="px-6 py-2 bg-zinc-900 text-white rounded-xl font-bold text-sm hover:bg-zinc-800 transition-all"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

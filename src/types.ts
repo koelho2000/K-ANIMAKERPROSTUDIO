@@ -97,6 +97,7 @@ export interface Character {
   id: string;
   name: string;
   description: string;
+  artisticStyle?: string;
   voice?: {
     language: string;
     country: string;
@@ -119,6 +120,7 @@ export interface Setting {
   id: string;
   name: string;
   description: string;
+  artisticStyle?: string;
   imageUrl?: string;
   lastImagePrompt?: string;
   updatedAt?: number;
@@ -180,4 +182,6 @@ export interface EBook {
   pages: EBookPage[];
   generatedAt?: number;
   withImages: boolean;
+  pageSize?: 'A4' | 'A5';
+  orientation?: 'portrait' | 'landscape';
 }

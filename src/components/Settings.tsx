@@ -10,6 +10,7 @@ import {
   Download,
   Upload,
   ZoomIn,
+  Palette,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Type } from "@google/genai";
@@ -18,6 +19,7 @@ import { describeSettingFromImage } from "../services/geminiService";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
+import { ARTISTIC_STYLES } from "../constants";
 
 interface SettingsProps {
   project: Project;
@@ -123,9 +125,13 @@ export default function Settings({ project, setProject }: SettingsProps) {
   };
 
   const handleGenerateImage = async (setting: Setting) => {
+    const styleToUse = setting.artisticStyle && setting.artisticStyle !== "Nenhum (Usar Descrição)" 
+      ? setting.artisticStyle 
+      : project.filmStyle;
+
     const prompt = `Concept art environment design for an animated film. 
       Tipo de Filme: ${project.filmType}. 
-      Estilo Visual: ${project.filmStyle}. 
+      Estilo Visual: ${styleToUse}. 
       Público Alvo: ${project.targetAudience || 'Adultos'}.
       Location Name: ${setting.name}. 
       Description: ${setting.description}. 
@@ -172,9 +178,13 @@ export default function Settings({ project, setProject }: SettingsProps) {
         // If we confirmed to regenerate all, or if it doesn't have an image
         if (settingsToGenerate.length === 0 || !setting.imageUrl) {
           setGeneratingImageId(setting.id);
+          const styleToUse = setting.artisticStyle && setting.artisticStyle !== "Nenhum (Usar Descrição)" 
+            ? setting.artisticStyle 
+            : project.filmStyle;
+
           const prompt = `Concept art environment design for an animated film. 
             Tipo de Filme: ${project.filmType}. 
-            Estilo Visual: ${project.filmStyle}. 
+            Estilo Visual: ${styleToUse}. 
             Público Alvo: ${project.targetAudience || 'Adultos'}.
             Location Name: ${setting.name}. 
             Description: ${setting.description}. 
@@ -476,6 +486,25 @@ export default function Settings({ project, setProject }: SettingsProps) {
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
+              </div>
+
+              {/* Artistic Style Selection */}
+              <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2">
+                <Palette className="w-4 h-4 text-zinc-400" />
+                <div className="flex-1">
+                  <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-0.5">Estilo Artístico</p>
+                  <select
+                    value={setting.artisticStyle || "Nenhum (Usar Descrição)"}
+                    onChange={(e) => updateSetting(setting.id, "artisticStyle", e.target.value)}
+                    className="w-full bg-transparent text-xs font-medium text-zinc-700 outline-none cursor-pointer"
+                  >
+                    {ARTISTIC_STYLES.map((style) => (
+                      <option key={style} value={style}>
+                        {style}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <textarea

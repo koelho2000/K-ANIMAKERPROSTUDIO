@@ -19,6 +19,7 @@ import {
   ZoomIn,
   AlertTriangle,
   Info,
+  Palette,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { v4 as uuidv4 } from "uuid";
@@ -27,6 +28,7 @@ import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
+import { ARTISTIC_STYLES } from "../constants";
 
 interface CharactersProps {
   project: Project;
@@ -256,9 +258,13 @@ export default function Characters({ project, setProject }: CharactersProps) {
   };
 
   const handleGenerateImage = async (character: Character) => {
+    const styleToUse = character.artisticStyle && character.artisticStyle !== "Nenhum (Usar Descrição)" 
+      ? character.artisticStyle 
+      : project.filmStyle;
+
     const prompt = `Character design for an animated film. 
       Tipo de Filme: ${project.filmType}.
-      Estilo Visual: ${project.filmStyle}. 
+      Estilo Visual: ${styleToUse}. 
       Visual Description: ${character.description}. 
       Público Alvo: ${project.targetAudience || 'Adultos'}.
       One single front-facing view of the character, full body, neutral background.`;
@@ -295,9 +301,13 @@ export default function Characters({ project, setProject }: CharactersProps) {
       return;
     }
 
+    const styleToUse = character.artisticStyle && character.artisticStyle !== "Nenhum (Usar Descrição)" 
+      ? character.artisticStyle 
+      : project.filmStyle;
+
     const prompt = `Character design turnaround sheet based on the provided character image. 
       Tipo de Filme: ${project.filmType}.
-      Estilo Visual: ${project.filmStyle}. 
+      Estilo Visual: ${styleToUse}. 
       Público Alvo: ${project.targetAudience || 'Adultos'}.
       Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
       CRITICAL: You MUST maintain 100% consistency with the provided reference image. The character in all views must look exactly like the character in the reference image.
@@ -348,9 +358,13 @@ export default function Characters({ project, setProject }: CharactersProps) {
         // 1. Generate main image if missing or if we're regenerating all
         if (charsToGenerate.length === 0 || !char.imageUrl) {
           setGeneratingImageId(char.id);
+          const styleToUse = char.artisticStyle && char.artisticStyle !== "Nenhum (Usar Descrição)" 
+            ? char.artisticStyle 
+            : project.filmStyle;
+
           const prompt = `Character design for an animated film. 
             Tipo de Filme: ${project.filmType}.
-            Estilo Visual: ${project.filmStyle}. 
+            Estilo Visual: ${styleToUse}. 
             Visual Description: ${char.description}. 
             Público Alvo: ${project.targetAudience || 'Adultos'}.
             One single front-facing view of the character, full body, neutral background.`;
@@ -364,9 +378,13 @@ export default function Characters({ project, setProject }: CharactersProps) {
         // 2. Generate views if missing or if we're regenerating all
         if (char.imageUrl && (charsToGenerate.length === 0 || !char.viewsImageUrl)) {
           setGeneratingViewsId(char.id);
+          const styleToUse = char.artisticStyle && char.artisticStyle !== "Nenhum (Usar Descrição)" 
+            ? char.artisticStyle 
+            : project.filmStyle;
+
           const viewsPrompt = `Character design turnaround sheet based on the provided character image. 
             Tipo de Filme: ${project.filmType}.
-            Estilo Visual: ${project.filmStyle}. 
+            Estilo Visual: ${styleToUse}. 
             Público Alvo: ${project.targetAudience || 'Adultos'}.
             Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
             Maintain perfect consistency with the reference image. 
@@ -767,6 +785,25 @@ export default function Characters({ project, setProject }: CharactersProps) {
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
+              </div>
+
+              {/* Artistic Style Selection */}
+              <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2">
+                <Palette className="w-4 h-4 text-zinc-400" />
+                <div className="flex-1">
+                  <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-0.5">Estilo Artístico</p>
+                  <select
+                    value={char.artisticStyle || "Nenhum (Usar Descrição)"}
+                    onChange={(e) => updateCharacter(char.id, "artisticStyle", e.target.value)}
+                    className="w-full bg-transparent text-xs font-medium text-zinc-700 outline-none cursor-pointer"
+                  >
+                    {ARTISTIC_STYLES.map((style) => (
+                      <option key={style} value={style}>
+                        {style}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {char.analysis && (
