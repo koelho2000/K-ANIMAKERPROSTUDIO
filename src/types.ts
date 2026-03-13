@@ -169,13 +169,19 @@ export interface Take {
   };
 }
 
+export type EBookImagePosition = 'top' | 'left' | 'right' | 'bottom' | 'between';
+
 export interface EBookPage {
   id: string;
   sceneId?: string;
   title: string;
   content: string;
   imageUrl?: string;
-  type: 'cover' | 'sub-cover' | 'content' | 'back-cover';
+  type: 'cover' | 'sub-cover' | 'content' | 'back-cover' | 'blank' | 'about';
+  imagePosition?: EBookImagePosition;
+  imageSize?: number; // percentage 10-100
+  fontSize?: number;
+  fontFamily?: string;
 }
 
 export interface EBook {
@@ -184,4 +190,6 @@ export interface EBook {
   withImages: boolean;
   pageSize?: 'A4' | 'A5';
   orientation?: 'portrait' | 'landscape';
+  fontSize?: number;
+  fontFamily?: string;
 }
