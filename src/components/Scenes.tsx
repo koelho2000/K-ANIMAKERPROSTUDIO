@@ -6,7 +6,9 @@ import {
   generateSubtitles,
   getVoiceForSettings,
   detectCharacters,
-  detectSetting
+  detectSetting,
+  extractDialogueLines,
+  detectCharactersForDialogueLines
 } from "../services/geminiService";
 import {
   Loader2,
@@ -41,6 +43,9 @@ export default function Scenes({ project, setProject }: ScenesProps) {
   const [takesProgress, setTakesProgress] = useState(0);
   const [isGeneratingAllTakes, setIsGeneratingAllTakes] = useState(false);
   const [expandedSceneId, setExpandedSceneId] = useState<string | null>(null);
+  const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const [isAutoGeneratingDialogues, setIsAutoGeneratingDialogues] = useState(false);
+  const [globalProgress, setGlobalProgress] = useState(0);
   const [showCameraHelp, setShowCameraHelp] = useState(false);
 
   const getTargetCounts = () => {
@@ -73,7 +78,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isGeneratingScenes || isGeneratingAllTakes) {
+    if (isGeneratingScenes || isGeneratingAllTakes || isAutoDetecting || isAutoGeneratingDialogues) {
       setScenesProgress(0);
       interval = setInterval(() => {
         setScenesProgress((prev) => (prev >= 95 ? prev : prev + Math.random() * 8));
@@ -82,7 +87,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
       setScenesProgress(100);
     }
     return () => clearInterval(interval);
-  }, [isGeneratingScenes, isGeneratingAllTakes]);
+  }, [isGeneratingScenes, isGeneratingAllTakes, isAutoDetecting, isAutoGeneratingDialogues]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -96,6 +101,85 @@ export default function Scenes({ project, setProject }: ScenesProps) {
     }
     return () => clearInterval(interval);
   }, [generatingTakesId]);
+
+  const handleAutoDetectAll = () => {
+    setIsAutoDetecting(true);
+    setGlobalProgress(0);
+    
+    const totalTakes = project.scenes.reduce((acc, s) => acc + s.takes.length, 0);
+    if (totalTakes === 0) {
+      setIsAutoDetecting(false);
+      return;
+    }
+
+    let processedTakes = 0;
+
+    const updatedScenes = project.scenes.map((scene) => ({
+      ...scene,
+      takes: scene.takes.map((take) => {
+        const charIds = detectCharacters(take.action, take.dialogueLines || [], [], project.characters);
+        const settingId = detectSetting(take.action, undefined, project.settings);
+        
+        processedTakes++;
+        setGlobalProgress(Math.round((processedTakes / totalTakes) * 100));
+        
+        return {
+          ...take,
+          characterIds: charIds,
+          settingId: settingId || take.settingId
+        };
+      })
+    }));
+
+    setProject((prev) => ({ ...prev, scenes: updatedScenes }));
+    setTimeout(() => setIsAutoDetecting(false), 1000);
+  };
+
+  const handleAutoGenerateAllDialogues = async () => {
+    setIsAutoGeneratingDialogues(true);
+    setGlobalProgress(0);
+
+    const allTakes: { sceneId: string, takeId: string, action: string }[] = [];
+    project.scenes.forEach(scene => {
+      scene.takes.forEach(take => {
+        allTakes.push({ sceneId: scene.id, takeId: take.id, action: take.action });
+      });
+    });
+
+    if (allTakes.length === 0) {
+      setIsAutoGeneratingDialogues(false);
+      return;
+    }
+
+    let completed = 0;
+
+    for (const tInfo of allTakes) {
+      const lines = await extractDialogueLines(tInfo.action, project.characters);
+      
+      setProject(prev => ({
+        ...prev,
+        scenes: prev.scenes.map(s => {
+          if (s.id === tInfo.sceneId) {
+            return {
+              ...s,
+              takes: s.takes.map(t => {
+                if (t.id === tInfo.takeId) {
+                  return { ...t, dialogueLines: lines };
+                }
+                return t;
+              })
+            };
+          }
+          return s;
+        })
+      }));
+
+      completed++;
+      setGlobalProgress(Math.round((completed / allTakes.length) * 100));
+    }
+
+    setIsAutoGeneratingDialogues(false);
+  };
 
   const handleGenerateScenes = async () => {
     setIsGeneratingScenes(true);
@@ -638,11 +722,41 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         </div>
       </div>
 
-      {(isGeneratingScenes || isGeneratingAllTakes) && (
+      <div className="flex flex-wrap gap-4 items-center justify-between bg-zinc-50 p-4 rounded-2xl border border-zinc-200">
+        <div className="flex items-center gap-2">
+          <Zap className="w-5 h-5 text-indigo-600" />
+          <h3 className="font-bold text-zinc-900">Ações Automáticas Globais</h3>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handleAutoDetectAll}
+            disabled={isAutoDetecting || isAutoGeneratingDialogues || !project.scenes.length}
+            className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {isAutoDetecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+            Auto-detetar Personagens e Cenários
+          </button>
+          <button
+            onClick={handleAutoGenerateAllDialogues}
+            disabled={isAutoDetecting || isAutoGeneratingDialogues || !project.scenes.length}
+            className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {isAutoGeneratingDialogues ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Auto-gerar Diálogos
+          </button>
+        </div>
+      </div>
+
+      {(isGeneratingScenes || isGeneratingAllTakes || isAutoDetecting || isAutoGeneratingDialogues) && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100">
           <ProgressBar
-            progress={scenesProgress}
-            label={isGeneratingAllTakes ? "A gerar todos os takes do filme..." : "A estruturar cenas do filme..."}
+            progress={isAutoDetecting || isAutoGeneratingDialogues ? globalProgress : scenesProgress}
+            label={
+              isGeneratingAllTakes ? "A gerar todos os takes do filme..." : 
+              isGeneratingScenes ? "A estruturar cenas do filme..." :
+              isAutoDetecting ? "A detetar personagens e cenários em todos os takes..." :
+              "A extrair diálogos de todos os takes..."
+            }
             modelName="Gemini"
           />
         </div>
@@ -869,9 +983,23 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">
-                              Diálogo Estruturado
-                            </label>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="block text-xs font-semibold text-zinc-500 uppercase">
+                                Diálogo Estruturado
+                              </label>
+                              <button
+                                onClick={async () => {
+                                  const lines = await extractDialogueLines(take.action, project.characters);
+                                  if (lines.length > 0) {
+                                    updateTake(scene.id, take.id, "dialogueLines", lines);
+                                  }
+                                }}
+                                className="text-[10px] text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md transition-colors"
+                                title="Gerar diálogos estruturados a partir da ação"
+                              >
+                                <Zap className="w-3 h-3" /> AUTO-GERAR
+                              </button>
+                            </div>
                             <div className="space-y-2 bg-zinc-50 p-2 rounded-lg border border-transparent hover:border-zinc-200 transition-colors min-h-[80px]">
                               {(take.dialogueLines || []).map((line, lIndex) => (
                                 <div key={lIndex} className="flex gap-2">
@@ -893,8 +1021,28 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                                     type="text"
                                     value={line.text}
                                     onChange={(e) => {
+                                      const val = e.target.value;
                                       const newLines = [...(take.dialogueLines || [])];
-                                      newLines[lIndex] = { ...line, text: e.target.value };
+                                      
+                                      // Smart detection: "Name: Text"
+                                      const parts = val.split(':');
+                                      if (parts.length > 1 && !line.characterId) {
+                                        const potentialName = parts[0].trim().toLowerCase();
+                                        const char = project.characters.find(c => 
+                                          c.name.toLowerCase() === potentialName || 
+                                          potentialName.includes(c.name.toLowerCase())
+                                        );
+                                        if (char) {
+                                          newLines[lIndex] = { 
+                                            characterId: char.id, 
+                                            text: parts.slice(1).join(':').trim() 
+                                          };
+                                          updateTake(scene.id, take.id, "dialogueLines", newLines);
+                                          return;
+                                        }
+                                      }
+
+                                      newLines[lIndex] = { ...line, text: val };
                                       updateTake(scene.id, take.id, "dialogueLines", newLines);
                                     }}
                                     placeholder="Fala..."
@@ -911,15 +1059,27 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                                   </button>
                                 </div>
                               ))}
-                              <button
-                                onClick={() => {
-                                  const newLines = [...(take.dialogueLines || []), { characterId: "", text: "" }];
-                                  updateTake(scene.id, take.id, "dialogueLines", newLines);
-                                }}
-                                className="text-[10px] text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 mt-1"
-                              >
-                                <Plus className="w-3 h-3" /> ADICIONAR LINHA
-                              </button>
+                              <div className="flex items-center justify-between mt-1">
+                                <button
+                                  onClick={() => {
+                                    const newLines = [...(take.dialogueLines || []), { characterId: "", text: "" }];
+                                    updateTake(scene.id, take.id, "dialogueLines", newLines);
+                                  }}
+                                  className="text-[10px] text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1"
+                                >
+                                  <Plus className="w-3 h-3" /> ADICIONAR LINHA
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const newLines = detectCharactersForDialogueLines(take.dialogueLines || [], project.characters);
+                                    updateTake(scene.id, take.id, "dialogueLines", newLines);
+                                  }}
+                                  className="text-[10px] text-zinc-500 hover:text-indigo-600 font-bold flex items-center gap-1"
+                                  title="Tentar detetar personagens nas falas existentes"
+                                >
+                                  <Users className="w-3 h-3" /> SINCRONIZAR
+                                </button>
+                              </div>
                             </div>
                           </div>
                           <div>

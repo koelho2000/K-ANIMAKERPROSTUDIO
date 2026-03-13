@@ -18,6 +18,7 @@ import {
   FileText,
   ZoomIn,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { v4 as uuidv4 } from "uuid";
@@ -256,6 +257,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
 
   const handleGenerateImage = async (character: Character) => {
     const prompt = `Character design for an animated film. 
+      Tipo de Filme: ${project.filmType}.
       Estilo Visual: ${project.filmStyle}. 
       Visual Description: ${character.description}. 
       Público Alvo: ${project.targetAudience || 'Adultos'}.
@@ -294,6 +296,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
     }
 
     const prompt = `Character design turnaround sheet based on the provided character image. 
+      Tipo de Filme: ${project.filmType}.
       Estilo Visual: ${project.filmStyle}. 
       Público Alvo: ${project.targetAudience || 'Adultos'}.
       Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
@@ -346,6 +349,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
         if (charsToGenerate.length === 0 || !char.imageUrl) {
           setGeneratingImageId(char.id);
           const prompt = `Character design for an animated film. 
+            Tipo de Filme: ${project.filmType}.
             Estilo Visual: ${project.filmStyle}. 
             Visual Description: ${char.description}. 
             Público Alvo: ${project.targetAudience || 'Adultos'}.
@@ -361,6 +365,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
         if (char.imageUrl && (charsToGenerate.length === 0 || !char.viewsImageUrl)) {
           setGeneratingViewsId(char.id);
           const viewsPrompt = `Character design turnaround sheet based on the provided character image. 
+            Tipo de Filme: ${project.filmType}.
             Estilo Visual: ${project.filmStyle}. 
             Público Alvo: ${project.targetAudience || 'Adultos'}.
             Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
@@ -579,6 +584,22 @@ export default function Characters({ project, setProject }: CharactersProps) {
             )}
             Extrair do Guião
           </button>
+        </div>
+      </div>
+
+      <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
+            <Info className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-indigo-900">Informação Geral do Projeto</p>
+            <p className="text-xs text-indigo-700">
+              Tipo de Filme: <span className="font-bold">{project.filmType}</span> | 
+              Estilo Visual: <span className="font-bold">{project.filmStyle}</span> | 
+              Público Alvo: <span className="font-bold">{project.targetAudience || 'Adultos'}</span>
+            </p>
+          </div>
         </div>
       </div>
 

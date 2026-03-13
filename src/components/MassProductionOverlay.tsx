@@ -338,7 +338,8 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           - "camera": tipo de plano
           - "sound": som ambiente
           - "music": música
-          - "dialogue": texto do diálogo
+          - "dialogue": texto do diálogo geral (resumo)
+          - "dialogueLines": array de objetos { "characterName": string, "text": string } para cada fala específica
           - "characterNames": array com nomes das personagens presentes (conforme contexto)
           - "settingName": nome do cenário onde ocorre (conforme contexto)`,
           config: { responseMimeType: "application/json" }
@@ -354,7 +355,18 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             title: scene.title,
             description: scene.description,
             takes: (scene.takes || []).map((take: any) => {
-              const charIds = detectCharacters(take.action, [], take.characterNames || [], project.characters);
+              const dialogueLines = (take.dialogueLines || []).map((dl: any) => {
+                const char = project.characters.find(c => 
+                  c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+                  dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+                );
+                return {
+                  characterId: char?.id || "",
+                  text: dl.text
+                };
+              }).filter((dl: any) => dl.characterId !== "");
+
+              const charIds = detectCharacters(take.action, dialogueLines, take.characterNames || [], project.characters);
               const settingId = detectSetting(take.action, take.settingName, project.settings);
               
               return {
@@ -364,6 +376,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
                 sound: take.sound,
                 music: take.music,
                 dialogue: take.dialogue,
+                dialogueLines: dialogueLines,
                 characterIds: charIds,
                 settingId: settingId,
                 duration: 5,
@@ -655,15 +668,24 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         for (const tInfo of allTakes) {
           addLog(`Gerando narração para Take ${completed + 1}/${allTakes.length}...`);
           
+          const take = project.scenes.find(s => s.id === tInfo.sceneId)?.takes.find(t => t.id === tInfo.takeId);
+
           const text = await generateNarrationText(
             tInfo.action,
             project.language,
             `Filme: ${project.title}. Conceito: ${project.concept}. Público Alvo: ${project.targetAudience || 'Adultos'}`,
             currentNarrations,
-            tInfo.duration || 5
+            tInfo.duration || 5,
+            take?.dialogueLines || [],
+            project.characters
           );
           
-          const audioUrl = await generateNarrationAudio(text, voiceName);
+          const audioUrl = await generateNarrationAudio(
+            text, 
+            voiceName,
+            take?.dialogueLines || [],
+            project.characters
+          );
           currentNarrations.push(text);
 
           setProject(prev => ({

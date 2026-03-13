@@ -355,6 +355,52 @@ export const pollVideoOperation = async (operationOrName: any) => {
   };
 };
 
+export async function extractDialogueLines(action: string, characters: any[]): Promise<any[]> {
+  const charactersContext = characters.map(c => `${c.name}: ${c.description}`).join('\n');
+  
+  const prompt = `Com base na seguinte descrição de ação de um take, identifica e extrai todos os diálogos previstos.
+  Associa cada fala à personagem correta do projeto.
+  
+  Descrição da Ação: "${action}"
+  
+  Personagens Disponíveis:
+  ${charactersContext}
+  
+  Responde APENAS com um array JSON de objetos: { "characterName": string, "text": string }.
+  Se não houver diálogos na ação, responde com um array vazio [].`;
+
+  const schema = {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        characterName: { type: Type.STRING },
+        text: { type: Type.STRING }
+      },
+      required: ["characterName", "text"]
+    }
+  };
+
+  try {
+    const result = await generateJSON(prompt, schema, "És um assistente especializado em análise de guiões e extração de diálogos.");
+    if (!result || !Array.isArray(result)) return [];
+
+    return result.map((dl: any) => {
+      const char = characters.find(c => 
+        c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+        dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+      );
+      return {
+        characterId: char?.id || "",
+        text: dl.text
+      };
+    }).filter(dl => dl.characterId !== "");
+  } catch (error) {
+    console.error("Erro ao extrair diálogos:", error);
+    return [];
+  }
+}
+
 export const detectCharacters = (action: string, dialogueLines: any[] = [], aiDetectedNames: string[] = [], characters: any[] = []) => {
   const detectedIds = new Set<string>();
   const lowerAction = action.toLowerCase();
@@ -386,6 +432,32 @@ export const detectCharacters = (action: string, dialogueLines: any[] = [], aiDe
   });
   
   return Array.from(detectedIds);
+};
+
+export const detectCharactersForDialogueLines = (dialogueLines: any[], characters: any[]) => {
+  return dialogueLines.map(line => {
+    if (line.characterId) return line;
+    
+    const parts = line.text.split(':');
+    if (parts.length > 1) {
+      const potentialName = parts[0].trim().toLowerCase();
+      const char = characters.find(c => 
+        c.name.toLowerCase() === potentialName || 
+        potentialName.includes(c.name.toLowerCase())
+      );
+      if (char) {
+        return { characterId: char.id, text: parts.slice(1).join(':').trim() };
+      }
+    }
+    
+    const lowerText = line.text.toLowerCase();
+    const char = characters.find(c => lowerText.includes(c.name.toLowerCase()));
+    if (char) {
+      return { ...line, characterId: char.id };
+    }
+    
+    return line;
+  });
 };
 
 export const detectSetting = (action: string, aiDetectedName?: string, settings: any[] = []) => {
@@ -583,7 +655,9 @@ export const generateNarrationText = async (
   language: string,
   context: string,
   previousNarrations: string[] = [],
-  targetDuration?: number
+  targetDuration?: number,
+  dialogueLines: any[] = [],
+  characters: any[] = []
 ) => {
   return withRetry(async () => {
     const ai = getGenAI();
@@ -594,16 +668,25 @@ export const generateNarrationText = async (
       ? `O take tem uma duração de EXATAMENTE ${targetDuration} segundos. O texto deve ser lido confortavelmente nesse tempo (aproximadamente ${Math.max(1, Math.floor(targetDuration * 2.5))} palavras).`
       : "Gera um texto de narração curto (máximo 2 frases).";
 
+    const dialogueContext = dialogueLines.length > 0
+      ? `Diálogos Estruturados para este Take:\n${dialogueLines.map(dl => {
+          const char = characters.find(c => c.id === dl.characterId);
+          return `${char?.name || 'Personagem'}: ${dl.text}`;
+        }).join('\n')}\n\nSe houver diálogos, o texto final deve incluí-los de forma natural ou ser o próprio diálogo formatado para TTS multi-speaker (Nome: Texto).`
+      : "";
+
     const prompt = `Gera um texto de narração para um take de um filme.
     Acção do Take: "${action}"
     Língua: ${langSpec}
     Contexto do Filme: ${context}
     Narração anterior (para manter consistência): ${previousNarrations.slice(-2).join(" | ")}
     
+    ${dialogueContext}
+    
     ${durationContext}
     ${isPTPT ? "IMPORTANTE: Usa estritamente Português de Portugal (ex: 'ecrã' em vez de 'tela', 'tu estás' em vez de 'você está', etc.)." : ""}
     O narrador deve ser expressivo e a entoação deve condizer com a acção. 
-    Responde APENAS com o texto da narração, sem aspas ou comentários.`;
+    Responde APENAS com o texto da narração/diálogo, sem aspas ou comentários. Se houver diálogos, mantém o formato "Nome: Texto" para cada fala.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3.1-pro-preview",
@@ -698,20 +781,63 @@ export const getVoiceForSettings = (gender: 'male' | 'female', ageGroup: 'child'
   }
 };
 
-export const generateNarrationAudio = async (text: string, voiceName: string = 'Kore') => {
+export const generateNarrationAudio = async (
+  text: string, 
+  voiceName: string = 'Kore', 
+  dialogueLines: any[] = [], 
+  characters: any[] = []
+) => {
   return withRetry(async () => {
     const ai = getGenAI();
+    
+    let config: any = {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName },
+        },
+      },
+    };
+
+    // Check if we should use multi-speaker
+    if (dialogueLines.length > 0 && characters.length > 0) {
+      const speakerVoiceConfigs: any[] = [];
+      const uniqueCharIds = Array.from(new Set(dialogueLines.map(dl => dl.characterId)));
+      
+      uniqueCharIds.forEach(charId => {
+        const char = characters.find(c => c.id === charId);
+        if (char) {
+          speakerVoiceConfigs.push({
+            speaker: char.name,
+            voiceConfig: {
+              prebuiltVoiceConfig: { 
+                voiceName: getVoiceForSettings(
+                  char.gender || 'female', 
+                  char.ageGroup || 'adult'
+                ) 
+              }
+            }
+          });
+        }
+      });
+
+      // If we have at least 2 speakers, use multi-speaker config
+      if (speakerVoiceConfigs.length >= 2) {
+        config = {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            multiSpeakerVoiceConfig: {
+              speakerVoiceConfigs
+            }
+          },
+        };
+      }
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName },
-          },
-        },
-      },
+      config,
     });
 
     const part = response.candidates?.[0]?.content?.parts?.[0];
