@@ -211,8 +211,8 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
       pages.push({
         id: uuidv4(),
         type: 'about',
-        title: 'Sobre a Obra',
-        content: `Esta obra, "${project.title}", foi concebida sob a visão de ${project.director || 'N/A'} e escrita por ${project.author || 'N/A'}. Destina-se a um público de ${project.targetAudience || 'todas as idades'} e explora o conceito de ${project.concept}.`,
+        title: 'Sobre o Autor',
+        content: `Esta obra foi escrita por ${project.author || 'N/A'}, sob a visão de ${project.director || 'N/A'}. O autor dedica-se a criar experiências memoráveis para um público de ${project.targetAudience || 'todas as idades'}.`,
       });
       updateTaskStatus(tasks.length - 2, 'completed');
 
@@ -449,7 +449,7 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
           if (p.type === 'blank') return '<div class="page"></div>';
           if (p.type === 'about') return `
             <div class="page" style="text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: 80vh;">
-              <h2 style="border-bottom: 4px solid #4f46e5; display: inline-block; margin: 0 auto 40px;">Sobre a Obra</h2>
+              <h2 style="border-bottom: 4px solid #4f46e5; display: inline-block; margin: 0 auto 40px;">Sobre o Autor</h2>
               <p style="font-style: italic; font-size: 1.2em; max-width: 600px; margin: 0 auto;">${p.content}</p>
             </div>
           `;
@@ -529,7 +529,7 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
         if (page.type === 'about') {
           doc.setFontSize(22);
           doc.setFont("helvetica", "bold");
-          doc.text(page.title, margin, y);
+          doc.text("Sobre o Autor", margin, y);
           y += 15;
           doc.setFontSize(14);
           doc.setFont("helvetica", "italic");
@@ -726,7 +726,7 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
                         </div>
                       ) : currentPage?.type === 'about' ? (
                         <div className="h-full flex flex-col justify-center max-w-md mx-auto space-y-8">
-                          <h2 className="text-3xl font-bold text-zinc-900 border-b-4 border-indigo-600 pb-4">Sobre a Obra</h2>
+                          <h2 className="text-3xl font-bold text-zinc-900 border-b-4 border-indigo-600 pb-4">Sobre o Autor</h2>
                           <div className="text-lg text-zinc-700 leading-relaxed italic">
                             {currentPage.content}
                           </div>
