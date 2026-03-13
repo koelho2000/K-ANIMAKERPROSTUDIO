@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Project, Scene, Take, Character, Setting, VideoModel } from "../types";
 import {
   generateImage,
@@ -18,11 +19,14 @@ import {
   MapPin,
   Info,
   X,
+  Check,
   ZoomIn,
   Trash2,
   Upload,
   Download,
   PlusCircle,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
@@ -77,6 +81,15 @@ export default function Production({ project, setProject }: ProductionProps) {
     videoObject?: any; 
     initialMode?: 'edit' | 'extend';
     nextMediaUrl?: string;
+  } | null>(null);
+  const [showBulkActionModal, setShowBulkActionModal] = useState<{
+    type: 'generate' | 'delete';
+    options: {
+      startFrame: boolean;
+      endFrame: boolean;
+      video: boolean;
+    };
+    selectedSceneIds: string[];
   } | null>(null);
 
   useEffect(() => {
@@ -541,52 +554,6 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setProject({ ...project, scenes: updatedScenes });
   };
 
-  const handleGenerateAllFramesForAllScenes = async () => {
-    setIsGeneratingBulk(true);
-    setBulkProgress(0);
-    try {
-      const updatedScenes = [...project.scenes];
-      const totalTakes = updatedScenes.reduce((acc, s) => acc + s.takes.length, 0);
-      let processedTakes = 0;
-
-      for (let i = 0; i < updatedScenes.length; i++) {
-        const scene = updatedScenes[i];
-        const updatedTakes = [...scene.takes];
-        
-        for (let j = 0; j < updatedTakes.length; j++) {
-          setBulkProgress((processedTakes / totalTakes) * 100);
-          const take = updatedTakes[j];
-          if (!take.startFrameUrl) {
-            const result = await handleGenerateFrame(scene.id, take.id, "start", true);
-            if (result) {
-              updatedTakes[j].startFrameUrl = result.imageUrl;
-              updatedTakes[j].lastStartFramePrompt = result.prompt;
-              updatedTakes[j].updatedAt = Date.now();
-            }
-          }
-          if (!take.endFrameUrl) {
-            const result = await handleGenerateFrame(scene.id, take.id, "end", true, undefined, take.startFrameUrl);
-            if (result) {
-              updatedTakes[j].endFrameUrl = result.imageUrl;
-              updatedTakes[j].lastEndFramePrompt = result.prompt;
-              updatedTakes[j].updatedAt = Date.now();
-            }
-          }
-          processedTakes++;
-        }
-        updatedScenes[i] = { ...scene, takes: updatedTakes };
-      }
-
-      setProject({ ...project, scenes: updatedScenes });
-      alert("Todos os frames de todas as cenas foram gerados!");
-    } catch (error) {
-      console.error(error);
-      alert("Erro na geração global.");
-    } finally {
-      setIsGeneratingBulk(false);
-    }
-  };
-
   const handleUpdateTakeModel = (sceneId: string, takeId: string, model: VideoModel) => {
     const updatedScenes = project.scenes.map((s) => {
       if (s.id === sceneId) {
@@ -766,6 +733,155 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     } catch (error) {
       console.error(error);
       alert("Erro ao iniciar renderização em massa.");
+    } finally {
+      setIsGeneratingBulk(false);
+    }
+  };
+
+  const handleExecuteBulkAction = async () => {
+    if (!showBulkActionModal) return;
+    const { type, options, selectedSceneIds } = showBulkActionModal;
+    setShowBulkActionModal(null);
+
+    if (type === 'delete') {
+      if (!window.confirm("Tens a certeza que desejas apagar os elementos selecionados nas cenas escolhidas?")) return;
+      
+      const updatedScenes = project.scenes.map((s) => {
+        if (selectedSceneIds.includes(s.id)) {
+          return {
+            ...s,
+            takes: s.takes.map((t) => ({
+              ...t,
+              startFrameUrl: options.startFrame ? undefined : t.startFrameUrl,
+              endFrameUrl: options.endFrame ? undefined : t.endFrameUrl,
+              videoUrl: options.video ? undefined : t.videoUrl,
+              videoObject: options.video ? undefined : t.videoObject,
+              videoOperationId: options.video ? undefined : t.videoOperationId,
+              updatedAt: Date.now(),
+            })),
+          };
+        }
+        return s;
+      });
+      setProject({ ...project, scenes: updatedScenes });
+      alert("Elementos apagados com sucesso!");
+      return;
+    }
+
+    // Generate logic
+    setIsGeneratingBulk(true);
+    setBulkProgress(0);
+    try {
+      const selectedScenes = project.scenes.filter(s => selectedSceneIds.includes(s.id));
+      const totalTakes = selectedScenes.reduce((acc, s) => acc + s.takes.length, 0);
+      let processedTakes = 0;
+
+      const updatedScenes = [...project.scenes];
+
+      for (let i = 0; i < updatedScenes.length; i++) {
+        const scene = updatedScenes[i];
+        if (!selectedSceneIds.includes(scene.id)) continue;
+
+        const updatedTakes = [...scene.takes];
+        for (let j = 0; j < updatedTakes.length; j++) {
+          const take = updatedTakes[j];
+          setBulkProgress((processedTakes / totalTakes) * 100);
+
+          if (options.startFrame && !take.startFrameUrl) {
+            const result = await handleGenerateFrame(scene.id, take.id, "start", true);
+            if (result) {
+              updatedTakes[j].startFrameUrl = result.imageUrl;
+              updatedTakes[j].lastStartFramePrompt = result.prompt;
+              updatedTakes[j].updatedAt = Date.now();
+            }
+          }
+
+          if (options.endFrame && !take.endFrameUrl) {
+            const result = await handleGenerateFrame(scene.id, take.id, "end", true, undefined, updatedTakes[j].startFrameUrl || take.startFrameUrl);
+            if (result) {
+              updatedTakes[j].endFrameUrl = result.imageUrl;
+              updatedTakes[j].lastEndFramePrompt = result.prompt;
+              updatedTakes[j].updatedAt = Date.now();
+            }
+          }
+
+          if (options.video && !take.videoUrl && !take.videoOperationId) {
+            // Only generate video if frames are present
+            const startFrame = updatedTakes[j].startFrameUrl || take.startFrameUrl;
+            const endFrame = updatedTakes[j].endFrameUrl || take.endFrameUrl;
+
+            if (startFrame && endFrame) {
+              const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
+                ? " Diálogo: " + take.dialogueLines.map(line => {
+                    const char = project.characters.find(c => c.id === line.characterId);
+                    return `${char?.name || "Personagem"}: ${line.text}`;
+                  }).join(" | ")
+                : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
+
+              const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
+              
+              const takeCharacters = project.characters.filter((c) =>
+                take.characterIds?.includes(c.id)
+              );
+              const takeSetting = project.settings.find((s) => s.id === take.settingId);
+              const referenceImages: string[] = [];
+              if (takeSetting?.imageUrl) {
+                const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+                referenceImages.push(base64);
+              }
+              for (const c of takeCharacters) {
+                if (c.imageUrl) {
+                  const base64 = await getBase64FromUrl(c.imageUrl);
+                  referenceImages.push(base64);
+                }
+              }
+
+              try {
+                const operation = await generateVideo(
+                  prompt,
+                  startFrame,
+                  endFrame,
+                  take.videoModel || project.videoModel || 'flow',
+                  project.aspectRatio,
+                  referenceImages
+                );
+                updatedTakes[j].videoOperationId = operation.name;
+                updatedTakes[j].lastVideoPrompt = prompt;
+
+                // Start polling in background
+                pollVideoOperation(operation.name).then((videoUrl) => {
+                  setProject(prev => ({
+                    ...prev,
+                    scenes: prev.scenes.map((s) => {
+                      if (s.id === scene.id) {
+                        return {
+                          ...s,
+                          takes: s.takes.map((t) =>
+                            t.id === take.id ? { ...t, videoUrl, videoOperationId: undefined } : t
+                          ),
+                        };
+                      }
+                      return s;
+                    })
+                  }));
+                }).catch(err => {
+                  console.error(`Error rendering video for take ${take.id}:`, err);
+                });
+              } catch (e) {
+                console.error("Error triggering video generation in bulk:", e);
+              }
+            }
+          }
+          processedTakes++;
+        }
+        updatedScenes[i] = { ...scene, takes: updatedTakes };
+      }
+
+      setProject({ ...project, scenes: updatedScenes });
+      alert("Operação em massa concluída!");
+    } catch (error) {
+      console.error(error);
+      alert("Erro na operação em massa.");
     } finally {
       setIsGeneratingBulk(false);
     }
@@ -1137,18 +1253,36 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             Gera keyframes e renderiza vídeo para cada take.
           </p>
         </div>
-        <button
-          onClick={handleGenerateAllFramesForAllScenes}
-          disabled={isGeneratingBulk || !project.scenes.length}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-medium transition-colors disabled:opacity-50"
-        >
-          {isGeneratingBulk ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <Sparkles className="w-5 h-5" />
-          )}
-          Gerar Todos os Frames (Todas as Cenas)
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowBulkActionModal({
+              type: 'generate',
+              options: { startFrame: true, endFrame: true, video: false },
+              selectedSceneIds: project.scenes.map(s => s.id)
+            })}
+            disabled={isGeneratingBulk || !project.scenes.length}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-medium transition-colors disabled:opacity-50"
+          >
+            {isGeneratingBulk ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Sparkles className="w-5 h-5" />
+            )}
+            Gerar em Massa
+          </button>
+          <button
+            onClick={() => setShowBulkActionModal({
+              type: 'delete',
+              options: { startFrame: true, endFrame: true, video: true },
+              selectedSceneIds: project.scenes.map(s => s.id)
+            })}
+            disabled={isGeneratingBulk || !project.scenes.length}
+            className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-xl font-medium transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-5 h-5" />
+            Apagar em Massa
+          </button>
+        </div>
       </div>
 
       {isGeneratingBulk && (
@@ -2140,6 +2274,149 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}
         />
+      )}
+
+      {showBulkActionModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl"
+          >
+            <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  showBulkActionModal.type === 'generate' ? 'bg-indigo-500/20' : 'bg-rose-500/20'
+                }`}>
+                  {showBulkActionModal.type === 'generate' ? (
+                    <Sparkles className="w-5 h-5 text-indigo-400" />
+                  ) : (
+                    <Trash2 className="w-5 h-5 text-rose-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">
+                    {showBulkActionModal.type === 'generate' ? 'Gerar em Massa' : 'Apagar em Massa'}
+                  </h3>
+                  <p className="text-xs text-zinc-500">Configura as opções para a operação em massa.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowBulkActionModal(null)}
+                className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6 text-zinc-400" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+              {/* Options Section */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] ml-1">O que deseja {showBulkActionModal.type === 'generate' ? 'gerar' : 'apagar'}?</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {[
+                    { id: 'startFrame', label: 'Frame Inicial' },
+                    { id: 'endFrame', label: 'Frame Final' },
+                    { id: 'video', label: 'Vídeo' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setShowBulkActionModal({
+                        ...showBulkActionModal,
+                        options: {
+                          ...showBulkActionModal.options,
+                          [opt.id]: !showBulkActionModal.options[opt.id as keyof typeof showBulkActionModal.options]
+                        }
+                      })}
+                      className={`flex items-center gap-3 p-4 rounded-2xl border transition-all duration-300 ${
+                        showBulkActionModal.options[opt.id as keyof typeof showBulkActionModal.options]
+                          ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.1)]'
+                          : 'bg-zinc-800/30 border-zinc-700/50 text-zinc-500 hover:border-zinc-600 hover:bg-zinc-800/50'
+                      }`}
+                    >
+                      {showBulkActionModal.options[opt.id as keyof typeof showBulkActionModal.options] ? (
+                        <CheckSquare className="w-5 h-5" />
+                      ) : (
+                        <Square className="w-5 h-5" />
+                      )}
+                      <span className="font-bold text-sm">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Scenes Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between ml-1">
+                  <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Selecionar Cenas</h4>
+                  <button
+                    onClick={() => {
+                      const allIds = project.scenes.map(s => s.id);
+                      const isAllSelected = showBulkActionModal.selectedSceneIds.length === allIds.length;
+                      setShowBulkActionModal({
+                        ...showBulkActionModal,
+                        selectedSceneIds: isAllSelected ? [] : allIds
+                      });
+                    }}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors font-bold uppercase tracking-wider"
+                  >
+                    {showBulkActionModal.selectedSceneIds.length === project.scenes.length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {project.scenes.map((scene, index) => (
+                    <button
+                      key={scene.id}
+                      onClick={() => {
+                        const newIds = showBulkActionModal.selectedSceneIds.includes(scene.id)
+                          ? showBulkActionModal.selectedSceneIds.filter(id => id !== scene.id)
+                          : [...showBulkActionModal.selectedSceneIds, scene.id];
+                        setShowBulkActionModal({ ...showBulkActionModal, selectedSceneIds: newIds });
+                      }}
+                      className={`flex items-center gap-3 p-4 rounded-2xl border text-left transition-all duration-300 ${
+                        showBulkActionModal.selectedSceneIds.includes(scene.id)
+                          ? 'bg-zinc-800 border-indigo-500/50 text-white shadow-[0_0_15px_rgba(99,102,241,0.05)]'
+                          : 'bg-zinc-800/20 border-zinc-700/30 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/40'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-all duration-300 ${
+                        showBulkActionModal.selectedSceneIds.includes(scene.id)
+                          ? 'bg-indigo-500 border-indigo-500 scale-110'
+                          : 'border-zinc-600'
+                      }`}>
+                        {showBulkActionModal.selectedSceneIds.includes(scene.id) && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-bold text-zinc-400">Cena {index + 1}</span>
+                        <span className="text-sm font-medium truncate">{scene.title}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-8 bg-zinc-900 border-t border-zinc-800 flex gap-4">
+              <button
+                onClick={() => setShowBulkActionModal(null)}
+                className="flex-1 px-8 py-4 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold transition-all duration-300 border border-zinc-700/50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleExecuteBulkAction}
+                disabled={showBulkActionModal.selectedSceneIds.length === 0 || (!showBulkActionModal.options.startFrame && !showBulkActionModal.options.endFrame && !showBulkActionModal.options.video)}
+                className={`flex-1 px-8 py-4 rounded-2xl font-bold transition-all duration-300 shadow-xl disabled:opacity-30 disabled:cursor-not-allowed ${
+                  showBulkActionModal.type === 'generate'
+                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-500/20'
+                }`}
+              >
+                Confirmar {showBulkActionModal.type === 'generate' ? 'Geração' : 'Exclusão'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );
