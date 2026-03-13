@@ -28,7 +28,9 @@ import {
   generateNarrationText,
   generateNarrationAudio,
   generateSubtitles,
-  getVoiceForSettings
+  getVoiceForSettings,
+  detectCharacters,
+  detectSetting
 } from "../services/geminiService";
 
 interface MassProductionOverlayProps {
@@ -314,9 +316,31 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         addLog("Gerando Cenas e Takes para todo o filme...");
         updateAutomation({ progress: 10 });
 
+        const charactersContext = project.characters
+          .map((c) => `${c.name}: ${c.description}`)
+          .join("\n");
+        const settingsContext = project.settings
+          .map((s) => `${s.name}: ${s.description}`)
+          .join("\n");
+
         const response = await ai.models.generateContent({
           model: "gemini-3-flash-preview",
-          contents: `Com base no guião: "${project.script}", cria uma lista de cenas e takes detalhados. Responde em JSON com um array "scenes" onde cada cena tem "title", "description" e um array "takes" com "action", "camera", "sound", "music", "dialogue".`,
+          contents: `Com base no guião: "${project.script}", cria uma lista de cenas e takes detalhados. 
+          
+          Contexto de Personagens:
+          ${charactersContext}
+          
+          Contexto de Cenários:
+          ${settingsContext}
+
+          Responde em JSON com um array "scenes" onde cada cena tem "title", "description" e um array "takes" com:
+          - "action": descrição da ação
+          - "camera": tipo de plano
+          - "sound": som ambiente
+          - "music": música
+          - "dialogue": texto do diálogo
+          - "characterNames": array com nomes das personagens presentes (conforme contexto)
+          - "settingName": nome do cenário onde ocorre (conforme contexto)`,
           config: { responseMimeType: "application/json" }
         });
         addCost(COST_TEXT);
@@ -329,14 +353,23 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             id: Math.random().toString(36).substr(2, 9),
             title: scene.title,
             description: scene.description,
-            takes: (scene.takes || []).map((take: any) => ({
-              id: Math.random().toString(36).substr(2, 9),
-              action: take.action,
-              camera: take.camera,
-              sound: take.sound,
-              music: take.music,
-              dialogue: take.dialogue
-            }))
+            takes: (scene.takes || []).map((take: any) => {
+              const charIds = detectCharacters(take.action, [], take.characterNames || [], project.characters);
+              const settingId = detectSetting(take.action, take.settingName, project.settings);
+              
+              return {
+                id: Math.random().toString(36).substr(2, 9),
+                action: take.action,
+                camera: take.camera,
+                sound: take.sound,
+                music: take.music,
+                dialogue: take.dialogue,
+                characterIds: charIds,
+                settingId: settingId,
+                duration: 5,
+                updatedAt: Date.now()
+              };
+            })
           })),
           automation: {
             ...prev.automation!,
@@ -345,7 +378,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           }
         }));
 
-        addLog("Fase 5 concluída: Cenas e Takes gerados.");
+        addLog("Fase 5 concluída: Cenas e Takes gerados com identificação automática.");
         if (automation.autoMode) validatePhase();
       }
       else if (automation.currentPhase === 6) {

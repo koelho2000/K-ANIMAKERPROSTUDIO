@@ -111,6 +111,23 @@ export default function Production({ project, setProject }: ProductionProps) {
     return () => clearInterval(interval);
   }, [generatingVideoId]);
 
+  const getBase64FromUrl = async (url: string): Promise<string> => {
+    if (url.startsWith('data:')) return url;
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error("Error fetching image for base64 conversion:", error);
+      return url; // Fallback to original URL
+    }
+  };
+
   const handleGenerateFrame = async (
     sceneId: string,
     takeId: string,
@@ -132,15 +149,22 @@ export default function Production({ project, setProject }: ProductionProps) {
 
       // Collect reference images
       const referenceImages: string[] = [];
-      if (takeSetting?.imageUrl) referenceImages.push(takeSetting.imageUrl);
-      takeCharacters.forEach((c) => {
-        if (c.imageUrl) referenceImages.push(c.imageUrl);
-      });
+      if (takeSetting?.imageUrl) {
+        const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+        referenceImages.push(base64);
+      }
+      for (const c of takeCharacters) {
+        if (c.imageUrl) {
+          const base64 = await getBase64FromUrl(c.imageUrl);
+          referenceImages.push(base64);
+        }
+      }
 
       // Add start frame as reference for end frame
       const startFrame = startFrameOverride || take.startFrameUrl;
       if (type === "end" && startFrame) {
-        referenceImages.push(startFrame);
+        const base64 = await getBase64FromUrl(startFrame);
+        referenceImages.push(base64);
       }
 
       const prompt = customPrompt || `
@@ -657,12 +681,31 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
 
           const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
+          
+          // Collect reference images for consistency
+          const takeCharacters = project.characters.filter((c) =>
+            take.characterIds?.includes(c.id)
+          );
+          const takeSetting = project.settings.find((s) => s.id === take.settingId);
+          const referenceImages: string[] = [];
+          if (takeSetting?.imageUrl) {
+            const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+            referenceImages.push(base64);
+          }
+          for (const c of takeCharacters) {
+            if (c.imageUrl) {
+              const base64 = await getBase64FromUrl(c.imageUrl);
+              referenceImages.push(base64);
+            }
+          }
+
           const operation = await generateVideo(
             prompt,
             take.startFrameUrl,
             take.endFrameUrl,
             take.videoModel || project.videoModel || 'flow',
-            project.aspectRatio
+            project.aspectRatio,
+            referenceImages
           );
 
           // Update state with operation ID and prompt
@@ -773,12 +816,30 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         }
       }
 
+      // Collect reference images for consistency
+      const takeCharacters = project.characters.filter((c) =>
+        take.characterIds?.includes(c.id)
+      );
+      const takeSetting = project.settings.find((s) => s.id === take.settingId);
+      const referenceImages: string[] = [];
+      if (takeSetting?.imageUrl) {
+        const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+        referenceImages.push(base64);
+      }
+      for (const c of takeCharacters) {
+        if (c.imageUrl) {
+          const base64 = await getBase64FromUrl(c.imageUrl);
+          referenceImages.push(base64);
+        }
+      }
+
       const operation = await generateVideo(
         editedPrompt,
         take.startFrameUrl,
         take.endFrameUrl,
         take.videoModel || project.videoModel || 'flow',
-        project.aspectRatio
+        project.aspectRatio,
+        referenceImages
       );
       setVideoStatus("A aguardar renderização (2-5 min)...");
 
@@ -1454,6 +1515,68 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                     )}
                   </div>
                 )}
+
+                <div className="px-6 pt-4">
+                  <div className="flex flex-wrap gap-4 items-end">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Referências de Consistência</span>
+                      <div className="flex flex-wrap gap-2">
+                        {(() => {
+                          const takeCharacters = project.characters.filter((c) =>
+                            take.characterIds?.includes(c.id)
+                          );
+                          const takeSetting = project.settings.find((s) => s.id === take.settingId);
+                          
+                          return (
+                            <>
+                              {takeSetting?.imageUrl && (
+                                <div className="relative group">
+                                  <img 
+                                    src={takeSetting.imageUrl} 
+                                    alt={takeSetting.name}
+                                    className="w-12 h-12 rounded-lg object-cover border border-zinc-200 shadow-sm"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                                    <MapPin className="w-3 h-3 text-white" />
+                                  </div>
+                                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-white text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-30">
+                                    Cenário: {takeSetting.name}
+                                  </div>
+                                </div>
+                              )}
+                              {takeCharacters.map(c => (
+                                <div key={c.id} className="relative group">
+                                  {c.imageUrl ? (
+                                    <img 
+                                      src={c.imageUrl} 
+                                      alt={c.name}
+                                      className="w-12 h-12 rounded-lg object-cover border border-zinc-200 shadow-sm"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : (
+                                    <div className="w-12 h-12 rounded-lg bg-zinc-100 border border-zinc-200 flex items-center justify-center">
+                                      <Users className="w-4 h-4 text-zinc-300" />
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                                    <Users className="w-3 h-3 text-white" />
+                                  </div>
+                                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-white text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-30">
+                                    Personagem: {c.name}
+                                  </div>
+                                </div>
+                              ))}
+                              {takeCharacters.length === 0 && !takeSetting?.imageUrl && (
+                                <span className="text-[10px] text-zinc-400 italic">Nenhuma referência definida</span>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Start Frame */}

@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Project, Scene, Take } from "../types";
-import { generateJSON } from "../services/geminiService";
+import { 
+  generateJSON,
+  generateNarrationAudio,
+  generateSubtitles,
+  getVoiceForSettings,
+  detectCharacters,
+  detectSetting
+} from "../services/geminiService";
 import {
   Loader2,
   Sparkles,
@@ -184,6 +191,11 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         IMPORTANTE: Deves gerar exatamente ${targetTakes} takes para cumprir o nível de detalhe solicitado pelo utilizador.
         Para cada take, define a ação, o movimento/tipo de câmara, som ambiente, música e diálogo (se houver).
         Garante que as ações respeitam as descrições das personagens e cenários fornecidos.
+
+        REGRAS DE IDENTIFICAÇÃO:
+        1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
+        2. Coloca os nomes EXATOS das personagens (conforme fornecido no Contexto) na lista 'characterNames'.
+        3. Identifica o cenário EXATO onde o take ocorre e coloca o seu nome em 'settingName'.
       `;
 
       const schema = {
@@ -242,23 +254,29 @@ export default function Scenes({ project, setProject }: ScenesProps) {
       );
       const parsed = JSON.parse(result);
 
-      const newTakes: Take[] = parsed.map((t: any) => ({
-        id: uuidv4(),
-        action: t.action,
-        camera: t.camera,
-        sound: t.sound,
-        music: t.music,
-        dialogue: t.dialogue,
-        dialogueLines: t.dialogueLines?.map((dl: any) => ({
-          characterId: project.characters.find((c) => c.name === dl.characterName)?.id || "",
-          text: dl.text,
-        })).filter((dl: any) => dl.characterId !== ""),
-        characterIds: project.characters
-          .filter((c) => t.characterNames?.includes(c.name))
-          .map((c) => c.id),
-        settingId: project.settings.find((s) => s.name === t.settingName)?.id,
-        duration: 5, // Default duration
-      }));
+      const newTakes: Take[] = parsed.map((t: any) => {
+        const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
+        const settingId = detectSetting(t.action, t.settingName, project.settings) || project.settings.find((s) => s.name === t.settingName)?.id;
+
+        return {
+          id: uuidv4(),
+          action: t.action,
+          camera: t.camera,
+          sound: t.sound,
+          music: t.music,
+          dialogue: t.dialogue,
+          dialogueLines: t.dialogueLines?.map((dl: any) => ({
+            characterId: project.characters.find((c) => 
+              c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+              dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+            )?.id || "",
+            text: dl.text,
+          })).filter((dl: any) => dl.characterId !== ""),
+          characterIds,
+          settingId,
+          duration: 5, // Default duration
+        };
+      });
 
       return newTakes;
     } catch (error) {
@@ -340,6 +358,11 @@ export default function Scenes({ project, setProject }: ScenesProps) {
 
         Gera exatamente ${numNewTakes} novos takes que complementem os atuais ou que dividam a ação de forma mais detalhada. 
         Retorna APENAS os novos takes que devem ser ADICIONADOS à cena.
+
+        REGRAS DE IDENTIFICAÇÃO:
+        1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
+        2. Coloca os nomes EXATOS das personagens (conforme fornecido no Contexto) na lista 'characterNames'.
+        3. Identifica o cenário EXATO onde o take ocorre e coloca o seu nome em 'settingName'.
       `;
 
       const schema = {
@@ -380,23 +403,29 @@ export default function Scenes({ project, setProject }: ScenesProps) {
       );
       const parsed = JSON.parse(result);
 
-      const newTakes: Take[] = parsed.map((t: any) => ({
-        id: uuidv4(),
-        action: t.action,
-        camera: t.camera,
-        sound: t.sound,
-        music: t.music,
-        dialogue: t.dialogue,
-        dialogueLines: t.dialogueLines?.map((dl: any) => ({
-          characterId: project.characters.find((c) => c.name === dl.characterName)?.id || "",
-          text: dl.text,
-        })).filter((dl: any) => dl.characterId !== ""),
-        characterIds: project.characters
-          .filter((c) => t.characterNames?.includes(c.name))
-          .map((c) => c.id),
-        settingId: project.settings.find((s) => s.name === t.settingName)?.id,
-        duration: 5,
-      }));
+      const newTakes: Take[] = parsed.map((t: any) => {
+        const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
+        const settingId = detectSetting(t.action, t.settingName, project.settings) || project.settings.find((s) => s.name === t.settingName)?.id;
+
+        return {
+          id: uuidv4(),
+          action: t.action,
+          camera: t.camera,
+          sound: t.sound,
+          music: t.music,
+          dialogue: t.dialogue,
+          dialogueLines: t.dialogueLines?.map((dl: any) => ({
+            characterId: project.characters.find((c) => 
+              c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+              dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+            )?.id || "",
+            text: dl.text,
+          })).filter((dl: any) => dl.characterId !== ""),
+          characterIds,
+          settingId,
+          duration: 5,
+        };
+      });
 
       const updatedScenes = project.scenes.map((s) => {
         if (s.id === sceneId) {
@@ -448,6 +477,11 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         ${settingsContext}
 
         Garante que o novo take é mais detalhado e respeita as descrições fornecidas.
+        
+        REGRAS DE IDENTIFICAÇÃO:
+        1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
+        2. Coloca os nomes EXATOS das personagens (conforme fornecido no Contexto) na lista 'characterNames'.
+        3. Identifica o cenário EXATO onde o take ocorre e coloca o seu nome em 'settingName'.
       `;
 
       const schema = {
@@ -484,6 +518,8 @@ export default function Scenes({ project, setProject }: ScenesProps) {
         "És um realizador de cinema a aperfeiçoar uma storyboard.",
       );
       const t = JSON.parse(result);
+      const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
+      const settingId = detectSetting(t.action, t.settingName, project.settings) || project.settings.find((s) => s.name === t.settingName)?.id;
 
       const updatedScenes = project.scenes.map((s) => {
         if (s.id === sceneId) {
@@ -499,13 +535,14 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                     music: t.music,
                     dialogue: t.dialogue,
                     dialogueLines: t.dialogueLines?.map((dl: any) => ({
-                      characterId: project.characters.find((c) => c.name === dl.characterName)?.id || "",
+                      characterId: project.characters.find((c) => 
+                        c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+                        dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+                      )?.id || "",
                       text: dl.text,
                     })).filter((dl: any) => dl.characterId !== ""),
-                    characterIds: project.characters
-                      .filter((c) => t.characterNames?.includes(c.name))
-                      .map((c) => c.id),
-                    settingId: project.settings.find((s) => s.name === t.settingName)?.id,
+                    characterIds,
+                    settingId,
                     duration: oldT.duration || 5,
                   }
                 : oldT,
@@ -934,9 +971,21 @@ export default function Scenes({ project, setProject }: ScenesProps) {
 
                           {/* Characters Selection */}
                           <div className="md:col-span-2">
-                            <label className="block text-xs font-semibold text-zinc-500 uppercase mb-2 flex items-center gap-1">
-                              <Users className="w-3 h-3" /> Personagens neste Take
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-xs font-semibold text-zinc-500 uppercase flex items-center gap-1">
+                                <Users className="w-3 h-3" /> Personagens neste Take
+                              </label>
+                              <button
+                                onClick={() => {
+                                  const detectedIds = detectCharacters(take.action, take.dialogueLines || [], [], project.characters);
+                                  updateTake(scene.id, take.id, "characterIds", detectedIds);
+                                }}
+                                className="text-[10px] text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md transition-colors"
+                                title="Detectar personagens automaticamente a partir da ação e diálogo"
+                              >
+                                <Zap className="w-3 h-3" /> AUTO-DETECTAR
+                              </button>
+                            </div>
                             <div className="flex flex-wrap gap-2">
                               {project.characters.map((char) => {
                                 const isSelected = take.characterIds?.includes(char.id);
@@ -973,9 +1022,21 @@ export default function Scenes({ project, setProject }: ScenesProps) {
 
                           {/* Setting Selection */}
                           <div className="md:col-span-2">
-                            <label className="block text-xs font-semibold text-zinc-500 uppercase mb-2 flex items-center gap-1">
-                              <MapPin className="w-3 h-3" /> Cenário deste Take
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-xs font-semibold text-zinc-500 uppercase flex items-center gap-1">
+                                <MapPin className="w-3 h-3" /> Cenário deste Take
+                              </label>
+                              <button
+                                onClick={() => {
+                                  const detectedId = detectSetting(take.action, undefined, project.settings);
+                                  if (detectedId) updateTake(scene.id, take.id, "settingId", detectedId);
+                                }}
+                                className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-md transition-colors"
+                                title="Detectar cenário automaticamente a partir da ação"
+                              >
+                                <Zap className="w-3 h-3" /> AUTO-DETECTAR
+                              </button>
+                            </div>
                             <div className="flex flex-wrap gap-2">
                               {project.settings.map((setting) => {
                                 const isSelected = take.settingId === setting.id;

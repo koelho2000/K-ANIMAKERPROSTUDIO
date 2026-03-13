@@ -135,10 +135,14 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
     }
 
     const finalPrompt = `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the image.`;
+    
+    // Ensure we keep the reference images and replace the prompt text
+    const finalParts = parts.map(p => p.text ? { text: finalPrompt } : p);
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",
       contents: {
-        parts: [{ text: finalPrompt }, ...parts.slice(1)],
+        parts: finalParts,
       },
       config: {
         imageConfig: {
@@ -167,6 +171,7 @@ export const generateVideo = async (
   endImageBase64?: string,
   model: VideoModel = 'flow',
   aspectRatio: string = "16:9",
+  referenceImagesBase64?: string[],
 ) => {
   return withRetry(async () => {
     const ai = getGenAI();
@@ -221,6 +226,31 @@ export const generateVideo = async (
       }
     } else if (endImageBase64) {
       console.warn("A ignorar imagem final do vídeo que não é data URL:", endImageBase64.substring(0, 50));
+    }
+
+    // Add reference images for consistency (VEO 3.1 only)
+    if (model === 'veo-3.1' && referenceImagesBase64 && referenceImagesBase64.length > 0) {
+      const referenceImagesPayload: any[] = [];
+      // Veo 3.1 supports up to 3 reference images
+      referenceImagesBase64.slice(0, 3).forEach(img => {
+        if (img && img.startsWith('data:')) {
+          const parts_split = img.split(";base64,");
+          if (parts_split.length === 2) {
+            const mimeTypeMatch = parts_split[0].match(/data:([^;]+)/);
+            const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
+            referenceImagesPayload.push({
+              image: {
+                imageBytes: parts_split[1],
+                mimeType: mimeType,
+              },
+              referenceType: "ASSET",
+            });
+          }
+        }
+      });
+      if (referenceImagesPayload.length > 0) {
+        request.config.referenceImages = referenceImagesPayload;
+      }
     }
 
     const operation = await ai.models.generateVideos(request);
@@ -323,6 +353,60 @@ export const pollVideoOperation = async (operationOrName: any) => {
     videoUrl,
     videoObject: currentOperation.response?.generatedVideos?.[0]?.video
   };
+};
+
+export const detectCharacters = (action: string, dialogueLines: any[] = [], aiDetectedNames: string[] = [], characters: any[] = []) => {
+  const detectedIds = new Set<string>();
+  const lowerAction = action.toLowerCase();
+  
+  characters.forEach(char => {
+    const lowerName = char.name.toLowerCase();
+    // Check for word match in action
+    const nameRegex = new RegExp(`\\b${lowerName}\\b`, 'i');
+    
+    if (nameRegex.test(lowerAction)) {
+      detectedIds.add(char.id);
+    }
+    
+    // Check if AI explicitly detected this name
+    if (aiDetectedNames.some(n => n.toLowerCase() === lowerName || n.toLowerCase().includes(lowerName))) {
+      detectedIds.add(char.id);
+    }
+    
+    // Check dialogue
+    const isInDialogue = dialogueLines.some(line => {
+      if (line.characterId === char.id) return true;
+      const charName = line.characterName || "";
+      return charName.toLowerCase() === lowerName || charName.toLowerCase().includes(lowerName);
+    });
+    
+    if (isInDialogue) {
+      detectedIds.add(char.id);
+    }
+  });
+  
+  return Array.from(detectedIds);
+};
+
+export const detectSetting = (action: string, aiDetectedName?: string, settings: any[] = []) => {
+  const lowerAction = action.toLowerCase();
+  
+  // 1. Check AI detected name first
+  if (aiDetectedName) {
+    const found = settings.find(s => 
+      s.name.toLowerCase() === aiDetectedName.toLowerCase() || 
+      aiDetectedName.toLowerCase().includes(s.name.toLowerCase())
+    );
+    if (found) return found.id;
+  }
+
+  // 2. Scan action text
+  const foundSetting = settings.find(s => {
+    const nameRegex = new RegExp(`\\b${s.name.toLowerCase()}\\b`, 'i');
+    return nameRegex.test(lowerAction);
+  });
+  
+  return foundSetting?.id;
 };
 
 export const extendVideo = async (

@@ -297,7 +297,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
       Estilo Visual: ${project.filmStyle}. 
       Público Alvo: ${project.targetAudience || 'Adultos'}.
       Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
-      Maintain perfect consistency with the reference image. 
+      CRITICAL: You MUST maintain 100% consistency with the provided reference image. The character in all views must look exactly like the character in the reference image.
       Neutral background, highly detailed.`;
     
     setEditingPrompt({ id: character.id, prompt, type: 'views' });
@@ -819,9 +819,17 @@ export default function Characters({ project, setProject }: CharactersProps) {
             {/* Character Views Section */}
             <div className="border-t border-zinc-100 p-4 bg-zinc-50/50">
               <div className="flex items-center justify-between mb-3">
-                <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
-                  Vistas da Personagem
-                </h4>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                    Vistas da Personagem
+                  </h4>
+                  {char.imageUrl && (
+                    <div className="flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 border border-indigo-100 rounded text-[8px] text-indigo-600 font-bold uppercase">
+                      <ImageIcon className="w-2 h-2" />
+                      Com Ref.
+                    </div>
+                  )}
+                </div>
                 {char.viewsImageUrl && (
                   <div className="flex gap-2">
                     <button
