@@ -1001,6 +1001,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
       {editingItem && (
         <IntelligentEditor 
           mediaItem={editingItem}
+          project={project}
           aspectRatio="1:1"
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}

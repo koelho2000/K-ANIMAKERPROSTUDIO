@@ -20,6 +20,7 @@ import {
   Settings2,
   Clock,
   BookOpen,
+  Sparkles,
 } from "lucide-react";
 import { Project } from "../types";
 import { AUTOMATION_PHASES } from "../constants";
@@ -36,6 +37,7 @@ interface SidebarProps {
   onSave?: () => void;
   onStartMassProduction?: () => void;
   onNewProject?: () => void;
+  onOpenIntelligentGenerator?: () => void;
 }
 
 const steps = [
@@ -62,6 +64,7 @@ export default function Sidebar({
   onSave,
   onStartMassProduction,
   onNewProject,
+  onOpenIntelligentGenerator,
 }: SidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showUsageModal, setShowUsageModal] = useState(false);
@@ -370,6 +373,13 @@ export default function Sidebar({
           usage={usage}
         />
 
+        <button
+          onClick={onOpenIntelligentGenerator}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium text-indigo-400"
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>Gerador Inteligente</span>
+        </button>
         <button
           onClick={handleSave}
           className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all text-xs font-medium ${

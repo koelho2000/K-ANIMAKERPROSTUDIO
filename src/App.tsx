@@ -14,7 +14,8 @@ import MediaLibrary from "./components/MediaLibrary";
 import Timelapse from "./components/Timelapse";
 import EBook from "./components/EBook";
 import MassProductionOverlay from "./components/MassProductionOverlay";
-import { Project } from "./types";
+import IntelligentEditor from "./components/IntelligentEditor";
+import { Project, CustomMedia } from "./types";
 import { v4 as uuidv4 } from "uuid";
 
 const initialProject: Project = {
@@ -43,6 +44,7 @@ export default function App() {
   const [project, setProject] = useState<Project>(initialProject);
   const [lastSavedProject, setLastSavedProject] = useState<string>(JSON.stringify(initialProject));
   const [showMassProduction, setShowMassProduction] = useState(false);
+  const [showIntelligentGenerator, setShowIntelligentGenerator] = useState(false);
 
   const hasUnsavedChanges = JSON.stringify(project) !== lastSavedProject;
 
@@ -72,6 +74,7 @@ export default function App() {
         onSave={onSave}
         onStartMassProduction={() => setShowMassProduction(true)}
         onNewProject={onNewProject}
+        onOpenIntelligentGenerator={() => setShowIntelligentGenerator(true)}
       />
       <main className="flex-1 overflow-y-auto">
         {currentStep === 1 && (
@@ -122,6 +125,29 @@ export default function App() {
           setProject={setProject} 
           onClose={() => setShowMassProduction(false)} 
           setStep={setCurrentStep}
+        />
+      )}
+
+      {showIntelligentGenerator && (
+        <IntelligentEditor
+          project={project}
+          aspectRatio={project.aspectRatio}
+          initialMode="create"
+          onClose={() => setShowIntelligentGenerator(false)}
+          onSave={(url, _, title) => {
+            const newMedia: CustomMedia = {
+              id: uuidv4(),
+              url,
+              type: 'image',
+              title: title || 'Nova Imagem',
+              source: 'Gerador Inteligente',
+              createdAt: Date.now()
+            };
+            setProject(prev => ({
+              ...prev,
+              customMedia: [...(prev.customMedia || []), newMedia]
+            }));
+          }}
         />
       )}
     </div>

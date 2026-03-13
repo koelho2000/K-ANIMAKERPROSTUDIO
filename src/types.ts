@@ -66,6 +66,7 @@ export interface Project {
   globalTransition?: TransitionType;
   videoModel?: VideoModel;
   ebook?: EBook;
+  customMedia?: CustomMedia[];
   intro?: {
     type: string;
     prompt: string;
@@ -91,6 +92,15 @@ export interface Project {
     author?: string;
     thankYouMessage?: string;
   };
+}
+
+export interface CustomMedia {
+  id: string;
+  url: string;
+  type: 'image' | 'video';
+  title: string;
+  source: string;
+  createdAt: number;
 }
 
 export interface Character {

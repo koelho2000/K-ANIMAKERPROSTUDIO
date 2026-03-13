@@ -148,6 +148,13 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
     }
   }
 
+  // Custom Media
+  project.customMedia?.forEach(item => {
+    mediaItems.push({
+      ...item
+    });
+  });
+
   const filteredItems = mediaItems.filter(item => {
     if (filter === 'all') return true;
     return item.type === filter;
@@ -239,6 +246,9 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
         if (newProject.outro) newProject.outro.imageUrl = newUrl;
       } else if (id === 'outro-video') {
         if (newProject.outro) newProject.outro.videoUrl = newUrl;
+      } else {
+        // Check custom media
+        newProject.customMedia = newProject.customMedia?.map(m => m.id === id ? { ...m, url: newUrl } : m);
       }
 
       return newProject;
@@ -422,6 +432,7 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
       {editingItem && (
         <IntelligentEditor 
           mediaItem={editingItem}
+          project={project}
           aspectRatio={project.aspectRatio}
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}

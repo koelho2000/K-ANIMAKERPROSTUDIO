@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Eraser, Pen, Sparkles, Check, Loader2, RotateCcw, Undo, PlusCircle, Film, HelpCircle, Info } from "lucide-react";
+import { X, Eraser, Pen, Sparkles, Check, Loader2, RotateCcw, Undo, PlusCircle, Film, HelpCircle, Info, Upload, Library, Image as ImageIcon } from "lucide-react";
 import { generateImage, generateVideo, pollVideoOperation, extendVideo } from "../services/geminiService";
 import ProgressBar from "./ProgressBar";
-import { VideoModel } from "../types";
+import { VideoModel, Project } from "../types";
+import { v4 as uuidv4 } from "uuid";
 
 interface IntelligentEditorProps {
-  mediaItem: {
+  mediaItem?: {
     id: string;
     url: string;
     type: 'image' | 'video';
@@ -13,16 +14,18 @@ interface IntelligentEditorProps {
     source: string;
     videoObject?: any;
   };
+  project?: Project;
   aspectRatio: string;
-  initialMode?: 'edit' | 'extend';
+  initialMode?: 'edit' | 'extend' | 'create';
   defaultVideoModel?: VideoModel;
   nextMediaUrl?: string;
-  onSave: (newUrl: string, newVideoObject?: any) => void;
+  onSave: (newUrl: string, newVideoObject?: any, title?: string) => void;
   onClose: () => void;
 }
 
 export default function IntelligentEditor({ 
   mediaItem, 
+  project,
   aspectRatio, 
   initialMode = 'edit', 
   defaultVideoModel = 'flow',
@@ -34,18 +37,31 @@ export default function IntelligentEditor({
   const [isProcessing, setIsProcessing] = useState(false);
   const [editedUrl, setEditedUrl] = useState<string | null>(null);
   const [editedVideoObject, setEditedVideoObject] = useState<any>(null);
+  const [baseVideoToExtend, setBaseVideoToExtend] = useState<{ url: string, videoObject: any, title: string } | null>(null);
   const [brushSize, setBrushSize] = useState(20);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasMask, setHasMask] = useState(false);
-  const [mode, setMode] = useState<'edit' | 'extend'>(initialMode);
+  const [drawMode, setDrawMode] = useState<'brush' | 'eraser'>('brush');
+  const [mode, setMode] = useState<'edit' | 'extend' | 'create'>(mediaItem ? initialMode : 'create');
+  const [createType, setCreateType] = useState<'image' | 'video'>('image');
   const [videoModel, setVideoModel] = useState<VideoModel>(defaultVideoModel);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
   const [showNextPreview, setShowNextPreview] = useState(false);
+  const [referenceImages, setReferenceImages] = useState<string[]>(mediaItem?.url ? [mediaItem.url] : []);
+  const [showLibrarySelector, setShowLibrarySelector] = useState(false);
+  const [customTitle, setCustomTitle] = useState(mediaItem?.title || "Nova Imagem Gerada");
   
+  useEffect(() => {
+    if (mode === 'create') {
+      setCustomTitle(createType === 'image' ? "Nova Imagem Gerada" : "Novo Vídeo Gerado");
+    }
+  }, [createType, mode]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -65,15 +81,22 @@ export default function IntelligentEditor({
   }, [isProcessing]);
 
   useEffect(() => {
-    if (mediaItem.type === 'image') {
+    if (mediaItem?.type === 'image') {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.src = mediaItem.url;
       img.onload = () => {
         setupCanvases(img);
       };
+    } else if (referenceImages.length > 0) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = referenceImages[0];
+      img.onload = () => {
+        setupCanvases(img);
+      };
     }
-  }, [mediaItem]);
+  }, [mediaItem, referenceImages]);
 
   const setupCanvases = (img: HTMLImageElement) => {
     const canvas = canvasRef.current;
@@ -84,7 +107,6 @@ export default function IntelligentEditor({
     const maskCtx = maskCanvas.getContext('2d');
     if (!ctx || !maskCtx) return;
 
-    // Calculate dimensions to fit container while maintaining aspect ratio
     const container = containerRef.current;
     if (!container) return;
 
@@ -110,8 +132,8 @@ export default function IntelligentEditor({
 
     ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
     
-    // Initialize mask as transparent
-    maskCtx.clearRect(0, 0, drawWidth, drawHeight);
+    // We don't clear the mask here to preserve it if the user is just changing images
+    // but we need to make sure it matches the new dimensions
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -155,9 +177,15 @@ export default function IntelligentEditor({
 
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.lineWidth = brushSize;
-    ctx.globalCompositeOperation = 'source-over';
+
+    if (drawMode === 'brush') {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    } else {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
+    }
 
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -180,21 +208,42 @@ export default function IntelligentEditor({
     setIsProcessing(true);
     setStatus("A processar...");
     try {
-      if (mediaItem.type === 'image') {
+      if (mode === 'create') {
+        if (createType === 'image') {
+          const refs = [...referenceImages];
+          const result = await generateImage(prompt, aspectRatio, refs);
+          setEditedUrl(result);
+        } else {
+          if (baseVideoToExtend) {
+            setStatus("A extender vídeo...");
+            const operation = await extendVideo(prompt, baseVideoToExtend.videoObject, videoModel, aspectRatio);
+            const result = await pollVideoOperation(operation);
+            setEditedUrl(result.videoUrl);
+            setEditedVideoObject(result.videoObject);
+          } else {
+            setStatus("A gerar vídeo...");
+            // Use first reference image as starting frame if available
+            const startImage = referenceImages.length > 0 ? referenceImages[0] : undefined;
+            const operation = await generateVideo(prompt, startImage, undefined, videoModel, aspectRatio);
+            const result = await pollVideoOperation(operation);
+            setEditedUrl(result.videoUrl);
+            setEditedVideoObject(result.videoObject);
+          }
+        }
+      } else if (mediaItem?.type === 'image') {
         const maskCanvas = maskCanvasRef.current;
-        const referenceImages = [mediaItem.url];
+        const refs = [...referenceImages];
+        let finalPrompt = `${prompt} (baseado nas referências fornecidas)`;
         
-        let finalPrompt = `${prompt} (baseado na imagem fornecida)`;
-        
-        if (hasMask && maskCanvas) {
+        if (hasMask && maskCanvas && refs.length > 0) {
           const maskDataUrl = maskCanvas.toDataURL('image/png');
-          referenceImages.push(maskDataUrl);
-          finalPrompt = `${prompt}. Altera apenas a área marcada a branco na segunda imagem (máscara). Mantém o resto da imagem original inalterado.`;
+          refs.push(maskDataUrl);
+          finalPrompt = `${prompt}. Altera apenas a área marcada a branco na última imagem (máscara). Mantém o resto da imagem de referência inalterado.`;
         }
         
-        const result = await generateImage(finalPrompt, aspectRatio, referenceImages);
+        const result = await generateImage(finalPrompt, aspectRatio, refs);
         setEditedUrl(result);
-      } else {
+      } else if (mediaItem) {
         if (mode === 'edit') {
           setStatus("A editar vídeo...");
           const operation = await generateVideo(`${prompt} (baseado no vídeo fornecido)`, mediaItem.url, undefined, videoModel, aspectRatio);
@@ -223,10 +272,71 @@ export default function IntelligentEditor({
 
   const handleConfirm = () => {
     if (editedUrl) {
-      onSave(editedUrl, editedVideoObject);
+      onSave(editedUrl, editedVideoObject, customTitle);
       onClose();
     }
   };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setReferenceImages(prev => [base64, ...prev]);
+      };
+      reader.readAsDataURL(file);
+    }
+    
+    // Reset input value to allow uploading the same files again if needed
+    e.target.value = '';
+  };
+
+  const getAllLibraryImages = () => {
+    if (!project) return [];
+    const images: string[] = [];
+    project.characters.forEach(c => {
+      if (c.imageUrl) images.push(c.imageUrl);
+      if (c.viewsImageUrl) images.push(c.viewsImageUrl);
+    });
+    project.settings.forEach(s => {
+      if (s.imageUrl) images.push(s.imageUrl);
+    });
+    project.scenes.forEach(s => s.takes.forEach(t => {
+      if (t.startFrameUrl) images.push(t.startFrameUrl);
+      if (t.endFrameUrl) images.push(t.endFrameUrl);
+    }));
+    project.customMedia?.forEach(m => {
+      if (m.type === 'image') images.push(m.url);
+    });
+    return Array.from(new Set(images));
+  };
+
+  const getAllLibraryVideos = () => {
+    if (!project) return [];
+    const videos: { url: string, videoObject: any, title: string }[] = [];
+    
+    project.scenes.forEach(s => s.takes.forEach(t => {
+      if (t.videoUrl && t.videoObject) {
+        videos.push({ url: t.videoUrl, videoObject: t.videoObject, title: `Cena ${s.title} - Take` });
+      }
+    }));
+    
+    if (project.intro?.videoUrl && project.intro?.videoObject) {
+      videos.push({ url: project.intro.videoUrl, videoObject: project.intro.videoObject, title: "Intro" });
+    }
+    
+    if (project.outro?.videoUrl && project.outro?.videoObject) {
+      videos.push({ url: project.outro.videoUrl, videoObject: project.outro.videoObject, title: "Outro" });
+    }
+
+    return videos;
+  };
+
+  const [showVideoLibrarySelector, setShowVideoLibrarySelector] = useState(false);
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-zinc-950/90 backdrop-blur-md p-4 animate-in fade-in duration-300">
@@ -240,9 +350,11 @@ export default function IntelligentEditor({
             <div>
               <h3 className="text-lg font-bold text-zinc-900">Edição Inteligente</h3>
               <p className="text-xs text-zinc-500">
-                {mediaItem.type === 'image' 
-                  ? "Usa a caneta para marcar áreas e descreve as alterações."
-                  : "Edita o conteúdo do vídeo ou extende a sua duração."}
+                {mode === 'create' 
+                  ? (createType === 'image' ? "Descreve a imagem que pretendes gerar." : "Descreve o vídeo que pretendes gerar.")
+                  : mediaItem?.type === 'image' 
+                    ? "Descreve as alterações pretendidas com base nas referências."
+                    : "Edita o conteúdo do vídeo ou extende a sua duração."}
               </p>
             </div>
           </div>
@@ -258,26 +370,146 @@ export default function IntelligentEditor({
         <div className="flex-1 flex overflow-hidden">
           {/* Editor Area */}
           <div className="flex-1 bg-zinc-100 relative flex items-center justify-center p-8 overflow-hidden" ref={containerRef}>
-            {mediaItem.type === 'image' ? (
-              <div className="relative shadow-2xl rounded-lg overflow-hidden cursor-crosshair">
-                <canvas ref={canvasRef} className="max-w-full max-h-full" />
-                <canvas 
-                  ref={maskCanvasRef} 
-                  className="absolute inset-0 max-w-full max-h-full opacity-50 pointer-events-auto"
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={stopDrawing}
-                  onTouchStart={startDrawing}
-                  onTouchMove={draw}
-                  onTouchEnd={stopDrawing}
-                />
-                {!hasMask && !isDrawing && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="bg-black/40 backdrop-blur-sm text-white px-4 py-2 rounded-full text-xs font-medium flex items-center gap-2">
-                      <Pen className="w-3 h-3" />
-                      Desenha aqui para marcar a área a editar
+            {mode === 'create' && referenceImages.length === 0 ? (
+              <div className="flex flex-col items-center gap-6 text-center max-w-md">
+                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center">
+                  <Sparkles className="w-10 h-10 text-indigo-600" />
+                </div>
+                <div>
+                  <h4 className="text-xl font-bold text-zinc-900">Gerador Inteligente</h4>
+                  <p className="text-zinc-500 mt-2">Descreve o que pretendes gerar ou adiciona imagens de referência para guiar a IA.</p>
+                </div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm font-bold text-zinc-700 hover:bg-zinc-50 transition-all"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Upload
+                  </button>
+                  <button 
+                    onClick={() => setShowLibrarySelector(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm font-bold text-zinc-700 hover:bg-zinc-50 transition-all"
+                  >
+                    <Library className="w-4 h-4" />
+                    Biblioteca
+                  </button>
+                </div>
+              </div>
+            ) : (mode === 'create' || mediaItem?.type === 'image') ? (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-6">
+                <div className="flex-1 w-full relative flex items-center justify-center min-h-0">
+                  {editedUrl ? (
+                    <div className="relative h-full shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-500">
+                      <img 
+                        src={editedUrl} 
+                        className="h-full w-auto object-contain" 
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute top-4 left-4 px-3 py-1 bg-emerald-600/80 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
+                        Resultado Gerado
+                      </div>
                     </div>
+                  ) : referenceImages.length > 0 ? (
+                    <div className="relative h-full shadow-2xl rounded-2xl overflow-hidden cursor-crosshair">
+                      <canvas ref={canvasRef} className="max-w-full max-h-full" />
+                      <canvas 
+                        ref={maskCanvasRef} 
+                        className="absolute inset-0 max-w-full max-h-full opacity-50 pointer-events-auto"
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={stopDrawing}
+                        onMouseLeave={stopDrawing}
+                        onTouchStart={startDrawing}
+                        onTouchMove={draw}
+                        onTouchEnd={stopDrawing}
+                      />
+                      {!hasMask && !isDrawing && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="bg-black/40 backdrop-blur-sm text-white px-4 py-2 rounded-full text-xs font-medium flex items-center gap-2">
+                            <Pen className="w-3 h-3" />
+                            Desenha aqui para marcar a área a editar
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-zinc-400 flex flex-col items-center gap-2">
+                      <ImageIcon className="w-12 h-12 opacity-20" />
+                      <p className="text-sm font-medium">Sem referências</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Drawing Controls */}
+                {!editedUrl && referenceImages.length > 0 && (
+                  <div className="absolute bottom-6 left-6 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-zinc-200 flex items-center gap-6">
+                    <div className="flex items-center gap-2 p-1 bg-zinc-100 rounded-xl">
+                      <button 
+                        onClick={() => setDrawMode('brush')}
+                        className={`p-2 rounded-lg transition-all ${drawMode === 'brush' ? 'bg-white text-indigo-600 shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
+                        title="Pincel"
+                      >
+                        <Pen className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => setDrawMode('eraser')}
+                        className={`p-2 rounded-lg transition-all ${drawMode === 'eraser' ? 'bg-white text-indigo-600 shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
+                        title="Borracha"
+                      >
+                        <Eraser className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-4 border-l border-zinc-200 pl-6">
+                      <div className="flex items-center gap-2">
+                        <div className="bg-zinc-400 rounded-full" style={{ width: Math.max(4, brushSize/4), height: Math.max(4, brushSize/4) }} />
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase">Tamanho</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="5" 
+                        max="100" 
+                        value={brushSize} 
+                        onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                        className="w-32 accent-indigo-600"
+                      />
+                    </div>
+
+                    <button 
+                      onClick={clearMask}
+                      className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-500 transition-all border-l border-zinc-200 pl-6"
+                      title="Limpar Seleção"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                {editedUrl && (
+                  <div className="flex items-center gap-4 bg-white/80 backdrop-blur-md p-2 rounded-2xl border border-zinc-200 shadow-sm">
+                    <button 
+                      onClick={() => setEditedUrl(null)}
+                      className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-zinc-600 hover:bg-zinc-100 rounded-xl transition-all"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Tentar Novamente
+                    </button>
+                    {editedVideoObject && (
+                      <button 
+                        onClick={() => {
+                          setBaseVideoToExtend({ url: editedUrl, videoObject: editedVideoObject, title: customTitle });
+                          setEditedUrl(null);
+                          setEditedVideoObject(null);
+                          setMode('create');
+                          setCreateType('video');
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-indigo-100"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5" />
+                        Extender este Vídeo
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -285,7 +517,7 @@ export default function IntelligentEditor({
               <div className="w-full h-full flex flex-col items-center justify-center gap-4">
                 <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl">
                   <video 
-                    src={mediaItem.url} 
+                    src={mediaItem?.url} 
                     controls 
                     className="w-full h-full object-contain"
                   />
@@ -336,42 +568,119 @@ export default function IntelligentEditor({
                     <div className="absolute top-4 left-4 px-3 py-1 bg-indigo-600/80 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
                       {mode === 'edit' ? 'Editado' : 'Extendido'}
                     </div>
+                    
+                    {editedVideoObject && (
+                      <div className="absolute bottom-4 right-4">
+                        <button 
+                          onClick={() => {
+                            setBaseVideoToExtend({ url: editedUrl, videoObject: editedVideoObject, title: customTitle });
+                            setEditedUrl(null);
+                            setEditedVideoObject(null);
+                            setMode('create');
+                            setCreateType('video');
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur-md text-indigo-600 rounded-xl text-xs font-bold shadow-xl hover:bg-white transition-all border border-indigo-100"
+                        >
+                          <PlusCircle className="w-4 h-4" />
+                          Extender este Vídeo
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Brush Size Control */}
-            {mediaItem.type === 'image' && (
-              <div className="absolute bottom-6 left-6 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-zinc-200 flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-zinc-400 rounded-full" style={{ width: brushSize/2, height: brushSize/2 }} />
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase">Tamanho</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="5" 
-                  max="100" 
-                  value={brushSize} 
-                  onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                  className="w-32 accent-indigo-600"
-                />
-                <button 
-                  onClick={clearMask}
-                  className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-500 transition-all"
-                  title="Limpar Máscara"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Sidebar Controls */}
           <div className="w-80 border-l border-zinc-100 flex flex-col bg-white">
-            <div className="p-6 flex-1 space-y-6 overflow-y-auto">
+            <div className="p-6 flex-1 space-y-6 overflow-y-auto custom-scrollbar">
+              {/* Type Selector for Create Mode */}
+              {mode === 'create' && (
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Tipo de Geração</label>
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-100 rounded-xl">
+                    <button
+                      onClick={() => setCreateType('image')}
+                      className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        createType === 'image' ? 'bg-white text-indigo-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
+                      }`}
+                    >
+                      <ImageIcon className="w-3 h-3" />
+                      Imagem
+                    </button>
+                    <button
+                      onClick={() => setCreateType('video')}
+                      className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        createType === 'video' ? 'bg-white text-indigo-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
+                      }`}
+                    >
+                      <Film className="w-3 h-3" />
+                      Vídeo
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Title input for creation */}
+              {mode === 'create' && (
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Título da Media</label>
+                  <input 
+                    type="text"
+                    value={customTitle}
+                    onChange={(e) => setCustomTitle(e.target.value)}
+                    className="w-full px-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    placeholder="Ex: Minha Nova Imagem"
+                  />
+                </div>
+              )}
+
+              {/* Reference Images Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Referências ({referenceImages.length})</label>
+                  <div className="flex gap-1">
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-1.5 hover:bg-zinc-100 rounded-lg text-indigo-600 transition-all"
+                      title="Upload"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                    </button>
+                    <button 
+                      onClick={() => setShowLibrarySelector(true)}
+                      className="p-1.5 hover:bg-zinc-100 rounded-lg text-indigo-600 transition-all"
+                      title="Biblioteca"
+                    >
+                      <Library className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {referenceImages.map((url, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-zinc-200 group">
+                      <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <button 
+                        onClick={() => setReferenceImages(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2 h-2" />
+                      </button>
+                    </div>
+                  ))}
+                  {referenceImages.length === 0 && (
+                    <div className="col-span-3 py-4 border-2 border-dashed border-zinc-100 rounded-xl flex flex-col items-center justify-center text-zinc-300">
+                      <ImageIcon className="w-6 h-6 mb-1" />
+                      <span className="text-[10px] font-bold uppercase">Sem referências</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Mode Selector for Video */}
-              {mediaItem.type === 'video' && (
+              {mediaItem?.type === 'video' && (
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Modo de Operação</label>
                   <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-100 rounded-xl">
@@ -394,12 +703,49 @@ export default function IntelligentEditor({
                       Extender
                     </button>
                   </div>
+                  <p className="text-[10px] text-zinc-400 italic px-1">
+                    {mode === 'edit' ? "Re-gera o vídeo com base no prompt." : "Continua o vídeo a partir do último frame."}
+                  </p>
                 </div>
               )}
 
               {/* Model Selector for Video */}
-              {mediaItem.type === 'video' && (
+              {(mediaItem?.type === 'video' || (mode === 'create' && createType === 'video')) && (
                 <div className="space-y-3">
+                  {mode === 'create' && createType === 'video' && (
+                    <div className="space-y-3 pb-3 border-b border-zinc-100">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Vídeo Base (Opcional)</label>
+                        <button 
+                          onClick={() => setShowVideoLibrarySelector(true)}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-wider"
+                        >
+                          Selecionar
+                        </button>
+                      </div>
+                      {baseVideoToExtend ? (
+                        <div className="relative aspect-video rounded-xl overflow-hidden border border-indigo-200 bg-black group">
+                          <video src={baseVideoToExtend.url} className="w-full h-full object-contain" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <button 
+                              onClick={() => setBaseVideoToExtend(null)}
+                              className="p-2 bg-white text-red-600 rounded-full shadow-lg"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-indigo-600 text-white text-[8px] font-bold rounded uppercase">
+                            Base para Extensão
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-4 border-2 border-dashed border-zinc-100 rounded-xl flex flex-col items-center justify-center text-zinc-300">
+                          <Film className="w-6 h-6 mb-1" />
+                          <span className="text-[10px] font-bold uppercase">Nenhum vídeo selecionado</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Modelo de Renderização</label>
                     <div className="group relative">
@@ -448,14 +794,14 @@ export default function IntelligentEditor({
 
               <div className="space-y-3">
                 <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                  {mode === 'edit' ? 'Instruções de Edição' : 'Instruções de Extensão'}
+                  Instruções de Geração
                 </label>
                 <textarea 
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder={mode === 'edit' 
-                    ? "Ex: Altera a cor da camisola para vermelho..." 
-                    : "Ex: A personagem continua a caminhar e sorri..."}
+                  placeholder={createType === 'image' 
+                    ? "Ex: Uma personagem num estilo cyberpunk..." 
+                    : "Ex: A personagem caminha pela cidade à noite..."}
                   className="w-full h-40 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
                 />
               </div>
@@ -486,8 +832,8 @@ export default function IntelligentEditor({
                   </>
                 ) : (
                   <>
-                    {mode === 'edit' ? <Sparkles className="w-5 h-5" /> : <PlusCircle className="w-5 h-5" />}
-                    {mode === 'edit' ? 'Gerar Alteração' : 'Gerar Extensão'}
+                    <Sparkles className="w-5 h-5" />
+                    Gerar Conteúdo
                   </>
                 )}
               </button>
@@ -505,6 +851,82 @@ export default function IntelligentEditor({
           </div>
         </div>
       </div>
+
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        accept="image/*" 
+        multiple
+        className="hidden" 
+      />
+
+      {showLibrarySelector && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-zinc-900">Selecionar da Biblioteca</h3>
+              <button onClick={() => setShowLibrarySelector(false)} className="p-2 hover:bg-zinc-100 rounded-full">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto grid grid-cols-3 gap-4 custom-scrollbar">
+              {getAllLibraryImages().map((url, idx) => (
+                <button 
+                  key={idx} 
+                  onClick={() => {
+                    setReferenceImages(prev => [url, ...prev]);
+                    setShowLibrarySelector(false);
+                  }}
+                  className="aspect-square rounded-xl overflow-hidden border border-zinc-200 hover:border-indigo-500 transition-all"
+                >
+                  <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </button>
+              ))}
+              {getAllLibraryImages().length === 0 && (
+                <div className="col-span-3 py-20 text-center text-zinc-400">
+                  Nenhuma imagem encontrada na biblioteca.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {showVideoLibrarySelector && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-zinc-900">Selecionar Vídeo para Extender</h3>
+              <button onClick={() => setShowVideoLibrarySelector(false)} className="p-2 hover:bg-zinc-100 rounded-full">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto grid grid-cols-2 gap-4 custom-scrollbar">
+              {getAllLibraryVideos().map((video, idx) => (
+                <button 
+                  key={idx} 
+                  onClick={() => {
+                    setBaseVideoToExtend(video);
+                    setShowVideoLibrarySelector(false);
+                  }}
+                  className="group relative aspect-video rounded-xl overflow-hidden border border-zinc-200 hover:border-indigo-500 transition-all bg-black"
+                >
+                  <video src={video.url} className="w-full h-full object-contain pointer-events-none" />
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center">
+                    <PlusCircle className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100" />
+                    <span className="text-white text-[10px] font-bold uppercase mt-2 opacity-0 group-hover:opacity-100">{video.title}</span>
+                  </div>
+                </button>
+              ))}
+              {getAllLibraryVideos().length === 0 && (
+                <div className="col-span-2 py-20 text-center text-zinc-400">
+                  Nenhum vídeo gerado encontrado na biblioteca.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

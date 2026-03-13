@@ -2267,6 +2267,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       {editingItem && (
         <IntelligentEditor 
           mediaItem={editingItem}
+          project={project}
           aspectRatio={project.aspectRatio}
           initialMode={editingItem.initialMode}
           defaultVideoModel={project.videoModel}
