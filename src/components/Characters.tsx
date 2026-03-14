@@ -121,7 +121,17 @@ export default function Characters({ project, setProject }: CharactersProps) {
         doc.setTextColor(63, 63, 70); // Zinc-700
         const splitDescription = doc.splitTextToSize(char.description, pageWidth - (margin * 2));
         doc.text(splitDescription, margin, yPos);
-        yPos += (splitDescription.length * 5) + 10;
+        yPos += (splitDescription.length * 5) + 5;
+
+        // Physical Attributes
+        if (char.physical) {
+          doc.setFontSize(9);
+          doc.setTextColor(113, 113, 122); // Zinc-500
+          doc.text(`Altura: ${char.physical.height || "N/A"} | Peso: ${char.physical.weight || "N/A"} | Constituição: ${char.physical.constitution || "Média"}`, margin, yPos);
+          yPos += 10;
+        } else {
+          yPos += 5;
+        }
 
         // Concept Image
         if (char.imageUrl) {
@@ -198,7 +208,10 @@ export default function Characters({ project, setProject }: CharactersProps) {
       
       const prompt = `
         Com base no seguinte guião de filme de animação, extrai as personagens principais e descreve-as visualmente e psicologicamente.
-        Para cada personagem, define também as características da sua voz para dobragem (língua/país, idade aproximada e personalidade vocal).
+        Para cada personagem, define também:
+        1. Características da sua voz para dobragem (língua/país, idade aproximada e personalidade vocal).
+        2. Constituição física (altura aproximada, peso aproximado e tipo de constituição: Frágil, Média ou Atlética).
+        
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
         Língua: ${langSpec}
@@ -229,8 +242,21 @@ export default function Characters({ project, setProject }: CharactersProps) {
               },
               required: ["language", "country", "age", "personality"],
             },
+            physical: {
+              type: Type.OBJECT,
+              properties: {
+                height: { type: Type.STRING, description: "Altura aproximada (ex: 1.75m)" },
+                weight: { type: Type.STRING, description: "Peso aproximado (ex: 70kg)" },
+                constitution: { 
+                  type: Type.STRING, 
+                  enum: ["Frágil", "Média", "Atlética"],
+                  description: "Tipo de constituição física" 
+                },
+              },
+              required: ["height", "weight", "constitution"],
+            },
           },
-          required: ["name", "description", "voice"],
+          required: ["name", "description", "voice", "physical"],
         },
       };
 
@@ -246,6 +272,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
         name: c.name,
         description: c.description,
         voice: c.voice,
+        physical: c.physical,
       }));
 
       setProject({ ...project, characters: newCharacters });
@@ -262,10 +289,15 @@ export default function Characters({ project, setProject }: CharactersProps) {
       ? character.artisticStyle 
       : project.filmStyle;
 
+    const physicalDesc = character.physical 
+      ? `Physical Attributes: Height ${character.physical.height}, Weight ${character.physical.weight}, Constitution ${character.physical.constitution}.`
+      : "";
+
     const prompt = `Character design for an animated film. 
       Tipo de Filme: ${project.filmType}.
       Estilo Visual: ${styleToUse}. 
       Visual Description: ${character.description}. 
+      ${physicalDesc}
       Público Alvo: ${project.targetAudience || 'Adultos'}.
       One single front-facing view of the character, full body, neutral background.`;
     
@@ -362,10 +394,15 @@ export default function Characters({ project, setProject }: CharactersProps) {
             ? char.artisticStyle 
             : project.filmStyle;
 
+          const physicalDesc = char.physical 
+            ? `Physical Attributes: Height ${char.physical.height}, Weight ${char.physical.weight}, Constitution ${char.physical.constitution}.`
+            : "";
+
           const prompt = `Character design for an animated film. 
             Tipo de Filme: ${project.filmType}.
             Estilo Visual: ${styleToUse}. 
             Visual Description: ${char.description}. 
+            ${physicalDesc}
             Público Alvo: ${project.targetAudience || 'Adultos'}.
             One single front-facing view of the character, full body, neutral background.`;
           setActivePrompt(prompt);
@@ -513,13 +550,16 @@ export default function Characters({ project, setProject }: CharactersProps) {
 
   const updateCharacter = (
     id: string,
-    field: keyof Character | "voice",
+    field: keyof Character | "voice" | "physical",
     value: any,
   ) => {
     const updated = project.characters.map((c) => {
       if (c.id === id) {
         if (field === "voice") {
           return { ...c, voice: { ...c.voice, ...value } };
+        }
+        if (field === "physical") {
+          return { ...c, physical: { ...c.physical, ...value } };
         }
         return { ...c, [field]: value };
       }
@@ -870,6 +910,45 @@ export default function Characters({ project, setProject }: CharactersProps) {
                     placeholder="Ex: Rouca, Enérgica..."
                     className="w-full text-[11px] bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded px-2 py-1 outline-none transition-colors"
                   />
+                </div>
+              </div>
+
+              {/* Physical Section */}
+              <div className="space-y-3 pt-2 border-t border-zinc-100">
+                <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Constituição Física</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-zinc-500 uppercase">Altura</label>
+                    <input
+                      type="text"
+                      value={char.physical?.height || ""}
+                      onChange={(e) => updateCharacter(char.id, "physical", { ...char.physical, height: e.target.value })}
+                      placeholder="Ex: 1.80m"
+                      className="w-full text-[11px] bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded px-2 py-1 outline-none transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-zinc-500 uppercase">Peso</label>
+                    <input
+                      type="text"
+                      value={char.physical?.weight || ""}
+                      onChange={(e) => updateCharacter(char.id, "physical", { ...char.physical, weight: e.target.value })}
+                      placeholder="Ex: 75kg"
+                      className="w-full text-[11px] bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded px-2 py-1 outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] text-zinc-500 uppercase">Constituição</label>
+                  <select
+                    value={char.physical?.constitution || "Média"}
+                    onChange={(e) => updateCharacter(char.id, "physical", { ...char.physical, constitution: e.target.value })}
+                    className="w-full text-[11px] bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded px-2 py-1 outline-none transition-colors cursor-pointer"
+                  >
+                    <option value="Frágil">Frágil</option>
+                    <option value="Média">Média</option>
+                    <option value="Atlética">Atlética</option>
+                  </select>
                 </div>
               </div>
             </div>

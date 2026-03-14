@@ -126,6 +126,11 @@ export interface Character {
     age: number | string;
     personality: string;
   };
+  physical?: {
+    height: string;
+    weight: string;
+    constitution: 'Frágil' | 'Média' | 'Atlética';
+  };
   imageUrl?: string;
   lastImagePrompt?: string;
   viewsImageUrl?: string;
