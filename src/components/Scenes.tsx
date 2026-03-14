@@ -24,6 +24,7 @@ import {
   Maximize2,
   Info,
   Zap,
+  ArrowRightLeft,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Type } from "@google/genai";
@@ -32,9 +33,18 @@ import ProgressBar from "./ProgressBar";
 interface ScenesProps {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
+  navigationContext?: { sceneId?: string; takeId?: string } | null;
+  setNavigationContext?: (context: { sceneId?: string; takeId?: string } | null) => void;
+  setCurrentStep?: (step: number) => void;
 }
 
-export default function Scenes({ project, setProject }: ScenesProps) {
+export default function Scenes({ 
+  project, 
+  setProject,
+  navigationContext,
+  setNavigationContext,
+  setCurrentStep
+}: ScenesProps) {
   const [isGeneratingScenes, setIsGeneratingScenes] = useState(false);
   const [scenesProgress, setScenesProgress] = useState(0);
   const [generatingTakesId, setGeneratingTakesId] = useState<string | null>(
@@ -47,6 +57,31 @@ export default function Scenes({ project, setProject }: ScenesProps) {
   const [isAutoGeneratingDialogues, setIsAutoGeneratingDialogues] = useState(false);
   const [globalProgress, setGlobalProgress] = useState(0);
   const [showCameraHelp, setShowCameraHelp] = useState(false);
+
+  useEffect(() => {
+    if (navigationContext?.sceneId) {
+      setExpandedSceneId(navigationContext.sceneId);
+      
+      // Clear context after using it
+      if (setNavigationContext) {
+        setNavigationContext(null);
+      }
+
+      // Scroll to take if provided
+      if (navigationContext.takeId) {
+        setTimeout(() => {
+          const element = document.getElementById(`scene-take-${navigationContext.takeId}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-4');
+            setTimeout(() => {
+              element.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-4');
+            }, 3000);
+          }
+        }, 300);
+      }
+    }
+  }, [navigationContext, setNavigationContext]);
 
   const getTargetCounts = () => {
     const sceneCounts = { low: 3, medium: 6, high: 12 };
@@ -895,6 +930,7 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                     {scene.takes.map((take, index) => (
                       <div
                         key={take.id}
+                        id={`scene-take-${take.id}`}
                         className="border border-zinc-200 rounded-xl p-4 flex gap-4"
                       >
                         <div className="font-mono text-zinc-400 font-bold text-lg pt-1 flex flex-col items-center gap-2">
@@ -910,6 +946,18 @@ export default function Scenes({ project, setProject }: ScenesProps) {
                             ) : (
                               <Sparkles className="w-4 h-4" />
                             )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (setNavigationContext && setCurrentStep) {
+                                setNavigationContext({ sceneId: scene.id, takeId: take.id });
+                                setCurrentStep(6); // Produção step
+                              }
+                            }}
+                            title="Ir para Produção"
+                            className="p-1.5 rounded-lg hover:bg-indigo-50 text-zinc-400 hover:text-indigo-600 transition-colors"
+                          >
+                            <ArrowRightLeft className="w-4 h-4" />
                           </button>
                         </div>
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -14,7 +14,9 @@ import {
   Sparkles,
   ChevronDown,
   FileArchive,
-  Loader2
+  Loader2,
+  ArrowRightLeft,
+  Film
 } from "lucide-react";
 import IntelligentEditor from "./IntelligentEditor";
 import JSZip from "jszip";
@@ -22,6 +24,9 @@ import JSZip from "jszip";
 interface MediaLibraryProps {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
+  navigationContext?: { sceneId?: string; takeId?: string } | null;
+  setNavigationContext?: (context: { sceneId?: string; takeId?: string } | null) => void;
+  setCurrentStep?: (step: number) => void;
 }
 
 interface MediaItem {
@@ -30,9 +35,17 @@ interface MediaItem {
   type: 'image' | 'video';
   title: string;
   source: string;
+  sceneId?: string;
+  takeId?: string;
 }
 
-export default function MediaLibrary({ project, setProject }: MediaLibraryProps) {
+export default function MediaLibrary({ 
+  project, 
+  setProject,
+  navigationContext,
+  setNavigationContext,
+  setCurrentStep
+}: MediaLibraryProps) {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -90,7 +103,9 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
           url: take.startFrameUrl,
           type: 'image',
           title: `${takeLabel} - Frame Inicial`,
-          source: 'Produção'
+          source: 'Produção',
+          sceneId: scene.id,
+          takeId: take.id
         });
       }
       if (take.endFrameUrl) {
@@ -99,7 +114,9 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
           url: take.endFrameUrl,
           type: 'image',
           title: `${takeLabel} - Frame Final`,
-          source: 'Produção'
+          source: 'Produção',
+          sceneId: scene.id,
+          takeId: take.id
         });
       }
       if (take.videoUrl) {
@@ -108,7 +125,9 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
           url: take.videoUrl,
           type: 'video',
           title: `${takeLabel} - Vídeo`,
-          source: 'Produção'
+          source: 'Produção',
+          sceneId: scene.id,
+          takeId: take.id
         });
       }
     });
@@ -479,6 +498,34 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
                   >
                     <Download className="w-5 h-5" />
                   </button>
+                  {item.sceneId && item.takeId && (
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => {
+                          if (setNavigationContext && setCurrentStep) {
+                            setNavigationContext({ sceneId: item.sceneId, takeId: item.takeId });
+                            setCurrentStep(5); // Cenas e Takes
+                          }
+                        }}
+                        className="p-2 bg-white rounded-full text-indigo-600 hover:scale-110 transition-transform"
+                        title="Ir para Cenas e Takes"
+                      >
+                        <ArrowRightLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (setNavigationContext && setCurrentStep) {
+                            setNavigationContext({ sceneId: item.sceneId, takeId: item.takeId });
+                            setCurrentStep(6); // Produção
+                          }
+                        }}
+                        className="p-2 bg-white rounded-full text-indigo-600 hover:scale-110 transition-transform"
+                        title="Ir para Produção"
+                      >
+                        <Film className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Badge */}
@@ -549,6 +596,34 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
               </div>
               <h3 className="text-2xl font-bold text-white">{selectedItem.title}</h3>
               <div className="flex items-center justify-center gap-4 pt-4">
+                {selectedItem.sceneId && selectedItem.takeId && (
+                  <>
+                    <button
+                      onClick={() => {
+                        if (setNavigationContext && setCurrentStep) {
+                          setNavigationContext({ sceneId: selectedItem.sceneId, takeId: selectedItem.takeId });
+                          setCurrentStep(5); // Cenas e Takes
+                        }
+                      }}
+                      className="bg-indigo-50 text-indigo-600 px-6 py-3 rounded-2xl font-bold hover:bg-indigo-100 transition-all flex items-center gap-2"
+                    >
+                      <ArrowRightLeft className="w-5 h-5" />
+                      Ver em Cenas
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (setNavigationContext && setCurrentStep) {
+                          setNavigationContext({ sceneId: selectedItem.sceneId, takeId: selectedItem.takeId });
+                          setCurrentStep(6); // Produção
+                        }
+                      }}
+                      className="bg-indigo-50 text-indigo-600 px-6 py-3 rounded-2xl font-bold hover:bg-indigo-100 transition-all flex items-center gap-2"
+                    >
+                      <Film className="w-5 h-5" />
+                      Ver em Produção
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={() => handleDownload(selectedItem.url, `${selectedItem.title.replace(/\s+/g, '_')}.${selectedItem.type === 'image' ? 'png' : 'mp4'}`)}
                   className="bg-white text-zinc-900 px-8 py-3 rounded-2xl font-bold hover:bg-zinc-100 transition-all flex items-center gap-2"

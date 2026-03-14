@@ -27,6 +27,7 @@ import {
   PlusCircle,
   CheckSquare,
   Square,
+  ArrowRightLeft,
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
@@ -36,9 +37,18 @@ import IntelligentEditor from "./IntelligentEditor";
 interface ProductionProps {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
+  navigationContext?: { sceneId?: string; takeId?: string } | null;
+  setNavigationContext?: (context: { sceneId?: string; takeId?: string } | null) => void;
+  setCurrentStep?: (step: number) => void;
 }
 
-export default function Production({ project, setProject }: ProductionProps) {
+export default function Production({ 
+  project, 
+  setProject,
+  navigationContext,
+  setNavigationContext,
+  setCurrentStep
+}: ProductionProps) {
   const [generatingImageId, setGeneratingImageId] = useState<string | null>(
     null,
   );
@@ -82,6 +92,31 @@ export default function Production({ project, setProject }: ProductionProps) {
     initialMode?: 'edit' | 'extend';
     nextMediaUrl?: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (navigationContext?.sceneId) {
+      setExpandedSceneId(navigationContext.sceneId);
+      
+      // Clear context after using it
+      if (setNavigationContext) {
+        setNavigationContext(null);
+      }
+
+      // Scroll to take if provided
+      if (navigationContext.takeId) {
+        setTimeout(() => {
+          const element = document.getElementById(`take-${navigationContext.takeId}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-4');
+            setTimeout(() => {
+              element.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-4');
+            }, 3000);
+          }
+        }, 300);
+      }
+    }
+  }, [navigationContext, setNavigationContext]);
   const [showBulkActionModal, setShowBulkActionModal] = useState<{
     type: 'generate' | 'delete';
     options: {
@@ -1501,6 +1536,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             ?.takes.map((take, index) => (
               <div
                 key={take.id}
+                id={`take-${take.id}`}
                 className="bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden"
               >
                 <div className="p-4 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
@@ -1515,6 +1551,18 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                       title="Ver Informação de Produção"
                     >
                       <Info className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (setNavigationContext && setCurrentStep) {
+                          setNavigationContext({ sceneId: expandedSceneId!, takeId: take.id });
+                          setCurrentStep(5); // Cenas e Takes
+                        }
+                      }}
+                      className="p-1.5 hover:bg-indigo-100 rounded-lg text-indigo-600 transition-colors"
+                      title="Ir para Cenas e Takes"
+                    >
+                      <ArrowRightLeft className="w-4 h-4" />
                     </button>
                     {(take.startFrameUrl || take.endFrameUrl) && (
                       <button

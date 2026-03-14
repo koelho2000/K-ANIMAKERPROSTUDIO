@@ -41,6 +41,10 @@ const initialProject: Project = {
 export default function App() {
   const [showWelcome, setShowWelcome] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
+  const [navigationContext, setNavigationContext] = useState<{
+    sceneId?: string;
+    takeId?: string;
+  } | null>(null);
   const [project, setProject] = useState<Project>(initialProject);
   const [lastSavedProject, setLastSavedProject] = useState<string>(JSON.stringify(initialProject));
   const [showMassProduction, setShowMassProduction] = useState(false);
@@ -94,10 +98,22 @@ export default function App() {
           <Settings project={project} setProject={setProject} />
         )}
         {currentStep === 5 && (
-          <Scenes project={project} setProject={setProject} />
+          <Scenes 
+            project={project} 
+            setProject={setProject} 
+            navigationContext={navigationContext}
+            setNavigationContext={setNavigationContext}
+            setCurrentStep={setCurrentStep}
+          />
         )}
         {currentStep === 6 && (
-          <Production project={project} setProject={setProject} />
+          <Production 
+            project={project} 
+            setProject={setProject} 
+            navigationContext={navigationContext}
+            setNavigationContext={setNavigationContext}
+            setCurrentStep={setCurrentStep}
+          />
         )}
         {currentStep === 7 && (
           <IntroOutro project={project} setProject={setProject} />
@@ -109,10 +125,22 @@ export default function App() {
           <Summary project={project} />
         )}
         {currentStep === 10 && (
-          <MediaLibrary project={project} setProject={setProject} />
+          <MediaLibrary 
+            project={project} 
+            setProject={setProject} 
+            navigationContext={navigationContext}
+            setNavigationContext={setNavigationContext}
+            setCurrentStep={setCurrentStep}
+          />
         )}
         {currentStep === 11 && (
-          <Timelapse project={project} setProject={setProject} />
+          <Timelapse 
+            project={project} 
+            setProject={setProject} 
+            navigationContext={navigationContext}
+            setNavigationContext={setNavigationContext}
+            setCurrentStep={setCurrentStep}
+          />
         )}
         {currentStep === 12 && (
           <EBook project={project} setProject={setProject} />

@@ -17,7 +17,9 @@ import {
   Download,
   Save,
   Loader2,
-  Volume2
+  Volume2,
+  ArrowRightLeft,
+  Wand2,
 } from "lucide-react";
 import { 
   generateNarrationText, 
@@ -25,10 +27,14 @@ import {
   generateSubtitles,
   getVoiceForSettings
 } from "../services/geminiService";
+import IntelligentEditor from "./IntelligentEditor";
 
 interface TimelapseProps {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
+  navigationContext?: { sceneId?: string; takeId?: string } | null;
+  setNavigationContext?: (context: { sceneId?: string; takeId?: string } | null) => void;
+  setCurrentStep?: (step: number) => void;
 }
 
 interface TimelineEvent {
@@ -41,7 +47,13 @@ interface TimelineEvent {
   endTime: number;
 }
 
-export default function Timelapse({ project, setProject }: TimelapseProps) {
+export default function Timelapse({ 
+  project, 
+  setProject,
+  navigationContext,
+  setNavigationContext,
+  setCurrentStep
+}: TimelapseProps) {
   const [selectedEventIndex, setSelectedEventIndex] = useState<number>(0);
   const [isGeneratingNarration, setIsGeneratingNarration] = useState(false);
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
@@ -50,6 +62,16 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
   const [narrationText, setNarrationText] = useState("");
   const [subtitleText, setSubtitleText] = useState("");
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [editingItem, setEditingItem] = useState<{ 
+    id: string; 
+    url: string; 
+    type: 'image' | 'video'; 
+    title: string; 
+    source: string; 
+    videoObject?: any; 
+    initialMode?: 'edit' | 'extend';
+    nextMediaUrl?: string;
+  } | null>(null);
 
   const timelineEvents = useMemo(() => {
     const events: TimelineEvent[] = [];
@@ -73,6 +95,20 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
     });
     return events;
   }, [project.scenes]);
+
+  useEffect(() => {
+    if (navigationContext?.takeId) {
+      const index = timelineEvents.findIndex(e => e.take.id === navigationContext.takeId);
+      if (index !== -1) {
+        setSelectedEventIndex(index);
+      }
+      
+      // Clear context after using it
+      if (setNavigationContext) {
+        setNavigationContext(null);
+      }
+    }
+  }, [navigationContext, setNavigationContext, timelineEvents]);
 
   const selectedEvent = timelineEvents[selectedEventIndex];
 
@@ -475,8 +511,8 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
           </div>
 
           {/* Media Info Badge */}
-          <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between">
-            <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 flex items-center gap-3">
+          <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between pointer-events-none">
+            <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 flex items-center gap-3 pointer-events-auto">
               <div className="flex items-center gap-1.5 text-white text-xs font-bold">
                 <Film className="w-3.5 h-3.5 text-indigo-400" />
                 Cena {selectedEvent.sceneIndex + 1}
@@ -486,13 +522,69 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
                 <Camera className="w-3.5 h-3.5 text-indigo-400" />
                 Take {selectedEvent.takeIndex + 1}
               </div>
-            </div>
-            {selectedEvent.take.videoUrl && (
-              <div className="bg-emerald-500/20 backdrop-blur-md px-4 py-2 rounded-full border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2">
-                <Play className="w-3 h-3 fill-current" />
-                Vídeo Finalizado
+              
+              <div className="w-px h-3 bg-white/20" />
+              
+              {/* Navigation Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (setNavigationContext && setCurrentStep) {
+                      setNavigationContext({ sceneId: selectedEvent.scene.id, takeId: selectedEvent.take.id });
+                      setCurrentStep(5); // Cenas e Takes
+                    }
+                  }}
+                  className="p-1 hover:bg-white/20 rounded transition-colors text-white/70 hover:text-white"
+                  title="Ir para Cenas e Takes"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (setNavigationContext && setCurrentStep) {
+                      setNavigationContext({ sceneId: selectedEvent.scene.id, takeId: selectedEvent.take.id });
+                      setCurrentStep(6); // Produção
+                    }
+                  }}
+                  className="p-1 hover:bg-white/20 rounded transition-colors text-white/70 hover:text-white"
+                  title="Ir para Produção"
+                >
+                  <Film className="w-3.5 h-3.5" />
+                </button>
               </div>
-            )}
+            </div>
+
+            <div className="flex items-center gap-3 pointer-events-auto">
+              {selectedEvent.take.videoUrl && (
+                <button
+                  onClick={() => {
+                    const nextEvent = timelineEvents[selectedEventIndex + 1];
+                    const nextMediaUrl = nextEvent?.take.videoUrl;
+                    
+                    setEditingItem({
+                      id: `take-video-${selectedEvent.take.id}`,
+                      url: selectedEvent.take.videoUrl!,
+                      type: 'video',
+                      title: `Cena ${selectedEvent.sceneIndex + 1} Take ${selectedEvent.takeIndex + 1} - Vídeo`,
+                      source: 'Timelapse',
+                      videoObject: selectedEvent.take.videoObject,
+                      nextMediaUrl
+                    });
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full border border-indigo-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+                  title="Edição Inteligente"
+                >
+                  <Wand2 className="w-3 h-3" />
+                  Edição Inteligente
+                </button>
+              )}
+              {selectedEvent.take.videoUrl && (
+                <div className="bg-emerald-500/20 backdrop-blur-md px-4 py-2 rounded-full border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2">
+                  <Play className="w-3 h-3 fill-current" />
+                  Vídeo Finalizado
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -799,6 +891,28 @@ export default function Timelapse({ project, setProject }: TimelapseProps) {
           </div>
         </div>
       </div>
+
+      {editingItem && (
+        <IntelligentEditor 
+          mediaItem={editingItem}
+          project={project}
+          aspectRatio={project.aspectRatio}
+          initialMode={editingItem.initialMode}
+          defaultVideoModel={project.videoModel}
+          onClose={() => setEditingItem(null)}
+          onSave={(url, videoObject) => {
+            const updatedScenes = [...project.scenes];
+            updatedScenes[selectedEvent.sceneIndex].takes[selectedEvent.takeIndex] = {
+              ...selectedEvent.take,
+              videoUrl: url,
+              videoObject: videoObject,
+              updatedAt: Date.now()
+            };
+            setProject({ ...project, scenes: updatedScenes });
+            setEditingItem(null);
+          } }
+        />
+      )}
     </div>
   );
 }
