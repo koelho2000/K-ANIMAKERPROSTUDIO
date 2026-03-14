@@ -11,9 +11,13 @@ import {
   CheckSquare,
   Square,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  FileArchive,
+  Loader2
 } from "lucide-react";
 import IntelligentEditor from "./IntelligentEditor";
+import JSZip from "jszip";
 
 interface MediaLibraryProps {
   project: Project;
@@ -33,9 +37,13 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
   const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<'all' | 'image' | 'video'>('all');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState<'selected' | 'all' | null>(null);
 
   // Extract all media from project
   const mediaItems: MediaItem[] = [];
+  
+  // ... (rest of the media extraction logic remains the same)
 
   // Characters
   project.characters.forEach(char => {
@@ -169,21 +177,43 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
     document.body.removeChild(link);
   };
 
-  const handleDownloadAll = () => {
-    filteredItems.forEach((item, index) => {
-      setTimeout(() => {
-        handleDownload(item.url, `${item.title.replace(/\s+/g, '_')}.${item.type === 'image' ? 'png' : 'mp4'}`);
-      }, index * 200);
-    });
+  const handleDownloadZip = async (items: MediaItem[], zipName: string) => {
+    setIsDownloading(true);
+    try {
+      const zip = new JSZip();
+      
+      const downloadPromises = items.map(async (item) => {
+        const response = await fetch(item.url);
+        const blob = await response.blob();
+        const extension = item.type === 'image' ? 'png' : 'mp4';
+        const fileName = `${item.title.replace(/\s+/g, '_')}_${item.id}.${extension}`;
+        zip.file(fileName, blob);
+      });
+
+      await Promise.all(downloadPromises);
+      const content = await zip.generateAsync({ type: "blob" });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(content);
+      link.download = `${zipName}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Error generating ZIP:", error);
+      alert("Erro ao gerar o ficheiro ZIP. Por favor, tente novamente.");
+    } finally {
+      setIsDownloading(false);
+      setShowDownloadMenu(null);
+    }
   };
 
-  const handleDownloadSelected = () => {
-    const itemsToDownload = filteredItems.filter(item => selectedIds.has(item.id));
-    itemsToDownload.forEach((item, index) => {
+  const handleDownloadIndividual = (items: MediaItem[]) => {
+    items.forEach((item, index) => {
       setTimeout(() => {
         handleDownload(item.url, `${item.title.replace(/\s+/g, '_')}.${item.type === 'image' ? 'png' : 'mp4'}`);
-      }, index * 200);
+      }, index * 300);
     });
+    setShowDownloadMenu(null);
   };
 
   const toggleSelectAll = () => {
@@ -267,25 +297,71 @@ export default function MediaLibrary({ project, setProject }: MediaLibraryProps)
             <p className="text-zinc-500 mt-1">Gere, visualize e descarregue todos os recursos visuais do seu projeto.</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 relative">
           {selectedIds.size > 0 && (
-            <button
-              onClick={handleDownloadSelected}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2"
-            >
-              <Download className="w-5 h-5" />
-              Descarregar Selecionados ({selectedIds.size})
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowDownloadMenu(showDownloadMenu === 'selected' ? null : 'selected')}
+                disabled={isDownloading}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                Descarregar Selecionados ({selectedIds.size})
+                <ChevronDown className={`w-4 h-4 transition-transform ${showDownloadMenu === 'selected' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {showDownloadMenu === 'selected' && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-zinc-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <button
+                    onClick={() => handleDownloadIndividual(filteredItems.filter(i => selectedIds.has(i.id)))}
+                    className="w-full px-4 py-3 text-left hover:bg-zinc-50 flex items-center gap-3 transition-colors"
+                  >
+                    <Download className="w-4 h-4 text-zinc-400" />
+                    <span className="text-sm font-bold text-zinc-700">Download Individual</span>
+                  </button>
+                  <button
+                    onClick={() => handleDownloadZip(filteredItems.filter(i => selectedIds.has(i.id)), `selecionados_${project.title.replace(/\s+/g, '_')}`)}
+                    className="w-full px-4 py-3 text-left hover:bg-zinc-50 flex items-center gap-3 transition-colors"
+                  >
+                    <FileArchive className="w-4 h-4 text-zinc-400" />
+                    <span className="text-sm font-bold text-zinc-700">Download em ZIP</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
+          
+          <div className="relative">
             <button
-              onClick={handleDownloadAll}
-              disabled={filteredItems.length === 0}
+              onClick={() => setShowDownloadMenu(showDownloadMenu === 'all' ? null : 'all')}
+              disabled={filteredItems.length === 0 || isDownloading}
               className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 disabled:opacity-50"
             >
-              <Download className="w-5 h-5" />
+              {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
               Descarregar {filter === 'all' ? 'Tudo' : filter === 'image' ? 'Imagens' : 'Vídeos'} ({filteredItems.length})
+              <ChevronDown className={`w-4 h-4 transition-transform ${showDownloadMenu === 'all' ? 'rotate-180' : ''}`} />
             </button>
+
+            {showDownloadMenu === 'all' && (
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-zinc-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <button
+                  onClick={() => handleDownloadIndividual(filteredItems)}
+                  className="w-full px-4 py-3 text-left hover:bg-zinc-50 flex items-center gap-3 transition-colors"
+                >
+                  <Download className="w-4 h-4 text-zinc-400" />
+                  <span className="text-sm font-bold text-zinc-700">Download Individual</span>
+                </button>
+                <button
+                  onClick={() => handleDownloadZip(filteredItems, `${filter === 'all' ? 'tudo' : filter}_${project.title.replace(/\s+/g, '_')}`)}
+                  className="w-full px-4 py-3 text-left hover:bg-zinc-50 flex items-center gap-3 transition-colors"
+                >
+                  <FileArchive className="w-4 h-4 text-zinc-400" />
+                  <span className="text-sm font-bold text-zinc-700">Download em ZIP</span>
+                </button>
+              </div>
+            )}
           </div>
+        </div>
         </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">

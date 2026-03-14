@@ -1,9 +1,16 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Eraser, Pen, Sparkles, Check, Loader2, RotateCcw, Undo, PlusCircle, Film, HelpCircle, Info, Upload, Library, Image as ImageIcon } from "lucide-react";
+import { X, Eraser, Pen, Sparkles, Check, Loader2, RotateCcw, Undo, PlusCircle, Film, HelpCircle, Info, Upload, Library, Image as ImageIcon, Maximize2 } from "lucide-react";
 import { generateImage, generateVideo, pollVideoOperation, extendVideo } from "../services/geminiService";
 import ProgressBar from "./ProgressBar";
 import { VideoModel, Project } from "../types";
 import { v4 as uuidv4 } from "uuid";
+
+type ReferenceCategory = 'cenario' | 'personagem' | 'outro';
+
+interface ReferenceImage {
+  url: string;
+  category: ReferenceCategory;
+}
 
 interface IntelligentEditorProps {
   mediaItem?: {
@@ -48,8 +55,11 @@ export default function IntelligentEditor({
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
   const [showNextPreview, setShowNextPreview] = useState(false);
-  const [referenceImages, setReferenceImages] = useState<string[]>(mediaItem?.url ? [mediaItem.url] : []);
+  const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>(
+    mediaItem?.url ? [{ url: mediaItem.url, category: 'outro' }] : []
+  );
   const [showLibrarySelector, setShowLibrarySelector] = useState(false);
+  const [previewLibraryItem, setPreviewLibraryItem] = useState<{ url: string, type: 'image' | 'video', videoObject?: any, title?: string } | null>(null);
   const [customTitle, setCustomTitle] = useState(mediaItem?.title || "Nova Imagem Gerada");
   
   useEffect(() => {
@@ -91,7 +101,7 @@ export default function IntelligentEditor({
     } else if (referenceImages.length > 0) {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.src = referenceImages[0];
+      img.src = referenceImages[0].url;
       img.onload = () => {
         setupCanvases(img);
       };
@@ -210,8 +220,24 @@ export default function IntelligentEditor({
     try {
       if (mode === 'create') {
         if (createType === 'image') {
-          const refs = [...referenceImages];
-          const result = await generateImage(prompt, aspectRatio, refs);
+          const refs = referenceImages.map(r => r.url);
+          
+          // Construct a prompt that includes reference categories
+          let enhancedPrompt = prompt;
+          const cenarioRefs = referenceImages.filter(r => r.category === 'cenario');
+          const personagemRefs = referenceImages.filter(r => r.category === 'personagem');
+          
+          if (cenarioRefs.length > 0 || personagemRefs.length > 0) {
+            enhancedPrompt += "\n\nInstruções de Consistência:";
+            if (cenarioRefs.length > 0) {
+              enhancedPrompt += `\n- Usa as imagens de cenário fornecidas como referência visual para o ambiente.`;
+            }
+            if (personagemRefs.length > 0) {
+              enhancedPrompt += `\n- Usa as imagens de personagem fornecidas como referência para a aparência e estilo da personagem.`;
+            }
+          }
+
+          const result = await generateImage(enhancedPrompt, aspectRatio, refs);
           setEditedUrl(result);
         } else {
           if (baseVideoToExtend) {
@@ -223,8 +249,8 @@ export default function IntelligentEditor({
           } else {
             setStatus("A gerar vídeo...");
             // Use first reference image as starting frame if available
-            const startImage = referenceImages.length > 0 ? referenceImages[0] : undefined;
-            const operation = await generateVideo(prompt, startImage, undefined, videoModel, aspectRatio);
+            const startImage = referenceImages.length > 0 ? referenceImages[0].url : undefined;
+            const operation = await generateVideo(prompt, startImage, undefined, videoModel, aspectRatio, referenceImages.map(r => r.url));
             const result = await pollVideoOperation(operation);
             setEditedUrl(result.videoUrl);
             setEditedVideoObject(result.videoObject);
@@ -232,13 +258,28 @@ export default function IntelligentEditor({
         }
       } else if (mediaItem?.type === 'image') {
         const maskCanvas = maskCanvasRef.current;
-        const refs = [...referenceImages];
-        let finalPrompt = `${prompt} (baseado nas referências fornecidas)`;
+        const refs = referenceImages.map(r => r.url);
+        
+        let enhancedPrompt = prompt;
+        const cenarioRefs = referenceImages.filter(r => r.category === 'cenario');
+        const personagemRefs = referenceImages.filter(r => r.category === 'personagem');
+        
+        if (cenarioRefs.length > 0 || personagemRefs.length > 0) {
+          enhancedPrompt += "\n\nInstruções de Consistência:";
+          if (cenarioRefs.length > 0) {
+            enhancedPrompt += `\n- Usa as imagens de cenário fornecidas como referência visual para o ambiente.`;
+          }
+          if (personagemRefs.length > 0) {
+            enhancedPrompt += `\n- Usa as imagens de personagem fornecidas como referência para a aparência e estilo da personagem.`;
+          }
+        }
+
+        let finalPrompt = `${enhancedPrompt} (baseado nas referências fornecidas)`;
         
         if (hasMask && maskCanvas && refs.length > 0) {
           const maskDataUrl = maskCanvas.toDataURL('image/png');
           refs.push(maskDataUrl);
-          finalPrompt = `${prompt}. Altera apenas a área marcada a branco na última imagem (máscara). Mantém o resto da imagem de referência inalterado.`;
+          finalPrompt = `${enhancedPrompt}. Altera apenas a área marcada a branco na última imagem (máscara). Mantém o resto da imagem de referência inalterado.`;
         }
         
         const result = await generateImage(finalPrompt, aspectRatio, refs);
@@ -246,7 +287,7 @@ export default function IntelligentEditor({
       } else if (mediaItem) {
         if (mode === 'edit') {
           setStatus("A editar vídeo...");
-          const operation = await generateVideo(`${prompt} (baseado no vídeo fornecido)`, mediaItem.url, undefined, videoModel, aspectRatio);
+          const operation = await generateVideo(`${prompt} (baseado no vídeo fornecido)`, mediaItem.url, undefined, videoModel, aspectRatio, referenceImages.map(r => r.url));
           const result = await pollVideoOperation(operation);
           setEditedUrl(result.videoUrl);
           setEditedVideoObject(result.videoObject);
@@ -286,7 +327,7 @@ export default function IntelligentEditor({
       const reader = new FileReader();
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
-        setReferenceImages(prev => [base64, ...prev]);
+        setReferenceImages(prev => [{ url: base64, category: 'outro' }, ...prev]);
       };
       reader.readAsDataURL(file);
     }
@@ -370,33 +411,72 @@ export default function IntelligentEditor({
         <div className="flex-1 flex overflow-hidden">
           {/* Editor Area */}
           <div className="flex-1 bg-zinc-100 relative flex items-center justify-center p-8 overflow-hidden" ref={containerRef}>
-            {mode === 'create' && referenceImages.length === 0 ? (
-              <div className="flex flex-col items-center gap-6 text-center max-w-md">
-                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center">
-                  <Sparkles className="w-10 h-10 text-indigo-600" />
-                </div>
-                <div>
-                  <h4 className="text-xl font-bold text-zinc-900">Gerador Inteligente</h4>
-                  <p className="text-zinc-500 mt-2">Descreve o que pretendes gerar ou adiciona imagens de referência para guiar a IA.</p>
-                </div>
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm font-bold text-zinc-700 hover:bg-zinc-50 transition-all"
-                  >
-                    <Upload className="w-4 h-4" />
-                    Upload
-                  </button>
-                  <button 
-                    onClick={() => setShowLibrarySelector(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm font-bold text-zinc-700 hover:bg-zinc-50 transition-all"
-                  >
-                    <Library className="w-4 h-4" />
-                    Biblioteca
-                  </button>
-                </div>
+            {mode === 'create' ? (
+              <div className="flex flex-col items-center gap-6 text-center max-w-2xl w-full">
+                {editedUrl ? (
+                  <div className="relative w-full aspect-video shadow-2xl rounded-3xl overflow-hidden animate-in zoom-in-95 duration-500 bg-black">
+                    {createType === 'image' ? (
+                      <img 
+                        src={editedUrl} 
+                        className="w-full h-full object-contain" 
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <video 
+                        src={editedUrl} 
+                        controls
+                        className="w-full h-full object-contain"
+                      />
+                    )}
+                    <div className="absolute top-6 left-6 px-4 py-1.5 bg-emerald-600/90 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10 shadow-lg">
+                      Resultado Gerado
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full space-y-8">
+                    <div className="w-24 h-24 bg-indigo-50 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+                      <Sparkles className="w-12 h-12 text-indigo-600" />
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="text-2xl font-black text-zinc-900 tracking-tight">Gerador Inteligente</h4>
+                      <p className="text-zinc-500 max-w-md mx-auto">As referências adicionadas servem para manter a consistência visual de cenários e personagens.</p>
+                    </div>
+                    
+                    {referenceImages.length > 0 && (
+                      <div className="flex flex-wrap justify-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {referenceImages.map((ref, idx) => (
+                          <div key={idx} className="group relative w-32 aspect-square rounded-2xl overflow-hidden border-2 border-white shadow-xl rotate-[-2deg] hover:rotate-0 transition-all duration-300">
+                            <img src={ref.url} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <span className="text-[8px] font-bold text-white uppercase tracking-widest bg-indigo-600 px-2 py-1 rounded-full">
+                                {ref.category === 'cenario' ? 'Cenário' : ref.category === 'personagem' ? 'Personagem' : 'Ref'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex justify-center gap-4">
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-2 px-6 py-3 bg-white border border-zinc-200 rounded-2xl text-sm font-bold text-zinc-700 hover:bg-zinc-50 hover:shadow-md transition-all active:scale-95"
+                      >
+                        <Upload className="w-4 h-4" />
+                        Adicionar Referência
+                      </button>
+                      <button 
+                        onClick={() => setShowLibrarySelector(true)}
+                        className="flex items-center gap-2 px-6 py-3 bg-white border border-zinc-200 rounded-2xl text-sm font-bold text-zinc-700 hover:bg-zinc-50 hover:shadow-md transition-all active:scale-95"
+                      >
+                        <Library className="w-4 h-4" />
+                        Biblioteca
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : (mode === 'create' || mediaItem?.type === 'image') ? (
+            ) : mediaItem?.type === 'image' ? (
               <div className="w-full h-full flex flex-col items-center justify-center gap-6">
                 <div className="flex-1 w-full relative flex items-center justify-center min-h-0">
                   {editedUrl ? (
@@ -658,22 +738,48 @@ export default function IntelligentEditor({
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {referenceImages.map((url, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-zinc-200 group">
-                      <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      <button 
-                        onClick={() => setReferenceImages(prev => prev.filter((_, i) => i !== idx))}
-                        className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="w-2 h-2" />
-                      </button>
+                <div className="flex flex-col gap-3">
+                  {referenceImages.map((ref, idx) => (
+                    <div key={idx} className="flex items-center gap-3 p-2 bg-zinc-50 rounded-2xl border border-zinc-100 group relative">
+                      <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-zinc-200 shrink-0">
+                        <img src={ref.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                      <div className="flex-1 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[8px] font-bold text-zinc-400 uppercase tracking-widest">Tipo de Referência</label>
+                          <button 
+                            onClick={() => setReferenceImages(prev => prev.filter((_, i) => i !== idx))}
+                            className="p-1 text-zinc-400 hover:text-red-500 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="flex gap-1">
+                          {(['cenario', 'personagem', 'outro'] as ReferenceCategory[]).map(cat => (
+                            <button
+                              key={cat}
+                              onClick={() => {
+                                const newRefs = [...referenceImages];
+                                newRefs[idx].category = cat;
+                                setReferenceImages(newRefs);
+                              }}
+                              className={`flex-1 py-1 text-[8px] font-bold rounded-lg uppercase transition-all border ${
+                                ref.category === cat 
+                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                                  : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-300'
+                              }`}
+                            >
+                              {cat === 'cenario' ? 'Cenário' : cat === 'personagem' ? 'Personagem' : 'Outro'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   ))}
                   {referenceImages.length === 0 && (
-                    <div className="col-span-3 py-4 border-2 border-dashed border-zinc-100 rounded-xl flex flex-col items-center justify-center text-zinc-300">
-                      <ImageIcon className="w-6 h-6 mb-1" />
-                      <span className="text-[10px] font-bold uppercase">Sem referências</span>
+                    <div className="py-8 border-2 border-dashed border-zinc-100 rounded-2xl flex flex-col items-center justify-center text-zinc-300">
+                      <ImageIcon className="w-8 h-8 mb-2 opacity-20" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">Sem referências</span>
                     </div>
                   )}
                 </div>
@@ -863,67 +969,149 @@ export default function IntelligentEditor({
 
       {showLibrarySelector && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-zinc-900">Selecionar da Biblioteca</h3>
-              <button onClick={() => setShowLibrarySelector(false)} className="p-2 hover:bg-zinc-100 rounded-full">
+          <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] relative">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-white z-10">
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900">Selecionar da Biblioteca</h3>
+                <p className="text-xs text-zinc-500">Clica numa imagem para a pré-visualizar e selecionar</p>
+              </div>
+              <button onClick={() => setShowLibrarySelector(false)} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto grid grid-cols-3 gap-4 custom-scrollbar">
+            <div className="p-6 overflow-y-auto grid grid-cols-4 md:grid-cols-5 gap-4 custom-scrollbar bg-zinc-50/50">
               {getAllLibraryImages().map((url, idx) => (
                 <button 
                   key={idx} 
-                  onClick={() => {
-                    setReferenceImages(prev => [url, ...prev]);
-                    setShowLibrarySelector(false);
-                  }}
-                  className="aspect-square rounded-xl overflow-hidden border border-zinc-200 hover:border-indigo-500 transition-all"
+                  onClick={() => setPreviewLibraryItem({ url, type: 'image' })}
+                  className="aspect-square rounded-2xl overflow-hidden border-2 border-white shadow-sm hover:border-indigo-500 hover:shadow-md transition-all relative group bg-white"
                 >
                   <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition-colors flex items-center justify-center">
+                    <Maximize2 className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100" />
+                  </div>
                 </button>
               ))}
               {getAllLibraryImages().length === 0 && (
-                <div className="col-span-3 py-20 text-center text-zinc-400">
-                  Nenhuma imagem encontrada na biblioteca.
+                <div className="col-span-full py-20 text-center text-zinc-400">
+                  <ImageIcon className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p className="font-medium">Nenhuma imagem encontrada na biblioteca.</p>
                 </div>
               )}
             </div>
+
+            {/* Selection Preview Pop-up */}
+            {previewLibraryItem && previewLibraryItem.type === 'image' && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-8 bg-zinc-950/80 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-white p-4 rounded-[32px] shadow-2xl border border-zinc-200 max-w-full max-h-full flex flex-col items-center gap-6 overflow-hidden">
+                  <div className="flex-1 min-h-0 w-full flex items-center justify-center bg-zinc-100 rounded-2xl overflow-hidden">
+                    <img 
+                      src={previewLibraryItem.url} 
+                      className="max-w-full max-h-[55vh] object-contain" 
+                      referrerPolicy="no-referrer" 
+                    />
+                  </div>
+                  <div className="flex gap-3 w-full">
+                    <button 
+                      onClick={() => setPreviewLibraryItem(null)}
+                      className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl font-bold transition-all"
+                    >
+                      Voltar
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setReferenceImages(prev => [{ url: previewLibraryItem.url, category: 'outro' }, ...prev]);
+                        setPreviewLibraryItem(null);
+                        setShowLibrarySelector(false);
+                      }}
+                      className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      Selecionar Imagem
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
       {showVideoLibrarySelector && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-zinc-900">Selecionar Vídeo para Extender</h3>
-              <button onClick={() => setShowVideoLibrarySelector(false)} className="p-2 hover:bg-zinc-100 rounded-full">
+          <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] relative">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-white z-10">
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900">Selecionar Vídeo para Extender</h3>
+                <p className="text-xs text-zinc-500">Clica num vídeo para o pré-visualizar e selecionar</p>
+              </div>
+              <button onClick={() => setShowVideoLibrarySelector(false)} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto grid grid-cols-2 gap-4 custom-scrollbar">
+            <div className="p-6 overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-4 custom-scrollbar bg-zinc-50/50">
               {getAllLibraryVideos().map((video, idx) => (
                 <button 
                   key={idx} 
-                  onClick={() => {
-                    setBaseVideoToExtend(video);
-                    setShowVideoLibrarySelector(false);
-                  }}
-                  className="group relative aspect-video rounded-xl overflow-hidden border border-zinc-200 hover:border-indigo-500 transition-all bg-black"
+                  onClick={() => setPreviewLibraryItem({ ...video, type: 'video' })}
+                  className="group relative aspect-video rounded-2xl overflow-hidden border-2 border-white shadow-sm hover:border-indigo-500 hover:shadow-md transition-all bg-black"
                 >
                   <video src={video.url} className="w-full h-full object-contain pointer-events-none" />
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center">
-                    <PlusCircle className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100" />
-                    <span className="text-white text-[10px] font-bold uppercase mt-2 opacity-0 group-hover:opacity-100">{video.title}</span>
+                    <Maximize2 className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100" />
+                    <span className="text-white text-[10px] font-bold uppercase mt-2 opacity-0 group-hover:opacity-100 px-4 text-center truncate w-full">{video.title}</span>
                   </div>
                 </button>
               ))}
               {getAllLibraryVideos().length === 0 && (
-                <div className="col-span-2 py-20 text-center text-zinc-400">
-                  Nenhum vídeo gerado encontrado na biblioteca.
+                <div className="col-span-full py-20 text-center text-zinc-400">
+                  <Film className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p className="font-medium">Nenhum vídeo gerado encontrado na biblioteca.</p>
                 </div>
               )}
             </div>
+
+            {/* Selection Preview Pop-up for Video */}
+            {previewLibraryItem && previewLibraryItem.type === 'video' && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-8 bg-zinc-950/80 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-white p-4 rounded-[32px] shadow-2xl border border-zinc-200 max-w-full max-h-full flex flex-col items-center gap-6 overflow-hidden">
+                  <div className="flex-1 min-h-0 w-full flex items-center justify-center bg-black rounded-2xl overflow-hidden">
+                    <video 
+                      src={previewLibraryItem.url} 
+                      autoPlay 
+                      loop 
+                      controls
+                      className="max-w-full max-h-[55vh] object-contain" 
+                    />
+                  </div>
+                  <div className="text-center">
+                    <h4 className="text-lg font-bold text-zinc-900">{previewLibraryItem.title}</h4>
+                  </div>
+                  <div className="flex gap-3 w-full">
+                    <button 
+                      onClick={() => setPreviewLibraryItem(null)}
+                      className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl font-bold transition-all"
+                    >
+                      Voltar
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setBaseVideoToExtend({ 
+                          url: previewLibraryItem.url, 
+                          videoObject: previewLibraryItem.videoObject, 
+                          title: previewLibraryItem.title || "Vídeo Selecionado" 
+                        });
+                        setPreviewLibraryItem(null);
+                        setShowVideoLibrarySelector(false);
+                      }}
+                      className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      Selecionar Vídeo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
