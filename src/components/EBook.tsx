@@ -5,6 +5,7 @@ import { getGenAI, generateImage } from "../services/geminiService";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "framer-motion";
 import jsPDF from "jspdf";
+import JSZip from "jszip";
 
 interface EBookProps {
   project: Project;
@@ -591,10 +592,158 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
     a.click();
   };
 
-  const exportToEPUB = () => {
-    // Simple HTML-based EPUB (actually just a single HTML file that can be converted)
-    exportToHTML();
-    alert("O ficheiro HTML gerado pode ser convertido para EPUB usando ferramentas como o Calibre.");
+  const exportToEPUB = async () => {
+    if (!project.ebook) return;
+    setIsExporting(true);
+    try {
+      const zip = new JSZip();
+
+      // 1. mimetype (must be first and uncompressed)
+      zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+
+      // 2. META-INF/container.xml
+      zip.file("META-INF/container.xml", `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`);
+
+      // 3. OEBPS/content.opf
+      let manifest = '';
+      let spine = '';
+      const images: { id: string, url: string, ext: string }[] = [];
+
+      project.ebook.pages.forEach((page, index) => {
+        const pageId = `page_${index}`;
+        manifest += `<item id="${pageId}" href="${pageId}.xhtml" media-type="application/xhtml+xml"/>\n`;
+        spine += `<itemref idref="${pageId}"/>\n`;
+        
+        if (page.imageUrl) {
+          const ext = page.imageUrl.split('.').pop()?.split('?')[0] || 'png';
+          const imgId = `img_${index}`;
+          images.push({ id: imgId, url: page.imageUrl, ext });
+          manifest += `<item id="${imgId}" href="images/${imgId}.${ext}" media-type="image/${ext === 'jpg' ? 'jpeg' : ext}"/>\n`;
+        }
+      });
+
+      const opf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="BookId">urn:uuid:${uuidv4()}</dc:identifier>
+    <dc:title>${project.title}</dc:title>
+    <dc:language>${project.language === "Português (Portugal)" ? "pt" : "en"}</dc:language>
+    <dc:creator>${project.author || 'K-Brothers Production'}</dc:creator>
+    <meta property="dcterms:modified">${new Date().toISOString().split('.')[0]}Z</meta>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    ${manifest}
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="nav"/>
+    ${spine}
+  </spine>
+</package>`;
+      zip.file("OEBPS/content.opf", opf);
+
+      // 4. OEBPS/toc.ncx (for backward compatibility)
+      let ncxNav = '';
+      project.ebook.pages.forEach((page, index) => {
+        ncxNav += `<navPoint id="navPoint-${index}" playOrder="${index + 1}">
+          <navLabel><text>${page.title || `Página ${index + 1}`}</text></navLabel>
+          <content src="page_${index}.xhtml"/>
+        </navPoint>\n`;
+      });
+
+      const ncx = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="urn:uuid:${uuidv4()}"/>
+    <meta name="dtb:depth" content="1"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle><text>${project.title}</text></docTitle>
+  <navMap>
+    ${ncxNav}
+  </navMap>
+</ncx>`;
+      zip.file("OEBPS/toc.ncx", ncx);
+
+      // 5. OEBPS/nav.xhtml
+      let navItems = '';
+      project.ebook.pages.forEach((page, index) => {
+        navItems += `<li><a href="page_${index}.xhtml">${page.title || `Página ${index + 1}`}</a></li>\n`;
+      });
+
+      const nav = `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Navigation</title></head>
+  <body>
+    <nav epub:type="toc" id="toc">
+      <h1>Table of Contents</h1>
+      <ol>
+        ${navItems}
+      </ol>
+    </nav>
+  </body>
+</html>`;
+      zip.file("OEBPS/nav.xhtml", nav);
+
+      // 6. OEBPS/page_*.xhtml
+      for (let i = 0; i < project.ebook.pages.length; i++) {
+        const page = project.ebook.pages[i];
+        const imgTag = page.imageUrl ? `<div style="text-align:center"><img src="images/img_${i}.${images.find(img => img.id === `img_${i}`)?.ext}" alt="${page.title}" style="max-width:100%"/></div>` : '';
+        
+        const html = `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <title>${page.title}</title>
+    <style>
+      body { font-family: sans-serif; padding: 5%; }
+      h1 { text-align: center; }
+      .content { line-height: 1.5; margin-top: 20px; }
+    </style>
+  </head>
+  <body>
+    <h1>${page.title}</h1>
+    ${imgTag}
+    <div class="content">
+      ${page.content.split('\n').map(p => `<p>${p}</p>`).join('')}
+    </div>
+  </body>
+</html>`;
+        zip.file(`OEBPS/page_${i}.xhtml`, html);
+      }
+
+      // 7. OEBPS/images/*
+      for (const img of images) {
+        try {
+          const response = await fetch(img.url);
+          const blob = await response.blob();
+          zip.file(`OEBPS/images/${img.id}.${img.ext}`, blob);
+        } catch (e) {
+          console.error(`Failed to fetch image: ${img.url}`, e);
+        }
+      }
+
+      // Generate and download
+      const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project.title}.epub`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error("Error exporting EPUB:", error);
+      alert("Erro ao exportar EPUB.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const getBase64FromUrl = async (url: string): Promise<string> => {

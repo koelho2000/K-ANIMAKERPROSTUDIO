@@ -76,6 +76,12 @@ export interface Project {
     videoObject?: any;
     videoModel?: VideoModel;
     lastVideoPrompt?: string;
+    referenceImages?: string[];
+    musicOptions?: {
+      style: string;
+      mood: string;
+      intensity: string;
+    };
   };
   outro?: {
     type: string;
@@ -91,6 +97,12 @@ export interface Project {
     producer?: string;
     author?: string;
     thankYouMessage?: string;
+    referenceImages?: string[];
+    musicOptions?: {
+      style: string;
+      mood: string;
+      intensity: string;
+    };
   };
 }
 

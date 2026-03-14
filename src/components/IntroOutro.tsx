@@ -22,10 +22,15 @@ import {
   ZoomIn,
   Users,
   Upload,
-  Download
+  Download,
+  ImagePlus,
+  ChevronDown,
+  Volume2,
+  Settings2
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
+import IntelligentEditor from "./IntelligentEditor";
 
 interface IntroOutroProps {
   project: Project;
@@ -55,6 +60,12 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<string | null>(null);
   const [editingVideoPrompt, setEditingVideoPrompt] = useState<string | null>(null);
+  const [showReferenceSelector, setShowReferenceSelector] = useState(false);
+  const [intelligentEditorItem, setIntelligentEditorItem] = useState<{
+    url: string;
+    type: 'image' | 'video';
+    videoObject?: any;
+  } | null>(null);
 
   const intro = project.intro || { type: "cinematic", prompt: "" };
   const outro = project.outro || { type: "scrolling", prompt: "" };
@@ -140,7 +151,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
     setIsGeneratingImage(true);
     setProgress(0);
     try {
-      const imageUrl = await generateImage(editedPrompt, project.aspectRatio);
+      const imageUrl = await generateImage(editedPrompt, project.aspectRatio, currentData.referenceImages);
       updateData({ imageUrl, prompt: editedPrompt });
     } catch (error) {
       console.error(error);
@@ -167,7 +178,11 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       alert("Gera primeiro a imagem base!");
       return;
     }
-    const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${activeTab === "intro" ? "epic orchestral music" : "gentle closing music"}, and professional transitions.`;
+    
+    const music = currentData.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
+    const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
+    
+    const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${activeTab === "intro" ? "epic orchestral music" : "gentle closing music"}, and professional transitions. ${musicPrompt}`;
     setEditingVideoPrompt(videoPrompt);
   };
 
@@ -203,6 +218,60 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
     } finally {
       setIsGeneratingVideo(false);
     }
+  };
+
+  const handleIntelligentEdit = (type: 'image' | 'video') => {
+    const url = type === 'image' ? currentData.imageUrl : currentData.videoUrl;
+    if (!url) return;
+    
+    setIntelligentEditorItem({
+      url,
+      type,
+      videoObject: type === 'video' ? currentData.videoObject : undefined
+    });
+  };
+
+  const getAllProjectImages = () => {
+    const images: { url: string; title: string; source: string }[] = [];
+    
+    // Media Library
+    project.customMedia?.forEach(m => {
+      if (m.type === 'image') images.push({ url: m.url, title: m.title, source: 'Media' });
+    });
+    
+    // Characters
+    project.characters.forEach(c => {
+      if (c.imageUrl) images.push({ url: c.imageUrl, title: c.name, source: 'Personagem' });
+    });
+    
+    // Settings
+    project.settings.forEach(s => {
+      if (s.imageUrl) images.push({ url: s.imageUrl, title: s.name, source: 'Cenário' });
+    });
+    
+    return images;
+  };
+
+  const toggleReferenceImage = (url: string) => {
+    const currentRefs = currentData.referenceImages || [];
+    if (currentRefs.includes(url)) {
+      updateData({ referenceImages: currentRefs.filter(r => r !== url) });
+    } else {
+      updateData({ referenceImages: [...currentRefs, url] });
+    }
+  };
+
+  const handleUploadReference = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      const currentRefs = currentData.referenceImages || [];
+      updateData({ referenceImages: [...currentRefs, base64] });
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -288,6 +357,100 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                 placeholder="Descreve como deve ser o visual..."
                 className="w-full h-32 bg-zinc-50 border border-zinc-200 rounded-2xl p-4 text-sm text-zinc-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all resize-none"
               />
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                  <ImagePlus className="w-4 h-4" />
+                  Referências Visuais
+                </label>
+                <button
+                  onClick={() => setShowReferenceSelector(true)}
+                  className="text-xs text-indigo-600 font-bold hover:text-indigo-700 flex items-center gap-1"
+                >
+                  Selecionar
+                </button>
+              </div>
+              
+              <div className="flex flex-wrap gap-2">
+                {(currentData.referenceImages || []).map((url, idx) => (
+                  <div key={idx} className="relative group w-12 h-12 rounded-lg overflow-hidden border border-zinc-200">
+                    <img src={url} alt="Ref" className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => toggleReferenceImage(url)}
+                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                ))}
+                <label className="w-12 h-12 rounded-lg border-2 border-dashed border-zinc-200 flex items-center justify-center cursor-pointer hover:border-indigo-300 hover:bg-indigo-50 transition-all">
+                  <Upload className="w-4 h-4 text-zinc-400" />
+                  <input type="file" className="hidden" accept="image/*" onChange={handleUploadReference} />
+                </label>
+              </div>
+              <p className="text-[10px] text-zinc-400">
+                Usa imagens da biblioteca ou faz upload para manter a consistência visual.
+              </p>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-zinc-100">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                <Volume2 className="w-4 h-4" />
+                Som e Música
+              </label>
+              
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase">Estilo</p>
+                  <select
+                    value={currentData.musicOptions?.style || "Cinematic"}
+                    onChange={(e) => updateData({ musicOptions: { ...currentData.musicOptions, style: e.target.value } })}
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    <option value="Cinematic">Cinemático</option>
+                    <option value="Orchestral">Orquestral</option>
+                    <option value="Electronic">Eletrónico</option>
+                    <option value="Ambient">Ambiente</option>
+                    <option value="Jazz">Jazz</option>
+                    <option value="Rock">Rock</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase">Mood</p>
+                    <select
+                      value={currentData.musicOptions?.mood || "Epic"}
+                      onChange={(e) => updateData({ musicOptions: { ...currentData.musicOptions, mood: e.target.value } })}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="Epic">Épico</option>
+                      <option value="Happy">Feliz</option>
+                      <option value="Sad">Triste</option>
+                      <option value="Mysterious">Misterioso</option>
+                      <option value="Aggressive">Agressivo</option>
+                      <option value="Peaceful">Calmo</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase">Intensidade</p>
+                    <select
+                      value={currentData.musicOptions?.intensity || "Medium"}
+                      onChange={(e) => updateData({ musicOptions: { ...currentData.musicOptions, intensity: e.target.value } })}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="Low">Baixa</option>
+                      <option value="Medium">Média</option>
+                      <option value="High">Alta</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-zinc-400">
+                Estes parâmetros serão usados para sugerir o estilo sonoro na renderização final.
+              </p>
             </div>
 
             {activeTab === "outro" && (
@@ -408,8 +571,16 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                         <button 
                           onClick={() => setSelectedImage({ url: currentData.imageUrl!, title: activeTab === "intro" ? "Intro Keyframe" : "Credits Keyframe" })}
                           className="p-2 bg-white rounded-full text-zinc-900 hover:scale-110 transition-transform"
+                          title="Ver Imagem"
                         >
                           <ZoomIn className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => handleIntelligentEdit('image')}
+                          className="p-2 bg-white rounded-full text-indigo-600 hover:scale-110 transition-transform"
+                          title="Edição Inteligente"
+                        >
+                          <Sparkles className="w-5 h-5" />
                         </button>
                         <a 
                           href={currentData.imageUrl}
@@ -497,6 +668,13 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                         controls 
                         className="w-full h-full object-cover"
                       />
+                      <button 
+                        onClick={() => handleIntelligentEdit('video')}
+                        className="absolute top-4 left-4 p-2 bg-white/90 rounded-full text-indigo-600 opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-lg flex items-center justify-center"
+                        title="Edição Inteligente"
+                      >
+                        <Sparkles className="w-5 h-5" />
+                      </button>
                       <a 
                         href={currentData.videoUrl}
                         download={`${activeTab}-video.mp4`}
@@ -546,6 +724,75 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
           </div>
         </div>
       </div>
+
+      {/* Reference Selector Modal */}
+      {showReferenceSelector && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div>
+                <h3 className="text-xl font-bold text-zinc-900">Selecionar Referências</h3>
+                <p className="text-sm text-zinc-500">Escolhe imagens do teu projeto para guiar a IA.</p>
+              </div>
+              <button
+                onClick={() => setShowReferenceSelector(false)}
+                className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6 text-zinc-400" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {getAllProjectImages().map((img, idx) => {
+                  const isSelected = (currentData.referenceImages || []).includes(img.url);
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => toggleReferenceImage(img.url)}
+                      className={`relative aspect-square rounded-2xl overflow-hidden border-2 transition-all group ${
+                        isSelected ? "border-indigo-600 ring-4 ring-indigo-500/10" : "border-transparent hover:border-zinc-200"
+                      }`}
+                    >
+                      <img src={img.url} alt={img.title} className="w-full h-full object-cover" />
+                      <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${
+                        isSelected ? "bg-indigo-600/20 opacity-100" : "bg-black/40 opacity-0 group-hover:opacity-100"
+                      }`}>
+                        {isSelected ? (
+                          <CheckCircle2 className="w-8 h-8 text-white drop-shadow-lg" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full border-2 border-white/50" />
+                        )}
+                      </div>
+                      <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                        <p className="text-[10px] text-white font-medium truncate">{img.title}</p>
+                        <p className="text-[8px] text-white/60 uppercase tracking-wider">{img.source}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {getAllProjectImages().length === 0 && (
+                <div className="text-center py-12">
+                  <ImageIcon className="w-12 h-12 text-zinc-200 mx-auto mb-4" />
+                  <p className="text-zinc-500 font-medium">Ainda não tens imagens no projeto.</p>
+                  <p className="text-sm text-zinc-400">Cria personagens ou cenários primeiro.</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-6 border-t border-zinc-100 bg-zinc-50/50 flex justify-end">
+              <button
+                onClick={() => setShowReferenceSelector(false)}
+                className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+              >
+                Concluído
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ImageModal 
         isOpen={!!selectedImage}
@@ -671,6 +918,29 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {intelligentEditorItem && (
+        <IntelligentEditor
+          mediaItem={{
+            id: activeTab,
+            url: intelligentEditorItem.url,
+            type: intelligentEditorItem.type,
+            title: activeTab === 'intro' ? 'Intro' : 'Créditos',
+            source: 'IntroOutro',
+            videoObject: intelligentEditorItem.videoObject
+          }}
+          project={project}
+          aspectRatio={project.aspectRatio}
+          onSave={(newUrl, newVideoObject) => {
+            if (intelligentEditorItem.type === 'image') {
+              updateData({ imageUrl: newUrl });
+            } else {
+              updateData({ videoUrl: newUrl, videoObject: newVideoObject });
+            }
+          }}
+          onClose={() => setIntelligentEditorItem(null)}
+        />
       )}
     </div>
   );
