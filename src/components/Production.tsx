@@ -416,7 +416,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         }).join(" | ")
       : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
 
-    return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
+    const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
+    const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
+
+    return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${musicContext}${dialogueContext}`;
   };
 
   const onGenerateFrame = async (sceneId: string, takeId: string, type: "start" | "end") => {
@@ -628,7 +631,26 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         if (t.id === takeId) {
           if (type === 'start') return { ...t, startFrameUrl: newUrl, updatedAt: Date.now() };
           if (type === 'end') return { ...t, endFrameUrl: newUrl, updatedAt: Date.now() };
-          if (type === 'video') return { ...t, videoUrl: newUrl, videoObject: newVideoObject || t.videoObject, videoOperationId: undefined, updatedAt: Date.now() };
+          if (type === 'video') {
+            // If no videoObject is returned, it means it's an image result
+            if (!newVideoObject) {
+              return { 
+                ...t, 
+                videoUrl: undefined, 
+                videoObject: undefined, 
+                startFrameUrl: newUrl, 
+                videoOperationId: undefined, 
+                updatedAt: Date.now() 
+              };
+            }
+            return { 
+              ...t, 
+              videoUrl: newUrl, 
+              videoObject: newVideoObject, 
+              videoOperationId: undefined, 
+              updatedAt: Date.now() 
+            };
+          }
         }
         return t;
       })
@@ -682,7 +704,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
               }).join(" | ")
             : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
 
-          const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
+          const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
+          const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
+
+          const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${musicContext}${dialogueContext}`;
           
           // Collect reference images for consistency
           const takeCharacters = project.characters.filter((c) =>
@@ -853,7 +878,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                   }).join(" | ")
                 : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
 
-              const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
+              const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
+              const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
+
+              const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${musicContext}${dialogueContext}`;
               
               const takeCharacters = project.characters.filter((c) =>
                 take.characterIds?.includes(c.id)
@@ -935,7 +963,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           }).join(" | ")
         : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
 
-      const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${dialogueContext}`;
+      const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
+      const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
+
+      const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${musicContext}${dialogueContext}`;
       
       setEditingVideoPrompt({ sceneId, takeId, prompt });
     } catch (error) {

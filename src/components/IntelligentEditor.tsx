@@ -257,6 +257,7 @@ export default function IntelligentEditor({
           }
         }
       } else if (mediaItem?.type === 'image') {
+        setStatus("A gerar imagem...");
         const maskCanvas = maskCanvasRef.current;
         const refs = referenceImages.map(r => r.url);
         
@@ -785,8 +786,8 @@ export default function IntelligentEditor({
                 </div>
               </div>
 
-              {/* Mode Selector for Video */}
-              {mediaItem?.type === 'video' && (
+              {/* Mode Selector */}
+              {mediaItem && (
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Modo de Operação</label>
                   <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-100 rounded-xl">
@@ -810,7 +811,9 @@ export default function IntelligentEditor({
                     </button>
                   </div>
                   <p className="text-[10px] text-zinc-400 italic px-1">
-                    {mode === 'edit' ? "Re-gera o vídeo com base no prompt." : "Continua o vídeo a partir do último frame."}
+                    {mode === 'edit' 
+                      ? `Re-gera ${mediaItem.type === 'image' ? 'a imagem' : 'o vídeo'} com base no prompt.` 
+                      : `Continua ${mediaItem.type === 'image' ? 'a imagem' : 'o vídeo'} a partir do último frame.`}
                   </p>
                 </div>
               )}
@@ -917,7 +920,7 @@ export default function IntelligentEditor({
                   <ProgressBar 
                     progress={progress} 
                     label={status} 
-                    modelName={videoModel === 'flow' ? 'Flow' : 'Veo'} 
+                    modelName={(mode === 'create' && createType === 'image') || mediaItem?.type === 'image' ? 'Nanobana' : (videoModel === 'flow' ? 'Flow' : 'Veo')} 
                   />
                 </div>
               )}

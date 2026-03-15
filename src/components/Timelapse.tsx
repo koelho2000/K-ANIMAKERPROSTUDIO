@@ -20,6 +20,7 @@ import {
   Volume2,
   ArrowRightLeft,
   Wand2,
+  Pause,
 } from "lucide-react";
 import { 
   generateNarrationText, 
@@ -55,6 +56,7 @@ export default function Timelapse({
   setCurrentStep
 }: TimelapseProps) {
   const [selectedEventIndex, setSelectedEventIndex] = useState<number>(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isGeneratingNarration, setIsGeneratingNarration] = useState(false);
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
@@ -111,6 +113,22 @@ export default function Timelapse({
   }, [navigationContext, setNavigationContext, timelineEvents]);
 
   const selectedEvent = timelineEvents[selectedEventIndex];
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isPlaying) {
+      interval = setInterval(() => {
+        setSelectedEventIndex((prev) => {
+          if (prev >= timelineEvents.length - 1) {
+            setIsPlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, timelineEvents.length]);
 
   useEffect(() => {
     setNarrationText(selectedEvent.take.narration || "");
@@ -387,7 +405,10 @@ export default function Timelapse({
             return (
               <button
                 key={event.take.id}
-                onClick={() => setSelectedEventIndex(idx)}
+                onClick={() => {
+                  setSelectedEventIndex(idx);
+                  setIsPlaying(false);
+                }}
                 className={`flex-shrink-0 group relative flex flex-col items-center gap-2 transition-all ${
                   isActive ? "w-40" : "w-16 hover:w-20"
                 }`}
@@ -495,14 +516,37 @@ export default function Timelapse({
           {/* Navigation Controls Overlay */}
           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-4 pointer-events-none">
             <button 
-              onClick={() => setSelectedEventIndex(prev => Math.max(0, prev - 1))}
+              onClick={() => {
+                setSelectedEventIndex(prev => Math.max(0, prev - 1));
+                setIsPlaying(false);
+              }}
               disabled={selectedEventIndex === 0}
               className="w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-all pointer-events-auto disabled:opacity-0"
             >
               <ChevronLeft className="w-6 h-6" />
             </button>
+            <div className="flex flex-col items-center gap-4 pointer-events-auto">
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className={`w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-2xl ${
+                  isPlaying 
+                    ? "bg-rose-600 hover:bg-rose-700 text-white" 
+                    : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                }`}
+                title={isPlaying ? "Pausar" : "Reproduzir Timelapse"}
+              >
+                {isPlaying ? (
+                  <Pause className="w-8 h-8 fill-current" />
+                ) : (
+                  <Play className="w-8 h-8 fill-current ml-1" />
+                )}
+              </button>
+            </div>
             <button 
-              onClick={() => setSelectedEventIndex(prev => Math.min(timelineEvents.length - 1, prev + 1))}
+              onClick={() => {
+                setSelectedEventIndex(prev => Math.min(timelineEvents.length - 1, prev + 1));
+                setIsPlaying(false);
+              }}
               disabled={selectedEventIndex === timelineEvents.length - 1}
               className="w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-all pointer-events-auto disabled:opacity-0"
             >
@@ -555,17 +599,17 @@ export default function Timelapse({
             </div>
 
             <div className="flex items-center gap-3 pointer-events-auto">
-              {selectedEvent.take.videoUrl && (
+              {(selectedEvent.take.videoUrl || selectedEvent.take.startFrameUrl) && (
                 <button
                   onClick={() => {
                     const nextEvent = timelineEvents[selectedEventIndex + 1];
-                    const nextMediaUrl = nextEvent?.take.videoUrl;
+                    const nextMediaUrl = nextEvent?.take.videoUrl || nextEvent?.take.startFrameUrl;
                     
                     setEditingItem({
-                      id: `take-video-${selectedEvent.take.id}`,
-                      url: selectedEvent.take.videoUrl!,
-                      type: 'video',
-                      title: `Cena ${selectedEvent.sceneIndex + 1} Take ${selectedEvent.takeIndex + 1} - Vídeo`,
+                      id: `take-${selectedEvent.take.videoUrl ? 'video' : 'image'}-${selectedEvent.take.id}`,
+                      url: (selectedEvent.take.videoUrl || selectedEvent.take.startFrameUrl)!,
+                      type: selectedEvent.take.videoUrl ? 'video' : 'image',
+                      title: `Cena ${selectedEvent.sceneIndex + 1} Take ${selectedEvent.takeIndex + 1} - ${selectedEvent.take.videoUrl ? 'Vídeo' : 'Imagem'}`,
                       source: 'Timelapse',
                       videoObject: selectedEvent.take.videoObject,
                       nextMediaUrl
@@ -902,10 +946,13 @@ export default function Timelapse({
           onClose={() => setEditingItem(null)}
           onSave={(url, videoObject) => {
             const updatedScenes = [...project.scenes];
+            const isResultImage = !videoObject;
+            
             updatedScenes[selectedEvent.sceneIndex].takes[selectedEvent.takeIndex] = {
               ...selectedEvent.take,
-              videoUrl: url,
-              videoObject: videoObject,
+              videoUrl: isResultImage ? undefined : url,
+              videoObject: isResultImage ? undefined : videoObject,
+              startFrameUrl: isResultImage ? url : selectedEvent.take.startFrameUrl,
               updatedAt: Date.now()
             };
             setProject({ ...project, scenes: updatedScenes });
