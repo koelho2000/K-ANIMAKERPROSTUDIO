@@ -26,7 +26,8 @@ import {
   ImagePlus,
   ChevronDown,
   Volume2,
-  Settings2
+  Settings2,
+  Trash2
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
@@ -218,6 +219,11 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
     } finally {
       setIsGeneratingVideo(false);
     }
+  };
+
+  const handleDeleteVideo = () => {
+    if (!window.confirm("Tens a certeza que desejas apagar este Vídeo?")) return;
+    updateData({ videoUrl: undefined, videoObject: undefined, videoOperationId: undefined });
   };
 
   const handleIntelligentEdit = (type: 'image' | 'video') => {
@@ -685,6 +691,13 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                       >
                         <Download className="w-5 h-5" />
                       </a>
+                      <button 
+                        onClick={handleDeleteVideo}
+                        className="absolute top-4 right-16 p-2 bg-white/90 rounded-full text-red-600 opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-lg flex items-center justify-center"
+                        title="Apagar Vídeo"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
                     </>
                   ) : (
                     <div className="text-center p-6">

@@ -71,6 +71,7 @@ export default function Production({
     takeId: string;
     prompt: string;
   } | null>(null);
+  const [confirmingSceneBulk, setConfirmingSceneBulk] = useState<{ sceneId: string; type: 'start' | 'end' | 'video' } | null>(null);
   const [bulkProgress, setBulkProgress] = useState(0);
   const [importingVideo, setImportingVideo] = useState<{
     sceneId: string;
@@ -225,11 +226,12 @@ export default function Production({
         
         ${type === "end" ? "ESTE É O FRAME FINAL DO TAKE. Deve ser uma continuação direta e coerente do Frame Inicial fornecido." : ""}
 
-        DIÁLOGO NESTE TAKE:
+        DIÁLOGO NESTE TAKE${project.language ? ` [Língua: ${project.language}]` : ""}:
         ${take.dialogueLines && take.dialogueLines.length > 0
           ? take.dialogueLines.map(line => {
               const char = project.characters.find(c => c.id === line.characterId);
-              return `${char?.name || "Personagem"}: ${line.text}`;
+              const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+              return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
             }).join("\n")
           : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico."}
 
@@ -381,11 +383,12 @@ Cena: ${scene.title}.
 Ação do Take: ${take.action}. 
 Câmara: ${take.camera}. 
 
-DIÁLOGO NESTE TAKE:
+DIÁLOGO NESTE TAKE${project.language ? ` [Língua: ${project.language}]` : ""}:
 ${take.dialogueLines && take.dialogueLines.length > 0
   ? take.dialogueLines.map(line => {
       const char = project.characters.find(c => c.id === line.characterId);
-      return `${char?.name || "Personagem"}: ${line.text}`;
+      const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+      return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
     }).join("\n")
   : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico."}
 
@@ -409,12 +412,14 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     const take = scene?.takes.find((t) => t.id === takeId);
     if (!scene || !take) return "";
 
+    const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
     const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
-      ? " Diálogo: " + take.dialogueLines.map(line => {
+      ? ` Diálogo${languageInfo}: ` + take.dialogueLines.map(line => {
           const char = project.characters.find(c => c.id === line.characterId);
-          return `${char?.name || "Personagem"}: ${line.text}`;
+          const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+          return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
         }).join(" | ")
-      : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
+      : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
     const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
     const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
@@ -484,10 +489,16 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setProject({ ...project, scenes: updatedScenes });
   };
 
-  const handleGenerateAllStartFramesForScene = async (sceneId: string) => {
+  const handleGenerateAllStartFramesForScene = async (sceneId: string, confirmed = false) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     if (!scene) return;
 
+    if (!confirmed) {
+      setConfirmingSceneBulk({ sceneId, type: 'start' });
+      return;
+    }
+
+    setConfirmingSceneBulk(null);
     setIsGeneratingBulk(true);
     setBulkProgress(0);
     try {
@@ -517,10 +528,16 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     }
   };
 
-  const handleGenerateAllEndFramesForScene = async (sceneId: string) => {
+  const handleGenerateAllEndFramesForScene = async (sceneId: string, confirmed = false) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     if (!scene) return;
 
+    if (!confirmed) {
+      setConfirmingSceneBulk({ sceneId, type: 'end' });
+      return;
+    }
+
+    setConfirmingSceneBulk(null);
     setIsGeneratingBulk(true);
     setBulkProgress(0);
     try {
@@ -571,6 +588,25 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         return {
           ...s,
           takes: s.takes.map((t) => ({ ...t, endFrameUrl: undefined, updatedAt: Date.now() })),
+        };
+      }
+      return s;
+    });
+    setProject({ ...project, scenes: updatedScenes });
+  };
+
+  const handleDeleteVideo = (sceneId: string, takeId: string) => {
+    if (!window.confirm("Tens a certeza que desejas apagar este Vídeo?")) return;
+    const updatedScenes = project.scenes.map((s) => {
+      if (s.id === sceneId) {
+        return {
+          ...s,
+          takes: s.takes.map((t) => {
+            if (t.id === takeId) {
+              return { ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, updatedAt: Date.now() };
+            }
+            return t;
+          }),
         };
       }
       return s;
@@ -658,23 +694,30 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setProject({ ...project, scenes: updatedScenes });
   };
 
-  const handleGenerateAllVideosForScene = async (sceneId: string) => {
+  const handleGenerateAllVideosForScene = async (sceneId: string, confirmed = false) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     if (!scene) return;
 
-    // Check if all takes have frames
-    const incompleteTakes = scene.takes.filter(t => !t.startFrameUrl || !t.endFrameUrl);
+    // Check if all takes have start frames
+    const incompleteTakes = scene.takes.filter(t => !t.startFrameUrl);
     if (incompleteTakes.length > 0) {
-      alert(`Faltam frames em ${incompleteTakes.length} takes desta cena. Gere todos os frames primeiro.`);
+      alert(`Faltam frames iniciais em ${incompleteTakes.length} takes desta cena. Gere todos os frames iniciais primeiro.`);
       return;
     }
+
+    if (!confirmed) {
+      setConfirmingSceneBulk({ sceneId, type: 'video' });
+      return;
+    }
+
+    setConfirmingSceneBulk(null);
 
     // Check if API key is selected
     if (!(window as any).aistudio?.hasSelectedApiKey?.()) {
       if ((window as any).aistudio?.openSelectKey) {
         await (window as any).aistudio.openSelectKey();
       } else {
-        alert("Please configure your Gemini API Key first.");
+        alert("Por favor, configura a tua Chave API Gemini primeiro.");
         return;
       }
     }
@@ -683,26 +726,20 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setBulkProgress(0);
     try {
       const takesToRender = scene.takes.filter(t => !t.videoUrl && !t.videoOperationId);
-      if (takesToRender.length === 0) {
-        if (!window.confirm("Todos os vídeos desta cena já foram renderizados. Deseja renderizar novamente?")) return;
-      }
-
+      
       for (let i = 0; i < scene.takes.length; i++) {
         const take = scene.takes[i];
         if (takesToRender.length === 0 || (!take.videoUrl && !take.videoOperationId)) {
           setBulkProgress((i / scene.takes.length) * 100);
           
-          // We don't await the full poll here because it would be sequential and very slow.
-          // Instead, we trigger the generation and let the UI handle the polling or just trigger them all.
-          // Actually, the user wants "at the same time", but Veo might have limits.
-          // Let's trigger them and update the state.
-          
+          const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
           const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
-            ? " Diálogo: " + take.dialogueLines.map(line => {
+            ? ` Diálogo${languageInfo}: ` + take.dialogueLines.map(line => {
                 const char = project.characters.find(c => c.id === line.characterId);
-                return `${char?.name || "Personagem"}: ${line.text}`;
+                const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+                return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
               }).join(" | ")
-            : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
+            : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
           const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
           const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
@@ -736,18 +773,20 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           );
 
           // Update state with operation ID and prompt
-          const updatedScenes = project.scenes.map((s) => {
-            if (s.id === sceneId) {
-              return {
-                ...s,
-                takes: s.takes.map((t) =>
-                  t.id === take.id ? { ...t, videoOperationId: operation.name, lastVideoPrompt: prompt } : t,
-                ),
-              };
-            }
-            return s;
-          });
-          setProject({ ...project, scenes: updatedScenes });
+          setProject(prev => ({
+            ...prev,
+            scenes: prev.scenes.map((s) => {
+              if (s.id === sceneId) {
+                return {
+                  ...s,
+                  takes: s.takes.map((t) =>
+                    t.id === take.id ? { ...t, videoOperationId: operation.name, lastVideoPrompt: prompt } : t,
+                  ),
+                };
+              }
+              return s;
+            })
+          }));
 
           // Start polling in background (don't await)
           pollVideoOperation(operation.name).then((videoUrl) => {
@@ -769,8 +808,6 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             }));
           }).catch(err => {
             console.error(`Error rendering video for take ${take.id}:`, err);
-            alert(`Erro ao renderizar vídeo (Take ${take.id}): ${err.message || 'Verifica se a tua chave API é válida e tem saldo.'}`);
-            
             // Clear the loading state
             setProject(prev => ({
               ...prev,
@@ -789,12 +826,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           });
         }
       }
-      alert(`Renderização de vídeos da cena "${scene.title}" iniciada!`);
+      setBulkProgress(100);
+      setTimeout(() => {
+        setIsGeneratingBulk(false);
+        setBulkProgress(0);
+      }, 2000);
     } catch (error) {
       console.error(error);
-      alert("Erro ao iniciar renderização em massa.");
-    } finally {
       setIsGeneratingBulk(false);
+      alert("Erro ao iniciar renderização em massa.");
     }
   };
 
@@ -866,17 +906,19 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           }
 
           if (options.video && !take.videoUrl && !take.videoOperationId) {
-            // Only generate video if frames are present
+            // Only generate video if start frame is present
             const startFrame = updatedTakes[j].startFrameUrl || take.startFrameUrl;
             const endFrame = updatedTakes[j].endFrameUrl || take.endFrameUrl;
 
-            if (startFrame && endFrame) {
+            if (startFrame) {
+              const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
               const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
-                ? " Diálogo: " + take.dialogueLines.map(line => {
+                ? ` Diálogo${languageInfo}: ` + take.dialogueLines.map(line => {
                     const char = project.characters.find(c => c.id === line.characterId);
-                    return `${char?.name || "Personagem"}: ${line.text}`;
+                    const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+                    return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
                   }).join(" | ")
-                : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
+                : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
               const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
               const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
@@ -956,12 +998,14 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       const take = scene?.takes.find((t) => t.id === takeId);
       if (!scene || !take) return;
 
+      const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
       const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
-        ? " Diálogo: " + take.dialogueLines.map(line => {
+        ? ` Diálogo${languageInfo}: ` + take.dialogueLines.map(line => {
             const char = project.characters.find(c => c.id === line.characterId);
-            return `${char?.name || "Personagem"}: ${line.text}`;
+            const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+            return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
           }).join(" | ")
-        : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo: ${take.dialogue}` : "";
+        : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
       const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
       const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
@@ -1226,10 +1270,12 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         ? `${takeSetting.name}: ${takeSetting.description}`
         : "Nenhum cenário específico definido.";
 
+      const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
       const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
         ? take.dialogueLines.map(line => {
             const char = project.characters.find(c => c.id === line.characterId);
-            return `${char?.name || "Personagem"}: ${line.text}`;
+            const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+            return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
           }).join("\n")
         : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico.";
 
@@ -2069,35 +2115,37 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           <Info className="w-3 h-3" />
                           Info
                         </button>
-                        <button
-                          onClick={() => {
-                            const prompt = take.lastVideoPrompt || getDefaultVideoPrompt(expandedSceneId!, take.id);
-                            setImportingVideo({ sceneId: expandedSceneId!, takeId: take.id, prompt });
-                          }}
-                          className="text-xs flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-2 py-1 rounded transition-colors"
-                          title="Importar vídeo manualmente"
-                        >
-                          <Upload className="w-3 h-3" />
-                          Importar
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleGenerateVideo(expandedSceneId!, take.id)
-                          }
-                          disabled={
-                            generatingVideoId === take.id ||
-                            !!take.videoOperationId
-                          }
-                          className="text-xs flex items-center gap-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded font-medium transition-colors disabled:opacity-50"
-                        >
-                          {generatingVideoId === take.id ||
-                          take.videoOperationId ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Film className="w-3 h-3" />
-                          )}
-                          Renderizar Vídeo
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          <button
+                            onClick={() =>
+                              handleGenerateVideo(expandedSceneId!, take.id)
+                            }
+                            disabled={
+                              generatingVideoId === take.id ||
+                              !!take.videoOperationId
+                            }
+                            className="text-xs flex items-center justify-center gap-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded font-medium transition-colors disabled:opacity-50 w-full"
+                          >
+                            {generatingVideoId === take.id ||
+                            take.videoOperationId ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Film className="w-3 h-3" />
+                            )}
+                            Renderizar Vídeo
+                          </button>
+                          <button
+                            onClick={() => {
+                              const prompt = take.lastVideoPrompt || getDefaultVideoPrompt(expandedSceneId!, take.id);
+                              setImportingVideo({ sceneId: expandedSceneId!, takeId: take.id, prompt });
+                            }}
+                            className="text-xs flex items-center justify-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-2 py-1 rounded transition-colors w-full"
+                            title="Importar vídeo manualmente"
+                          >
+                            <Upload className="w-3 h-3" />
+                            Importar
+                          </button>
+                        </div>
                         {take.videoUrl && take.videoObject && (
                           <button
                             onClick={() =>
@@ -2132,6 +2180,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             controls
                             className="w-full h-full object-cover"
                           />
+                          <button
+                            onClick={() => handleDeleteVideo(expandedSceneId!, take.id)}
+                            className="absolute top-2 right-[76px] bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-red-600 shadow-sm transition-all z-20 flex items-center justify-center"
+                            title="Apagar Vídeo"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => {
                               const currentScene = project.scenes.find(s => s.id === expandedSceneId);
@@ -2493,6 +2548,72 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 }`}
               >
                 Confirmar {showBulkActionModal.type === 'generate' ? 'Geração' : 'Exclusão'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {confirmingSceneBulk && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl"
+          >
+            <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-500/20">
+                  {confirmingSceneBulk.type === 'video' ? (
+                    <Film className="w-5 h-5 text-indigo-400" />
+                  ) : (
+                    <ImageIcon className="w-5 h-5 text-indigo-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    {confirmingSceneBulk.type === 'video' ? 'Renderizar em Massa' : 'Gerar Imagens em Massa'}
+                  </h3>
+                  <p className="text-xs text-zinc-400">Confirmar ação para esta cena</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setConfirmingSceneBulk(null)}
+                className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-8">
+              <p className="text-zinc-300 leading-relaxed">
+                Pretendes {confirmingSceneBulk.type === 'video' ? 'renderizar todos os vídeos' : 
+                  confirmingSceneBulk.type === 'start' ? 'gerar todos os frames iniciais' : 
+                  'gerar todos os frames finais'} da cena <span className="text-white font-bold">"{project.scenes.find(s => s.id === confirmingSceneBulk.sceneId)?.title}"</span> em massa?
+              </p>
+              <div className="mt-4 p-4 bg-indigo-500/5 rounded-2xl border border-indigo-500/10">
+                <p className="text-xs text-indigo-300 flex items-start gap-2">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                  Esta ação irá iniciar a geração de todos os elementos que ainda não foram criados nesta cena.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 bg-zinc-900 border-t border-zinc-800 flex gap-3">
+              <button
+                onClick={() => setConfirmingSceneBulk(null)}
+                className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmingSceneBulk.type === 'video') handleGenerateAllVideosForScene(confirmingSceneBulk.sceneId, true);
+                  else if (confirmingSceneBulk.type === 'start') handleGenerateAllStartFramesForScene(confirmingSceneBulk.sceneId, true);
+                  else if (confirmingSceneBulk.type === 'end') handleGenerateAllEndFramesForScene(confirmingSceneBulk.sceneId, true);
+                }}
+                className="flex-1 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-500/20 transition-all"
+              >
+                Confirmar
               </button>
             </div>
           </motion.div>
