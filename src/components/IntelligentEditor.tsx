@@ -982,12 +982,25 @@ export default function IntelligentEditor({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto grid grid-cols-4 md:grid-cols-5 gap-4 custom-scrollbar bg-zinc-50/50">
+            <div className="p-12 overflow-y-auto flex flex-wrap justify-center -space-x-12 custom-scrollbar bg-zinc-50/50 min-h-[400px]">
               {getAllLibraryImages().map((url, idx) => (
                 <button 
                   key={idx} 
                   onClick={() => setPreviewLibraryItem({ url, type: 'image' })}
-                  className="aspect-square rounded-2xl overflow-hidden border-2 border-white shadow-sm hover:border-indigo-500 hover:shadow-md transition-all relative group bg-white"
+                  className="w-40 h-40 rounded-2xl overflow-hidden border-4 border-white shadow-xl hover:border-indigo-500 hover:shadow-2xl transition-all relative group bg-white shrink-0 first:ml-0"
+                  style={{ 
+                    transform: `rotate(${((idx % 3) - 1) * 3}deg) translateY(${((idx % 2) === 0 ? 0 : 10)}px)`,
+                    zIndex: 0,
+                    marginLeft: idx === 0 ? '0' : '-3rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.zIndex = '10';
+                    e.currentTarget.style.transform = 'scale(1.1) rotate(0deg) translateY(-10px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.zIndex = '0';
+                    e.currentTarget.style.transform = `rotate(${((idx % 3) - 1) * 3}deg) translateY(${((idx % 2) === 0 ? 0 : 10)}px)`;
+                  }}
                 >
                   <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition-colors flex items-center justify-center">
@@ -1051,12 +1064,25 @@ export default function IntelligentEditor({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-4 custom-scrollbar bg-zinc-50/50">
+            <div className="p-12 overflow-y-auto flex flex-wrap justify-center -space-x-12 custom-scrollbar bg-zinc-50/50 min-h-[400px]">
               {getAllLibraryVideos().map((video, idx) => (
                 <button 
                   key={idx} 
                   onClick={() => setPreviewLibraryItem({ ...video, type: 'video' })}
-                  className="group relative aspect-video rounded-2xl overflow-hidden border-2 border-white shadow-sm hover:border-indigo-500 hover:shadow-md transition-all bg-black"
+                  className="w-64 aspect-video rounded-2xl overflow-hidden border-4 border-white shadow-xl hover:border-indigo-500 hover:shadow-2xl transition-all relative group bg-black shrink-0 first:ml-0"
+                  style={{ 
+                    transform: `rotate(${((idx % 3) - 1) * 2}deg) translateY(${((idx % 2) === 0 ? 0 : 10)}px)`,
+                    zIndex: 0,
+                    marginLeft: idx === 0 ? '0' : '-4rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.zIndex = '10';
+                    e.currentTarget.style.transform = 'scale(1.1) rotate(0deg) translateY(-10px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.zIndex = '0';
+                    e.currentTarget.style.transform = `rotate(${((idx % 3) - 1) * 2}deg) translateY(${((idx % 2) === 0 ? 0 : 10)}px)`;
+                  }}
                 >
                   <video src={video.url} className="w-full h-full object-contain pointer-events-none" />
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center">
