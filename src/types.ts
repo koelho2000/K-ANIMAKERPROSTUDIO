@@ -158,6 +158,11 @@ export interface Scene {
   title: string;
   description: string;
   takes: Take[];
+  soundtrack?: {
+    style: string;
+    audioUrl?: string;
+    duration?: number;
+  };
 }
 
 export interface DialogueLine {
@@ -170,7 +175,6 @@ export interface Take {
   action: string;
   camera: string;
   sound: string;
-  music: string;
   dialogue: string;
   dialogueLines?: DialogueLine[];
   characterIds?: string[];

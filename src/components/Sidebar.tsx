@@ -19,6 +19,7 @@ import {
   ChevronUp,
   Settings2,
   Clock,
+  Music,
   BookOpen,
   Sparkles,
 } from "lucide-react";
@@ -52,6 +53,7 @@ const steps = [
   { id: 9, name: "Quadro Resumo", icon: LayoutList },
   { id: 10, name: "Biblioteca de Media", icon: Library },
   { id: 11, name: "Timelapse", icon: Clock },
+  { id: 13, name: "Soundtrack", icon: Music },
   { id: 12, name: "EBook", icon: BookOpen },
 ];
 

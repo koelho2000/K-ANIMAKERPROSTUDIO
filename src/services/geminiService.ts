@@ -927,3 +927,56 @@ export const generateSubtitles = async (
     return response.text || "";
   });
 };
+
+export const generateSoundtrackDescription = async (sceneAction: string, filmStyle: string, filmType: string) => {
+  const prompt = `Com base na ação da cena e no estilo do filme, descreve o estilo musical ideal para a banda sonora desta cena.
+  Ação da Cena: "${sceneAction}"
+  Estilo do Filme: ${filmStyle}
+  Tipo de Filme: ${filmType}
+  
+  Responde com uma descrição curta e técnica (ex: "Orquestral épico com cordas rápidas e percussão tensa", "Lo-fi relaxante com sintetizadores suaves e batida lenta").
+  Responde APENAS com a descrição.`;
+
+  return generateText(prompt, "És um compositor de bandas sonoras para cinema.");
+};
+
+export const generateSoundtrackAudio = async (style: string) => {
+  return withRetry(async () => {
+    const ai = getGenAI();
+    const prompt = `Gera um ambiente sonoro que represente: ${style}. 
+    Este áudio será usado como banda sonora de fundo. 
+    Faz sons atmosféricos que condigam com o estilo, sem fala humana.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Zephyr' },
+          },
+        },
+      },
+    });
+
+    const part = response.candidates?.[0]?.content?.parts?.[0];
+    const base64Audio = part?.inlineData?.data;
+    const mimeType = part?.inlineData?.mimeType || "audio/pcm";
+
+    if (base64Audio) {
+      if (mimeType.includes("pcm")) {
+        const pcmData = base64ToUint8Array(base64Audio);
+        const wavHeader = createWavHeader(pcmData.length, 24000);
+        const wavData = new Uint8Array(wavHeader.length + pcmData.length);
+        wavData.set(wavHeader);
+        wavData.set(pcmData, wavHeader.length);
+        const finalBase64 = uint8ArrayToBase64(wavData);
+        return `data:audio/wav;base64,${finalBase64}`;
+      }
+      return `data:${mimeType};base64,${base64Audio}`;
+    }
+    throw new Error("Falha ao gerar áudio da banda sonora.");
+  });
+};
+

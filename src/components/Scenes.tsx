@@ -308,7 +308,7 @@ export default function Scenes({
         ${settingsContext}
 
         IMPORTANTE: Deves gerar exatamente ${targetTakes} takes para cumprir o nível de detalhe solicitado pelo utilizador.
-        Para cada take, define a ação, o movimento/tipo de câmara, som ambiente, música e diálogo (se houver).
+        Para cada take, define a ação, o movimento/tipo de câmara, som ambiente e diálogo (se houver).
         Garante que as ações respeitam as descrições das personagens e cenários fornecidos.
 
         REGRAS DE IDENTIFICAÇÃO:
@@ -335,7 +335,6 @@ export default function Scenes({
               type: Type.STRING,
               description: "Efeitos sonoros e som ambiente",
             },
-            music: { type: Type.STRING, description: "Indicações musicais" },
             dialogue: {
               type: Type.STRING,
               description: "Diálogo falado neste take (ou 'Nenhum')",
@@ -362,7 +361,7 @@ export default function Scenes({
               description: "Nome do cenário onde decorre este take",
             },
           },
-          required: ["action", "camera", "sound", "music", "dialogue", "dialogueLines", "characterNames", "settingName"],
+          required: ["action", "camera", "sound", "dialogue", "dialogueLines", "characterNames", "settingName"],
         },
       };
 
@@ -382,7 +381,6 @@ export default function Scenes({
           action: t.action,
           camera: t.camera,
           sound: t.sound,
-          music: t.music,
           dialogue: t.dialogue,
           dialogueLines: t.dialogueLines?.map((dl: any) => ({
             characterId: project.characters.find((c) => 
@@ -492,7 +490,6 @@ export default function Scenes({
             action: { type: Type.STRING },
             camera: { type: Type.STRING },
             sound: { type: Type.STRING },
-            music: { type: Type.STRING },
             dialogue: { type: Type.STRING },
             dialogueLines: {
               type: Type.ARRAY,
@@ -511,7 +508,7 @@ export default function Scenes({
             },
             settingName: { type: Type.STRING },
           },
-          required: ["action", "camera", "sound", "music", "dialogue", "dialogueLines", "characterNames", "settingName"],
+          required: ["action", "camera", "sound", "dialogue", "dialogueLines", "characterNames", "settingName"],
         },
       };
 
@@ -531,7 +528,6 @@ export default function Scenes({
           action: t.action,
           camera: t.camera,
           sound: t.sound,
-          music: t.music,
           dialogue: t.dialogue,
           dialogueLines: t.dialogueLines?.map((dl: any) => ({
             characterId: project.characters.find((c) => 
@@ -609,7 +605,6 @@ export default function Scenes({
           action: { type: Type.STRING },
           camera: { type: Type.STRING },
           sound: { type: Type.STRING },
-          music: { type: Type.STRING },
           dialogue: { type: Type.STRING },
           dialogueLines: {
             type: Type.ARRAY,
@@ -628,7 +623,7 @@ export default function Scenes({
           },
           settingName: { type: Type.STRING },
         },
-        required: ["action", "camera", "sound", "music", "dialogue", "dialogueLines", "characterNames", "settingName"],
+        required: ["action", "camera", "sound", "dialogue", "dialogueLines", "characterNames", "settingName"],
       };
 
       const result = await generateJSON(
@@ -651,7 +646,6 @@ export default function Scenes({
                     action: t.action,
                     camera: t.camera,
                     sound: t.sound,
-                    music: t.music,
                     dialogue: t.dialogue,
                     dialogueLines: t.dialogueLines?.map((dl: any) => ({
                       characterId: project.characters.find((c) => 
@@ -1006,27 +1000,18 @@ export default function Scenes({
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">
-                              Som e Música
+                              Som
                             </label>
                             <textarea
-                              value={`Som: ${take.sound}\nMúsica: ${take.music}`}
-                              onChange={(e) => {
-                                // Simple split for demo purposes
-                                const parts = e.target.value.split("\nMúsica: ");
+                              value={take.sound}
+                              onChange={(e) =>
                                 updateTake(
                                   scene.id,
                                   take.id,
                                   "sound",
-                                  parts[0].replace("Som: ", ""),
-                                );
-                                if (parts[1])
-                                  updateTake(
-                                    scene.id,
-                                    take.id,
-                                    "music",
-                                    parts[1],
-                                  );
-                              }}
+                                  e.target.value,
+                                )
+                              }
                               className="w-full text-sm text-zinc-800 bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded-lg p-2 outline-none resize-none h-20 transition-colors"
                             />
                           </div>

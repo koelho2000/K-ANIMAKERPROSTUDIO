@@ -12,6 +12,7 @@ import Summary from "./components/Summary";
 import Welcome from "./components/Welcome";
 import MediaLibrary from "./components/MediaLibrary";
 import Timelapse from "./components/Timelapse";
+import Soundtrack from "./components/Soundtrack";
 import EBook from "./components/EBook";
 import MassProductionOverlay from "./components/MassProductionOverlay";
 import IntelligentEditor from "./components/IntelligentEditor";
@@ -144,6 +145,9 @@ export default function App() {
         )}
         {currentStep === 12 && (
           <EBook project={project} setProject={setProject} />
+        )}
+        {currentStep === 13 && (
+          <Soundtrack project={project} setProject={setProject} />
         )}
       </main>
 

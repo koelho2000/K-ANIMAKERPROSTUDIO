@@ -422,9 +422,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
     const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-    const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
 
-    return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${musicContext}${dialogueContext}`;
+    return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}`;
   };
 
   const onGenerateFrame = async (sceneId: string, takeId: string, type: "start" | "end") => {
@@ -742,9 +741,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
           const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-          const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
 
-          const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${musicContext}${dialogueContext}`;
+          const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}`;
           
           // Collect reference images for consistency
           const takeCharacters = project.characters.filter((c) =>
@@ -921,9 +919,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
               const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-              const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
 
-              const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${musicContext}${dialogueContext}`;
+              const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}`;
               
               const takeCharacters = project.characters.filter((c) =>
                 take.characterIds?.includes(c.id)
@@ -1008,9 +1005,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
       const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-      const musicContext = take.music && take.music !== "Nenhuma" ? ` Música: ${take.music}.` : "";
 
-      const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${musicContext}${dialogueContext}`;
+      const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}`;
       
       setEditingVideoPrompt({ sceneId, takeId, prompt });
     } catch (error) {
@@ -1438,7 +1434,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Som e Música</label>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Som</label>
                   <p className="text-zinc-700 bg-zinc-50 p-4 rounded-xl border border-zinc-100 leading-relaxed">
                     {infoModalTake.sound}
                   </p>

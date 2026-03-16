@@ -18,7 +18,8 @@ import {
   Zap,
   Maximize2,
   ArrowRightLeft,
-  Download
+  Download,
+  Music
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { generateText } from "../services/geminiService";
@@ -56,17 +57,19 @@ export default function Preview({ project, setProject }: PreviewProps) {
   const [isTranslating, setIsTranslating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isNarrationEnabled, setIsNarrationEnabled] = useState(true);
+  const [isSoundtrackEnabled, setIsSoundtrackEnabled] = useState(true);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportFormat, setExportFormat] = useState<'json' | 'mp4'>('json');
   const [exportStatus, setExportStatus] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const narrationAudioRef = useRef<HTMLAudioElement>(null);
+  const soundtrackAudioRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
   const allTakes = project.scenes.flatMap((s) =>
-    s.takes.map((t) => ({ ...t, sceneTitle: s.title })),
+    s.takes.map((t) => ({ ...t, sceneId: s.id, sceneTitle: s.title })),
   );
   const completedTakes = allTakes.filter((t) => t.videoUrl);
 
@@ -276,6 +279,19 @@ export default function Preview({ project, setProject }: PreviewProps) {
         narrationSource = audioCtx.createMediaElementSource(narrationAudio);
         narrationSource.connect(audioDest);
       }
+
+      let soundtrackSource: MediaElementAudioSourceNode | null = null;
+      let soundtrackAudio: HTMLAudioElement | null = null;
+
+      const scene = project.scenes.find(s => s.id === (clip as any).sceneId);
+      if (isSoundtrackEnabled && scene?.soundtrack?.audioUrl) {
+        soundtrackAudio = document.createElement('audio');
+        soundtrackAudio.src = scene.soundtrack.audioUrl;
+        soundtrackAudio.crossOrigin = "anonymous";
+        soundtrackAudio.loop = true;
+        soundtrackSource = audioCtx.createMediaElementSource(soundtrackAudio);
+        soundtrackSource.connect(audioDest);
+      }
       
       await new Promise((resolve, reject) => {
         video.onloadedmetadata = () => resolve(null);
@@ -284,6 +300,9 @@ export default function Preview({ project, setProject }: PreviewProps) {
 
       if (narrationAudio) {
         await narrationAudio.play();
+      }
+      if (soundtrackAudio) {
+        await soundtrackAudio.play();
       }
       await video.play();
 
@@ -301,6 +320,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
               narrationAudio.src = "";
               narrationAudio.load();
               narrationSource?.disconnect();
+            }
+            if (soundtrackAudio) {
+              soundtrackAudio.pause();
+              soundtrackAudio.src = "";
+              soundtrackAudio.load();
+              soundtrackSource?.disconnect();
             }
             resolve();
             return;
@@ -464,6 +489,10 @@ export default function Preview({ project, setProject }: PreviewProps) {
       narrationAudioRef.current.pause();
       narrationAudioRef.current.currentTime = 0;
     }
+    if (soundtrackAudioRef.current) {
+      soundtrackAudioRef.current.pause();
+      soundtrackAudioRef.current.currentTime = 0;
+    }
     if (currentClipIndex < movieClips.length - 1) {
       setCurrentClipIndex(prev => prev + 1);
     } else {
@@ -473,6 +502,14 @@ export default function Preview({ project, setProject }: PreviewProps) {
   };
 
   const handlePrevClip = () => {
+    if (narrationAudioRef.current) {
+      narrationAudioRef.current.pause();
+      narrationAudioRef.current.currentTime = 0;
+    }
+    if (soundtrackAudioRef.current) {
+      soundtrackAudioRef.current.pause();
+      soundtrackAudioRef.current.currentTime = 0;
+    }
     if (currentClipIndex > 0) {
       setCurrentClipIndex(prev => prev - 1);
     }
@@ -483,6 +520,11 @@ export default function Preview({ project, setProject }: PreviewProps) {
       videoRef.current.play().catch(e => console.error("Auto-play failed", e));
       if (isNarrationEnabled && narrationAudioRef.current && (currentClip as Take).narrationAudioUrl) {
         narrationAudioRef.current.play().catch(e => console.error("Narration auto-play failed", e));
+      }
+      
+      const scene = project.scenes.find(s => s.id === (currentClip as any).sceneId);
+      if (isSoundtrackEnabled && soundtrackAudioRef.current && scene?.soundtrack?.audioUrl) {
+        soundtrackAudioRef.current.play().catch(e => console.error("Soundtrack auto-play failed", e));
       }
     }
   }, [currentClipIndex, isPlayingFullMovie]);
@@ -590,10 +632,16 @@ export default function Preview({ project, setProject }: PreviewProps) {
                             if (isNarrationEnabled && narrationAudioRef.current) {
                               narrationAudioRef.current.play().catch(e => console.error("Narration play failed", e));
                             }
+                            if (isSoundtrackEnabled && soundtrackAudioRef.current) {
+                              soundtrackAudioRef.current.play().catch(e => console.error("Soundtrack play failed", e));
+                            }
                           }}
                           onPause={() => {
                             if (narrationAudioRef.current) {
                               narrationAudioRef.current.pause();
+                            }
+                            if (soundtrackAudioRef.current) {
+                              soundtrackAudioRef.current.pause();
                             }
                           }}
                           onSeeked={() => {
@@ -614,6 +662,14 @@ export default function Preview({ project, setProject }: PreviewProps) {
                           ref={narrationAudioRef}
                           src={(currentClip as Take).narrationAudioUrl}
                           autoPlay={isPlayingFullMovie}
+                        />
+                      )}
+                      {isSoundtrackEnabled && project.scenes.find(s => s.id === (currentClip as any).sceneId)?.soundtrack?.audioUrl && (
+                        <audio
+                          ref={soundtrackAudioRef}
+                          src={project.scenes.find(s => s.id === (currentClip as any).sceneId)?.soundtrack?.audioUrl}
+                          autoPlay={isPlayingFullMovie}
+                          loop
                         />
                       )}
                     </motion.div>
@@ -743,7 +799,30 @@ export default function Preview({ project, setProject }: PreviewProps) {
             </div>
           </div>
 
-          {/* Subtitles Card */}
+          {/* Soundtrack Card */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+                <Music className="w-5 h-5 text-indigo-600" />
+                Banda Sonora
+              </h3>
+              <button
+                onClick={() => setIsSoundtrackEnabled(!isSoundtrackEnabled)}
+                className={`w-12 h-6 rounded-full transition-all relative ${
+                  isSoundtrackEnabled ? "bg-indigo-600" : "bg-zinc-200"
+                }`}
+              >
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                  isSoundtrackEnabled ? "left-7" : "left-1"
+                }`} />
+              </button>
+            </div>
+            <p className="text-[10px] text-zinc-400 italic">
+              Ativa ou desativa a banda sonora gerada por IA durante a reprodução e exportação.
+            </p>
+          </div>
+
+          {/* Narration Card */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-zinc-900 flex items-center gap-2">
