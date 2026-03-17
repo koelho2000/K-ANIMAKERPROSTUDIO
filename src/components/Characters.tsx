@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Info,
   Palette,
+  Zap,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { v4 as uuidv4 } from "uuid";
@@ -37,6 +38,7 @@ interface CharactersProps {
 
 export default function Characters({ project, setProject }: CharactersProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUpdatingTakes, setIsUpdatingTakes] = useState(false);
   const [extractProgress, setExtractProgress] = useState(0);
   const [generatingImageId, setGeneratingImageId] = useState<string | null>(
     null,
@@ -198,6 +200,131 @@ export default function Characters({ project, setProject }: CharactersProps) {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+  };
+
+  const outdatedTakesCount = project.scenes.reduce((count, scene) => {
+    return count + scene.takes.filter(take => {
+      const takeCharacters = project.characters.filter(c => take.characterIds?.includes(c.id));
+      return takeCharacters.some(c => c.updatedAt && c.updatedAt > (take.updatedAt || 0));
+    }).length;
+  }, 0);
+
+  const handleUpdateTakes = async () => {
+    setIsUpdatingTakes(true);
+    try {
+      const updatedScenes = [...project.scenes];
+      let hasChanges = false;
+
+      for (let i = 0; i < updatedScenes.length; i++) {
+        const scene = updatedScenes[i];
+        for (let j = 0; j < scene.takes.length; j++) {
+          const take = scene.takes[j];
+          const takeCharacters = project.characters.filter(c => take.characterIds?.includes(c.id));
+          const isOutdated = takeCharacters.some(c => c.updatedAt && c.updatedAt > (take.updatedAt || 0));
+          
+          if (isOutdated) {
+            hasChanges = true;
+            const charactersContext = project.characters
+              .map((c) => `${c.name}: ${c.description}`)
+              .join("\n");
+            const settingsContext = project.settings
+              .map((s) => `${s.name}: ${s.description}`)
+              .join("\n");
+
+            const prompt = `
+              Refina o seguinte take de um filme de animação.
+              Cena: ${scene.title}
+              Público Alvo: ${project.targetAudience || 'Adultos'}
+              Take Atual:
+              Ação: ${take.action}
+              Câmara: ${take.camera}
+              Diálogo: ${take.dialogue}
+              
+              Contexto de Personagens:
+              ${charactersContext}
+              
+              Contexto de Cenários:
+              ${settingsContext}
+
+              Garante que o novo take é mais detalhado e respeita as descrições fornecidas.
+              
+              REGRAS DE IDENTIFICAÇÃO:
+              1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
+              2. Coloca os nomes EXATOS das personagens (conforme fornecido no Contexto) na lista 'characterNames'.
+              3. Identifica o cenário EXATO onde o take ocorre e coloca o seu nome em 'settingName'.
+            `;
+
+            const schema = {
+              type: Type.OBJECT,
+              properties: {
+                action: { type: Type.STRING },
+                camera: { type: Type.STRING },
+                sound: { type: Type.STRING },
+                dialogue: { type: Type.STRING },
+                characterNames: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                settingName: { type: Type.STRING },
+                dialogueLines: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      characterName: { type: Type.STRING },
+                      text: { type: Type.STRING },
+                    },
+                    required: ["characterName", "text"],
+                  },
+                },
+              },
+              required: ["action", "camera", "sound", "dialogue", "characterNames", "settingName"],
+            };
+
+            const result = await generateJSON(
+              prompt,
+              schema,
+              "És um realizador de cinema a aperfeiçoar uma storyboard.",
+            );
+            const t = JSON.parse(result);
+            
+            take.action = t.action;
+            take.camera = t.camera;
+            take.sound = t.sound;
+            take.dialogue = t.dialogue;
+            
+            if (t.dialogueLines) {
+              take.dialogueLines = t.dialogueLines.map((dl: any) => ({
+                characterId: project.characters.find((c) => 
+                  c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+                  dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+                )?.id || "",
+                text: dl.text,
+              }));
+            }
+
+            take.startFrameUrl = undefined;
+            take.endFrameUrl = undefined;
+            take.videoUrl = undefined;
+            take.videoOperationId = undefined;
+            take.lastStartFramePrompt = undefined;
+            take.lastEndFramePrompt = undefined;
+            take.lastVideoPrompt = undefined;
+            take.analysis = undefined;
+            take.updatedAt = Date.now();
+          }
+        }
+      }
+
+      if (hasChanges) {
+        setProject({ ...project, scenes: updatedScenes });
+        alert("Cenas e Takes atualizados com sucesso! (As imagens/vídeos foram limpos e precisam ser gerados novamente)");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao atualizar cenas e takes.");
+    }
+    setIsUpdatingTakes(false);
   };
 
   const handleGenerateCharacters = async () => {
@@ -556,12 +683,12 @@ export default function Characters({ project, setProject }: CharactersProps) {
     const updated = project.characters.map((c) => {
       if (c.id === id) {
         if (field === "voice") {
-          return { ...c, voice: { ...c.voice, ...value } };
+          return { ...c, voice: { ...c.voice, ...value }, updatedAt: Date.now() };
         }
         if (field === "physical") {
-          return { ...c, physical: { ...c.physical, ...value } };
+          return { ...c, physical: { ...c.physical, ...value }, updatedAt: Date.now() };
         }
-        return { ...c, [field]: value };
+        return { ...c, [field]: value, updatedAt: Date.now() };
       }
       return c;
     });
@@ -599,6 +726,20 @@ export default function Characters({ project, setProject }: CharactersProps) {
           </p>
         </div>
         <div className="flex gap-4">
+          {outdatedTakesCount > 0 && (
+            <button
+              onClick={handleUpdateTakes}
+              disabled={isUpdatingTakes}
+              className="flex items-center gap-2 bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-300 px-4 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
+            >
+              {isUpdatingTakes ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Zap className="w-5 h-5" />
+              )}
+              Update Cenas e Takes ({outdatedTakesCount})
+            </button>
+          )}
           <button
             onClick={handleGenerateAllImages}
             disabled={generatingImageId !== null || project.characters.length === 0}

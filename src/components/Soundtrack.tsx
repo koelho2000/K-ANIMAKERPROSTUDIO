@@ -55,9 +55,9 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
         s.id === sceneId ? { ...s, soundtrack: { ...s.soundtrack, audioUrl } } : s
       );
       setProject({ ...project, scenes: updatedScenes });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao gerar áudio da banda sonora:", error);
-      alert("Erro ao gerar áudio. Por favor, tenta novamente.");
+      alert(`Erro ao gerar áudio: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsGenerating(null);
     }

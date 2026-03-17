@@ -1679,7 +1679,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                       {project.characters.filter(char => 
                         take.characterIds?.includes(char.id)
                       ).map(char => {
-                        const isOutdated = take.updatedAt && char.updatedAt && char.updatedAt > take.updatedAt;
+                        const isOutdated = char.updatedAt && char.updatedAt > (take.updatedAt || 0);
                         return (
                           <div 
                             key={char.id}
@@ -1705,7 +1705,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                       {take.settingId && (() => {
                         const setting = project.settings.find(s => s.id === take.settingId);
                         if (!setting) return null;
-                        const isOutdated = take.updatedAt && setting.updatedAt && setting.updatedAt > take.updatedAt;
+                        const isOutdated = setting.updatedAt && setting.updatedAt > (take.updatedAt || 0);
                         return (
                           <div 
                             key={setting.id}

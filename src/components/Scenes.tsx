@@ -657,6 +657,7 @@ export default function Scenes({
                     characterIds,
                     settingId,
                     duration: oldT.duration || 5,
+                    updatedAt: Date.now(),
                   }
                 : oldT,
             ),
@@ -684,7 +685,7 @@ export default function Scenes({
         return {
           ...s,
           takes: s.takes.map((t) =>
-            t.id === takeId ? { ...t, [field]: value } : t,
+            t.id === takeId ? { ...t, [field]: value, updatedAt: Date.now() } : t,
           ),
         };
       }
