@@ -57,6 +57,7 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
       setProject({ ...project, scenes: updatedScenes });
     } catch (error) {
       console.error("Erro ao gerar áudio da banda sonora:", error);
+      alert("Erro ao gerar áudio. Por favor, tenta novamente.");
     } finally {
       setIsGenerating(null);
     }
@@ -117,6 +118,7 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
       setBulkProgress(100);
     } catch (error) {
       console.error("Erro na geração em massa de áudio:", error);
+      alert("Ocorreu um erro durante a geração em massa de áudio.");
     } finally {
       setTimeout(() => {
         setIsBulkGenerating(false);

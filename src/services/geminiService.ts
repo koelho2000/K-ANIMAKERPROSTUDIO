@@ -943,26 +943,24 @@ export const generateSoundtrackDescription = async (sceneAction: string, filmSty
 export const generateSoundtrackAudio = async (style: string) => {
   return withRetry(async () => {
     const ai = getGenAI();
-    const prompt = `Gera um ambiente sonoro que represente: ${style}. 
-    Este áudio será usado como banda sonora de fundo. 
-    Faz sons atmosféricos que condigam com o estilo, sem fala humana.`;
+    const prompt = `Generate an atmospheric soundtrack representing: ${style}. 
+    This audio will be used as background music. 
+    Make atmospheric sounds and music that match the style, strictly without human speech.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: "gemini-2.5-flash-native-audio-preview-12-2025",
       contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Zephyr' },
-          },
-        },
       },
     });
 
-    const part = response.candidates?.[0]?.content?.parts?.[0];
-    const base64Audio = part?.inlineData?.data;
-    const mimeType = part?.inlineData?.mimeType || "audio/pcm";
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    console.log("Audio generation response parts:", parts);
+    
+    const audioPart = parts.find(p => p.inlineData?.mimeType?.includes('audio') || p.inlineData?.data);
+    const base64Audio = audioPart?.inlineData?.data;
+    const mimeType = audioPart?.inlineData?.mimeType || "audio/pcm";
 
     if (base64Audio) {
       if (mimeType.includes("pcm")) {

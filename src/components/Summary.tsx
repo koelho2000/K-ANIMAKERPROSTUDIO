@@ -34,6 +34,37 @@ export default function Summary({ project }: SummaryProps) {
   };
 
   const handleExport = () => {
+    const getDefaultVideoPrompt = (take: any) => {
+      const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
+      const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
+        ? ` Diálogo${languageInfo}: ` + take.dialogueLines.map((line: any) => {
+            const char = project.characters.find((c: any) => c.id === line.characterId);
+            const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+            return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
+          }).join(" | ")
+        : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
+
+      const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
+
+      return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}`;
+    };
+
+    const getIntroVideoPrompt = () => {
+      if (project.intro?.lastVideoPrompt) return project.intro.lastVideoPrompt;
+      if (!project.intro?.prompt) return "";
+      const music = project.intro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "High" };
+      const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
+      return `${project.intro.prompt}. Add cinematic movement, sound of epic orchestral music, and professional transitions. ${musicPrompt}`;
+    };
+
+    const getOutroVideoPrompt = () => {
+      if (project.outro?.lastVideoPrompt) return project.outro.lastVideoPrompt;
+      if (!project.outro?.prompt) return "";
+      const music = project.outro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "High" };
+      const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
+      return `${project.outro.prompt}. Add cinematic movement, sound of gentle closing music, and professional transitions. ${musicPrompt}`;
+    };
+
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="pt-PT">
@@ -165,10 +196,10 @@ export default function Summary({ project }: SummaryProps) {
                           ${project.intro.prompt}
                         </div>
                       ` : ''}
-                      ${project.intro.lastVideoPrompt ? `
+                      ${getIntroVideoPrompt() ? `
                         <div class="prompt-box">
                           <span class="prompt-label">Prompt Vídeo</span>
-                          ${project.intro.lastVideoPrompt}
+                          ${getIntroVideoPrompt()}
                         </div>
                       ` : ''}
                     </td>
@@ -207,10 +238,10 @@ export default function Summary({ project }: SummaryProps) {
                             ${take.lastEndFramePrompt}
                           </div>
                         ` : ''}
-                        ${take.lastVideoPrompt ? `
+                        ${(take.lastVideoPrompt || getDefaultVideoPrompt(take)) ? `
                           <div class="prompt-box">
                             <span class="prompt-label">Prompt Vídeo</span>
-                            ${take.lastVideoPrompt}
+                            ${take.lastVideoPrompt || getDefaultVideoPrompt(take)}
                           </div>
                         ` : ''}
                       </td>
@@ -243,10 +274,10 @@ export default function Summary({ project }: SummaryProps) {
                           ${project.outro.prompt}
                         </div>
                       ` : ''}
-                      ${project.outro.lastVideoPrompt ? `
+                      ${getOutroVideoPrompt() ? `
                         <div class="prompt-box">
                           <span class="prompt-label">Prompt Vídeo</span>
-                          ${project.outro.lastVideoPrompt}
+                          ${getOutroVideoPrompt()}
                         </div>
                       ` : ''}
                     </td>
