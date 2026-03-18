@@ -26,6 +26,10 @@ export interface AutomationState {
 
 export type TargetAudience = 'Crianças' | 'Adolescentes' | 'Jovens' | 'Adultos' | 'Seniores' | 'Idosos';
 
+export type AudioOption = 'Mudo' | 'Narração' | 'Diálogo' | 'Narração e Diálogo';
+export type NarratorGender = 'Homem' | 'Mulher';
+export type NarratorAge = 'Criança' | 'Adulto' | 'Idoso';
+
 export interface Project {
   id: string;
   title: string;
@@ -37,6 +41,11 @@ export interface Project {
   duration: string;
   aspectRatio: '9:16' | '16:9' | '4:3' | '1:1';
   targetAudience?: TargetAudience;
+  audioOption?: AudioOption;
+  narratorType?: {
+    gender: NarratorGender;
+    age: NarratorAge;
+  };
   director?: string;
   author?: string;
   sceneDetailLevel: 'low' | 'medium' | 'high';

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Project } from "../types";
 import { 
   Table, 
@@ -11,14 +11,18 @@ import {
   Users,
   MapPin,
   Download,
-  FileText
+  FileText,
+  List
 } from "lucide-react";
+import { TechnicalScriptModal } from "./TechnicalScriptModal";
 
 interface SummaryProps {
   project: Project;
 }
 
 export default function Summary({ project }: SummaryProps) {
+  const [showTechnicalScript, setShowTechnicalScript] = useState(false);
+
   const introDuration = project.intro ? 5 : 0;
   const outroDuration = project.outro ? 5 : 0;
   const scenesDuration = project.scenes.reduce((acc, scene) => {
@@ -34,7 +38,7 @@ export default function Summary({ project }: SummaryProps) {
   };
 
   const handleExport = () => {
-    const getDefaultVideoPrompt = (take: any) => {
+    const getDefaultVideoPrompt = (scene: any, take: any) => {
       const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
       const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
         ? ` Diálogo${languageInfo}: ` + take.dialogueLines.map((line: any) => {
@@ -45,14 +49,15 @@ export default function Summary({ project }: SummaryProps) {
         : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
       const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
+      const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração: ${take.narration}.` : "";
 
-      return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}`;
+      return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
     };
 
     const getIntroVideoPrompt = () => {
       if (project.intro?.lastVideoPrompt) return project.intro.lastVideoPrompt;
       if (!project.intro?.prompt) return "";
-      const music = project.intro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "High" };
+      const music = project.intro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
       const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
       return `${project.intro.prompt}. Add cinematic movement, sound of epic orchestral music, and professional transitions. ${musicPrompt}`;
     };
@@ -60,7 +65,7 @@ export default function Summary({ project }: SummaryProps) {
     const getOutroVideoPrompt = () => {
       if (project.outro?.lastVideoPrompt) return project.outro.lastVideoPrompt;
       if (!project.outro?.prompt) return "";
-      const music = project.outro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "High" };
+      const music = project.outro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
       const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
       return `${project.outro.prompt}. Add cinematic movement, sound of gentle closing music, and professional transitions. ${musicPrompt}`;
     };
@@ -95,7 +100,7 @@ export default function Summary({ project }: SummaryProps) {
           .badge-pending { background: #f1f5f9; color: #64748b; }
           .frame-preview { display: flex; gap: 4px; }
           .frame-preview img { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; border: 1px solid #e2e8f0; }
-          .prompt-box { background: #f1f5f9; border-radius: 8px; padding: 12px; margin-top: 8px; font-size: 11px; color: #475569; border-left: 4px solid #94a3b8; }
+          .prompt-box { background: #f1f5f9; border-radius: 8px; padding: 12px; margin-top: 8px; font-size: 11px; color: #475569; border-left: 4px solid #94a3b8; white-space: pre-wrap; }
           .prompt-label { font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b; margin-bottom: 4px; display: block; }
           .script-text { white-space: pre-wrap; background: #fafafa; padding: 24px; border-radius: 16px; border: 1px solid #e4e4e7; font-size: 14px; color: #3f3f46; }
           @media print {
@@ -224,26 +229,14 @@ export default function Summary({ project }: SummaryProps) {
                       <td>Take ${tIdx + 1}</td>
                       <td>
                         <strong>Ação:</strong> ${take.action}<br>
-                        <strong>Câmara:</strong> ${take.camera}
+                        <strong>Câmara:</strong> ${take.camera}<br>
+                        ${take.sound && take.sound !== 'Nenhum' ? `<strong>Som:</strong> ${take.sound}<br>` : ''}
+                        ${take.narration && take.narration !== 'Nenhum' ? `<strong>Narração:</strong> ${take.narration}<br>` : ''}
                         
-                        ${take.lastStartFramePrompt ? `
-                          <div class="prompt-box">
-                            <span class="prompt-label">Prompt Frame Inicial</span>
-                            ${take.lastStartFramePrompt}
-                          </div>
-                        ` : ''}
-                        ${take.lastEndFramePrompt ? `
-                          <div class="prompt-box">
-                            <span class="prompt-label">Prompt Frame Final</span>
-                            ${take.lastEndFramePrompt}
-                          </div>
-                        ` : ''}
-                        ${(take.lastVideoPrompt || getDefaultVideoPrompt(take)) ? `
-                          <div class="prompt-box">
-                            <span class="prompt-label">Prompt Vídeo</span>
-                            ${take.lastVideoPrompt || getDefaultVideoPrompt(take)}
-                          </div>
-                        ` : ''}
+                        <div class="prompt-box">
+                          <span class="prompt-label">Prompt Vídeo</span>
+                          ${take.lastVideoPrompt || getDefaultVideoPrompt(scene, take)}
+                        </div>
                       </td>
                       <td>
                         <div class="frame-preview">
@@ -318,6 +311,13 @@ export default function Summary({ project }: SummaryProps) {
           </p>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowTechnicalScript(true)}
+            className="flex items-center gap-2 px-6 py-4 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-bold hover:bg-zinc-50 transition-all shadow-sm"
+          >
+            <List className="w-5 h-5 text-indigo-600" />
+            Guião Técnico
+          </button>
           <button
             onClick={handleExport}
             className="flex items-center gap-2 px-6 py-4 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-bold hover:bg-zinc-50 transition-all shadow-sm"
@@ -616,6 +616,13 @@ export default function Summary({ project }: SummaryProps) {
           </div>
         </div>
       </div>
+
+      {showTechnicalScript && (
+        <TechnicalScriptModal
+          project={project}
+          onClose={() => setShowTechnicalScript(false)}
+        />
+      )}
     </div>
   );
 }

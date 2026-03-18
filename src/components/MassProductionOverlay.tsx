@@ -124,6 +124,23 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
     addLog("Retomando produção...");
   };
 
+  const getBase64FromUrl = async (url: string): Promise<string> => {
+    if (url.startsWith('data:')) return url;
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error("Error fetching image for base64 conversion:", error);
+      return url; // Fallback to original URL
+    }
+  };
+
   const validatePhase = () => {
     const enabledPhases = project.automation?.enabledPhases || PHASES.map(p => p.id);
     const nextPhases = enabledPhases.filter(id => id > automation.currentPhase);
@@ -523,7 +540,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
       else if (automation.currentPhase === 8) {
         addLog("Renderizando vídeos para todos os Takes...");
         
-        const allTakes: { sceneId: string, takeId: string, action: string, camera: string, start: string, end: string }[] = [];
+        const allTakes: { sceneId: string, takeId: string, action: string, camera: string, start: string, end: string, scene: any, take: any }[] = [];
         project.scenes.forEach(scene => {
           scene.takes.forEach(take => {
             if (take.startFrameUrl && take.endFrameUrl && !take.videoUrl) {
@@ -533,7 +550,9 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
                 action: take.action, 
                 camera: take.camera,
                 start: take.startFrameUrl,
-                end: take.endFrameUrl
+                end: take.endFrameUrl,
+                scene,
+                take
               });
             }
           });
@@ -569,8 +588,45 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           addLog(taskName);
           updateAutomation({ currentTask: taskName });
           
-          const prompt = `Animação ${project.filmType}, Estilo ${project.filmStyle}. Público Alvo: ${project.targetAudience || 'Adultos'}. Ação: ${tInfo.action}. Câmara: ${tInfo.camera}.`;
-          const operation = await generateVideo(prompt, tInfo.start, tInfo.end, globalVideoModel, project.aspectRatio);
+          const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
+          const dialogueContext = tInfo.take.dialogueLines && tInfo.take.dialogueLines.length > 0
+            ? ` Diálogo${languageInfo}: ` + tInfo.take.dialogueLines.map((line: any) => {
+                const char = project.characters.find((c: any) => c.id === line.characterId);
+                const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+                return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
+              }).join(" | ")
+            : tInfo.take.dialogue && tInfo.take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${tInfo.take.dialogue}` : "";
+
+          const soundContext = tInfo.take.sound && tInfo.take.sound !== "Nenhum" ? ` Som: ${tInfo.take.sound}.` : "";
+          const narrationContext = tInfo.take.narration && tInfo.take.narration !== "Nenhum" ? ` Narração: ${tInfo.take.narration}.` : "";
+
+          const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${tInfo.take.action}. Camera: ${tInfo.take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
+          
+          const takeCharacters = project.characters.filter((c) =>
+            tInfo.take.characterIds?.includes(c.id)
+          );
+          const takeSetting = project.settings.find((s) => s.id === tInfo.take.settingId);
+          const referenceImages: string[] = [];
+          if (takeSetting?.imageUrl) {
+            try {
+              const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+              referenceImages.push(base64);
+            } catch (e) {
+              console.error("Failed to get base64 for setting image", e);
+            }
+          }
+          for (const c of takeCharacters) {
+            if (c.imageUrl) {
+              try {
+                const base64 = await getBase64FromUrl(c.imageUrl);
+                referenceImages.push(base64);
+              } catch (e) {
+                console.error("Failed to get base64 for character image", e);
+              }
+            }
+          }
+
+          const operation = await generateVideo(prompt, tInfo.start, tInfo.end, globalVideoModel, project.aspectRatio, referenceImages);
           addCost(COST_VIDEO);
           
           // Update operation ID and prompt
@@ -611,9 +667,12 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         // Generate Intro Video if image exists
         if (project.intro?.imageUrl && !project.intro.videoUrl) {
           addLog("Renderizando vídeo para Intro...");
-          const op = await generateVideo(project.intro.prompt, project.intro.imageUrl, undefined, globalVideoModel, project.aspectRatio);
+          const music = project.intro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
+          const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
+          const introPrompt = `${project.intro.prompt}. Add cinematic movement, sound of epic orchestral music, and professional transitions. ${musicPrompt}`;
+          const op = await generateVideo(introPrompt, project.intro.imageUrl, undefined, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
-          setProject(prev => ({ ...prev, intro: { ...prev.intro!, videoOperationId: op.name, lastVideoPrompt: project.intro!.prompt } }));
+          setProject(prev => ({ ...prev, intro: { ...prev.intro!, videoOperationId: op.name, lastVideoPrompt: introPrompt } }));
           const { videoUrl: vUrl, videoObject: vObj } = await pollVideoOperation(op);
           setProject(prev => ({ ...prev, intro: { ...prev.intro!, videoUrl: vUrl, videoObject: vObj, videoOperationId: undefined } }));
         }
@@ -622,9 +681,12 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         // Generate Outro Video if image exists
         if (project.outro?.imageUrl && !project.outro.videoUrl) {
           addLog("Renderizando vídeo para Créditos...");
-          const op = await generateVideo(project.outro.prompt, project.outro.imageUrl, undefined, globalVideoModel, project.aspectRatio);
+          const music = project.outro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
+          const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
+          const outroPrompt = `${project.outro.prompt}. Add cinematic movement, sound of gentle closing music, and professional transitions. ${musicPrompt}`;
+          const op = await generateVideo(outroPrompt, project.outro.imageUrl, undefined, globalVideoModel, project.aspectRatio);
           addCost(COST_VIDEO);
-          setProject(prev => ({ ...prev, outro: { ...prev.outro!, videoOperationId: op.name, lastVideoPrompt: project.outro!.prompt } }));
+          setProject(prev => ({ ...prev, outro: { ...prev.outro!, videoOperationId: op.name, lastVideoPrompt: outroPrompt } }));
           const { videoUrl: vUrl, videoObject: vObj } = await pollVideoOperation(op);
           setProject(prev => ({ ...prev, outro: { ...prev.outro!, videoUrl: vUrl, videoObject: vObj, videoOperationId: undefined } }));
         }

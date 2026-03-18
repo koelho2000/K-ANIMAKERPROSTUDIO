@@ -52,6 +52,7 @@ export default function Scenes({
   );
   const [takesProgress, setTakesProgress] = useState(0);
   const [isGeneratingAllTakes, setIsGeneratingAllTakes] = useState(false);
+  const [currentOperationLabel, setCurrentOperationLabel] = useState("");
   const [expandedSceneId, setExpandedSceneId] = useState<string | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
   const [isAutoGeneratingDialogues, setIsAutoGeneratingDialogues] = useState(false);
@@ -284,6 +285,11 @@ export default function Scenes({
       const isPTPT = project.language === "Português (Portugal)";
       const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
       
+      const audioOption = project.audioOption || 'Mudo';
+      const narratorInfo = (audioOption === 'Narração' || audioOption === 'Narração e Diálogo') && project.narratorType 
+        ? `Narrador: ${project.narratorType.gender}, ${project.narratorType.age}` 
+        : '';
+
       const charactersContext = project.characters
         .map((c) => `${c.name}: ${c.description}`)
         .join("\n");
@@ -298,9 +304,11 @@ export default function Scenes({
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
         Público Alvo: ${project.targetAudience || 'Adultos'}
+        Opção de Áudio: ${audioOption}
+        ${narratorInfo}
         Língua: ${langSpec}
         
-        ${isPTPT ? "IMPORTANTE: Todos os textos (acção, câmara, som, música, diálogo) devem ser em Português de Portugal." : ""}
+        ${isPTPT ? "IMPORTANTE: Todos os textos (acção, câmara, som, música, diálogo, narração) devem ser em Português de Portugal." : ""}
         Contexto de Personagens:
         ${charactersContext}
         
@@ -308,8 +316,12 @@ export default function Scenes({
         ${settingsContext}
 
         IMPORTANTE: Deves gerar exatamente ${targetTakes} takes para cumprir o nível de detalhe solicitado pelo utilizador.
-        Para cada take, define a ação, o movimento/tipo de câmara, som ambiente e diálogo (se houver).
+        Para cada take, define a ação, o movimento/tipo de câmara, som ambiente, diálogo (se houver e se a opção de áudio permitir) e narração (se houver e se a opção de áudio permitir).
         Garante que as ações respeitam as descrições das personagens e cenários fornecidos.
+        Se a opção de áudio for 'Mudo', não geres diálogo nem narração.
+        Se a opção de áudio for 'Narração', podes gerar narração mas não diálogo.
+        Se a opção de áudio for 'Diálogo', podes gerar diálogo mas não narração.
+        Se a opção de áudio for 'Narração e Diálogo', podes gerar ambos.
 
         REGRAS DE IDENTIFICAÇÃO:
         1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
@@ -339,6 +351,10 @@ export default function Scenes({
               type: Type.STRING,
               description: "Diálogo falado neste take (ou 'Nenhum')",
             },
+            narration: {
+              type: Type.STRING,
+              description: "Texto da narração neste take (ou 'Nenhum')",
+            },
             dialogueLines: {
               type: Type.ARRAY,
               items: {
@@ -361,7 +377,7 @@ export default function Scenes({
               description: "Nome do cenário onde decorre este take",
             },
           },
-          required: ["action", "camera", "sound", "dialogue", "dialogueLines", "characterNames", "settingName"],
+          required: ["action", "camera", "sound", "dialogue", "narration", "dialogueLines", "characterNames", "settingName"],
         },
       };
 
@@ -382,6 +398,7 @@ export default function Scenes({
           camera: t.camera,
           sound: t.sound,
           dialogue: t.dialogue,
+          narration: t.narration && t.narration !== 'Nenhum' ? t.narration : undefined,
           dialogueLines: t.dialogueLines?.map((dl: any) => ({
             characterId: project.characters.find((c) => 
               c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
@@ -411,6 +428,7 @@ export default function Scenes({
       const updatedScenes = [...project.scenes];
       for (let i = 0; i < updatedScenes.length; i++) {
         setScenesProgress((i / updatedScenes.length) * 100);
+        setCurrentOperationLabel(`A gerar takes para a Cena ${i + 1}: ${updatedScenes[i].title}...`);
         const takes = await handleGenerateTakes(updatedScenes[i], true);
         if (takes) {
           updatedScenes[i] = { ...updatedScenes[i], takes };
@@ -423,6 +441,7 @@ export default function Scenes({
       alert("Erro ao gerar todos os takes.");
     } finally {
       setIsGeneratingAllTakes(false);
+      setCurrentOperationLabel("");
       setScenesProgress(100);
     }
   };
@@ -446,6 +465,14 @@ export default function Scenes({
 
     setGeneratingTakesId(sceneId);
     try {
+      const isPTPT = project.language === "Português (Portugal)";
+      const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
+      
+      const audioOption = project.audioOption || 'Mudo';
+      const narratorInfo = (audioOption === 'Narração' || audioOption === 'Narração e Diálogo') && project.narratorType 
+        ? `Narrador: ${project.narratorType.gender}, ${project.narratorType.age}` 
+        : '';
+
       const charactersContext = project.characters
         .map((c) => `${c.name}: ${c.description}`)
         .join("\n");
@@ -463,6 +490,11 @@ export default function Scenes({
         Tipo de filme: ${project.filmType}
         Estilo de filme: ${project.filmStyle}
         Público Alvo: ${project.targetAudience || 'Adultos'}
+        Opção de Áudio: ${audioOption}
+        ${narratorInfo}
+        Língua: ${langSpec}
+        
+        ${isPTPT ? "IMPORTANTE: Todos os textos (acção, câmara, som, música, diálogo, narração) devem ser em Português de Portugal." : ""}
         
         Takes Atuais (para referência):
         ${currentTakesContext}
@@ -475,6 +507,11 @@ export default function Scenes({
 
         Gera exatamente ${numNewTakes} novos takes que complementem os atuais ou que dividam a ação de forma mais detalhada. 
         Retorna APENAS os novos takes que devem ser ADICIONADOS à cena.
+        Para cada take, define a ação, o movimento/tipo de câmara, som ambiente, diálogo (se houver e se a opção de áudio permitir) e narração (se houver e se a opção de áudio permitir).
+        Se a opção de áudio for 'Mudo', não geres diálogo nem narração.
+        Se a opção de áudio for 'Narração', podes gerar narração mas não diálogo.
+        Se a opção de áudio for 'Diálogo', podes gerar diálogo mas não narração.
+        Se a opção de áudio for 'Narração e Diálogo', podes gerar ambos.
 
         REGRAS DE IDENTIFICAÇÃO:
         1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
@@ -491,6 +528,7 @@ export default function Scenes({
             camera: { type: Type.STRING },
             sound: { type: Type.STRING },
             dialogue: { type: Type.STRING },
+            narration: { type: Type.STRING },
             dialogueLines: {
               type: Type.ARRAY,
               items: {
@@ -508,7 +546,7 @@ export default function Scenes({
             },
             settingName: { type: Type.STRING },
           },
-          required: ["action", "camera", "sound", "dialogue", "dialogueLines", "characterNames", "settingName"],
+          required: ["action", "camera", "sound", "dialogue", "narration", "dialogueLines", "characterNames", "settingName"],
         },
       };
 
@@ -529,6 +567,7 @@ export default function Scenes({
           camera: t.camera,
           sound: t.sound,
           dialogue: t.dialogue,
+          narration: t.narration && t.narration !== 'Nenhum' ? t.narration : undefined,
           dialogueLines: t.dialogueLines?.map((dl: any) => ({
             characterId: project.characters.find((c) => 
               c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
@@ -606,6 +645,7 @@ export default function Scenes({
           camera: { type: Type.STRING },
           sound: { type: Type.STRING },
           dialogue: { type: Type.STRING },
+          narration: { type: Type.STRING },
           dialogueLines: {
             type: Type.ARRAY,
             items: {
@@ -623,7 +663,7 @@ export default function Scenes({
           },
           settingName: { type: Type.STRING },
         },
-        required: ["action", "camera", "sound", "dialogue", "dialogueLines", "characterNames", "settingName"],
+        required: ["action", "camera", "sound", "dialogue", "narration", "dialogueLines", "characterNames", "settingName"],
       };
 
       const result = await generateJSON(
@@ -647,6 +687,7 @@ export default function Scenes({
                     camera: t.camera,
                     sound: t.sound,
                     dialogue: t.dialogue,
+                    narration: t.narration && t.narration !== 'Nenhum' ? t.narration : undefined,
                     dialogueLines: t.dialogueLines?.map((dl: any) => ({
                       characterId: project.characters.find((c) => 
                         c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
@@ -782,10 +823,12 @@ export default function Scenes({
           <ProgressBar
             progress={isAutoDetecting || isAutoGeneratingDialogues ? globalProgress : scenesProgress}
             label={
-              isGeneratingAllTakes ? "A gerar todos os takes do filme..." : 
-              isGeneratingScenes ? "A estruturar cenas do filme..." :
-              isAutoDetecting ? "A detetar personagens e cenários em todos os takes..." :
-              "A extrair diálogos de todos os takes..."
+              currentOperationLabel || (
+                isGeneratingAllTakes ? "A gerar todos os takes do filme..." : 
+                isGeneratingScenes ? "A estruturar cenas do filme..." :
+                isAutoDetecting ? "A detetar personagens e cenários em todos os takes..." :
+                "A extrair diálogos de todos os takes..."
+              )
             }
             modelName="Gemini"
           />
@@ -1016,6 +1059,25 @@ export default function Scenes({
                               className="w-full text-sm text-zinc-800 bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded-lg p-2 outline-none resize-none h-20 transition-colors"
                             />
                           </div>
+                          {(project.audioOption === 'Narração' || project.audioOption === 'Narração e Diálogo') && (
+                            <div>
+                              <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">
+                                Narração {project.narratorType ? `(${project.narratorType.gender}, ${project.narratorType.age})` : ''}
+                              </label>
+                              <textarea
+                                value={take.narration || ''}
+                                onChange={(e) =>
+                                  updateTake(
+                                    scene.id,
+                                    take.id,
+                                    "narration",
+                                    e.target.value,
+                                  )
+                                }
+                                className="w-full text-sm text-zinc-800 bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded-lg p-2 outline-none resize-none h-20 transition-colors"
+                              />
+                            </div>
+                          )}
                           <div>
                             <div className="flex items-center justify-between mb-1">
                               <label className="block text-xs font-semibold text-zinc-500 uppercase">

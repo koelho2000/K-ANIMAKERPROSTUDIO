@@ -467,6 +467,65 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
           </div>
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Opção de Áudio
+            </label>
+            <select
+              name="audioOption"
+              value={project.audioOption || 'Mudo'}
+              onChange={handleChange}
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
+            >
+              <option value="Mudo">Filme Mudo</option>
+              <option value="Narração">Filme com Narração</option>
+              <option value="Diálogo">Filme com Diálogo</option>
+              <option value="Narração e Diálogo">Filme com Narração e Diálogo</option>
+            </select>
+          </div>
+          {(project.audioOption === 'Narração' || project.audioOption === 'Narração e Diálogo') && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-2">
+                  Género do Narrador
+                </label>
+                <select
+                  value={project.narratorType?.gender || 'Homem'}
+                  onChange={(e) => setProject({
+                    ...project,
+                    narratorType: {
+                      gender: e.target.value as any,
+                      age: project.narratorType?.age || 'Adulto'
+                    }
+                  })}
+                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
+                >
+                  <option value="Homem">Homem</option>
+                  <option value="Mulher">Mulher</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-2">
+                  Idade do Narrador
+                </label>
+                <select
+                  value={project.narratorType?.age || 'Adulto'}
+                  onChange={(e) => setProject({
+                    ...project,
+                    narratorType: {
+                      gender: project.narratorType?.gender || 'Homem',
+                      age: e.target.value as any
+                    }
+                  })}
+                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
+                >
+                  <option value="Criança">Criança</option>
+                  <option value="Adulto">Adulto</option>
+                  <option value="Idoso">Idoso</option>
+                </select>
+              </div>
+            </>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Transição Global
             </label>
             <select

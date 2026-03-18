@@ -13,6 +13,12 @@ interface UpdateTask {
   changeType?: 'text' | 'none';
   details?: string;
   error?: string;
+  changes?: {
+    action?: { old: string, new: string };
+    camera?: { old: string, new: string };
+    sound?: { old: string, new: string };
+    dialogue?: { old: string, new: string };
+  };
 }
 
 interface UpdateTakesModalProps {
@@ -153,11 +159,22 @@ export const UpdateTakesModal: React.FC<UpdateTakesModalProps> = ({
         
         const t = JSON.parse(result);
         
+        let changes: UpdateTask['changes'] = undefined;
+        
+        if (t.changeType === 'text') {
+          changes = {};
+          if (t.action && t.action !== take.action) changes.action = { old: take.action, new: t.action };
+          if (t.camera && t.camera !== take.camera) changes.camera = { old: take.camera, new: t.camera };
+          if (t.sound && t.sound !== take.sound) changes.sound = { old: take.sound, new: t.sound };
+          if (t.dialogue && t.dialogue !== take.dialogue) changes.dialogue = { old: take.dialogue, new: t.dialogue };
+        }
+
         setTasks(prev => prev.map((tk, idx) => idx === i ? { 
           ...tk, 
           status: 'applying',
           changeType: t.changeType,
-          details: t.details
+          details: t.details,
+          changes
         } : tk));
 
         if (t.changeType !== 'none') {
@@ -297,6 +314,31 @@ export const UpdateTakesModal: React.FC<UpdateTakesModalProps> = ({
                             <AlertCircle className="w-3 h-3" /> Análise da IA:
                           </p>
                           {task.details}
+                        </div>
+                      )}
+
+                      {task.changes && Object.keys(task.changes).length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Alterações Efetuadas:</p>
+                          {Object.entries(task.changes).map(([key, value]) => {
+                            const val = value as { old: string, new: string };
+                            return (
+                            <div key={key} className="bg-white border border-zinc-200 rounded-lg overflow-hidden text-sm">
+                              <div className="bg-zinc-50 px-3 py-1.5 border-b border-zinc-200 font-medium text-zinc-700 capitalize">
+                                {key === 'action' ? 'Ação' : key === 'camera' ? 'Câmara' : key === 'sound' ? 'Som' : 'Diálogo'}
+                              </div>
+                              <div className="grid grid-cols-2 divide-x divide-zinc-200">
+                                <div className="p-3 bg-rose-50/30">
+                                  <span className="text-xs font-semibold text-rose-500 block mb-1">Antes:</span>
+                                  <p className="text-zinc-600 line-through decoration-rose-300/50">{val.old || <span className="italic text-zinc-400">Vazio</span>}</p>
+                                </div>
+                                <div className="p-3 bg-emerald-50/30">
+                                  <span className="text-xs font-semibold text-emerald-500 block mb-1">Depois:</span>
+                                  <p className="text-zinc-800">{val.new || <span className="italic text-zinc-400">Vazio</span>}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )})}
                         </div>
                       )}
 
