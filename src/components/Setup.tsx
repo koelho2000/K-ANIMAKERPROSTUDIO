@@ -713,6 +713,52 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
                 <span>Máximo</span>
               </div>
             </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-medium text-zinc-700">Quantidade de Personagens</label>
+                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2 py-1 rounded">
+                  {project.characterDetailLevel === 'low' ? 'Poucas' : project.characterDetailLevel === 'medium' ? 'Média' : 'Muitas'}
+                </span>
+              </div>
+              <input 
+                type="range"
+                min="0"
+                max="2"
+                step="1"
+                value={getDetailValue(project.characterDetailLevel || 'medium')}
+                onChange={(e) => setProject(prev => ({ ...prev, characterDetailLevel: getDetailLevelFromValue(parseInt(e.target.value)) }))}
+                className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              />
+              <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-widest px-1">
+                <span>Poucas</span>
+                <span>Média</span>
+                <span>Muitas</span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-medium text-zinc-700">Quantidade de Cenários</label>
+                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2 py-1 rounded">
+                  {project.settingDetailLevel === 'low' ? 'Poucos' : project.settingDetailLevel === 'medium' ? 'Média' : 'Muitos'}
+                </span>
+              </div>
+              <input 
+                type="range"
+                min="0"
+                max="2"
+                step="1"
+                value={getDetailValue(project.settingDetailLevel || 'medium')}
+                onChange={(e) => setProject(prev => ({ ...prev, settingDetailLevel: getDetailLevelFromValue(parseInt(e.target.value)) }))}
+                className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              />
+              <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-widest px-1">
+                <span>Poucos</span>
+                <span>Média</span>
+                <span>Muitos</span>
+              </div>
+            </div>
           </div>
         </div>
 

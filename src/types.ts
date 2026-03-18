@@ -50,6 +50,8 @@ export interface Project {
   author?: string;
   sceneDetailLevel: 'low' | 'medium' | 'high';
   takeDetailLevel: 'low' | 'medium' | 'high';
+  characterDetailLevel: 'low' | 'medium' | 'high';
+  settingDetailLevel: 'low' | 'medium' | 'high';
   script: string;
   characters: Character[];
   settings: Setting[];

@@ -35,6 +35,18 @@ export default function Story({ project, setProject }: StoryProps) {
       const isPTPT = project.language === "Português (Portugal)";
       const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
       
+      const getCharacterQuantityText = (level: string) => {
+        if (level === 'low') return 'Poucas personagens (foco num núcleo muito reduzido)';
+        if (level === 'high') return 'Muitas personagens (várias personagens secundárias e figurantes)';
+        return 'Quantidade média de personagens';
+      };
+
+      const getSettingQuantityText = (level: string) => {
+        if (level === 'low') return 'Poucos cenários (a história passa-se em poucos locais)';
+        if (level === 'high') return 'Muitos cenários (a história viaja por vários locais diferentes)';
+        return 'Quantidade média de cenários';
+      };
+      
       const prompt = `
         Gera um guião detalhado (story script) para um filme de animação com as seguintes características:
         - Título: ${project.title}
@@ -45,6 +57,8 @@ export default function Story({ project, setProject }: StoryProps) {
         - Público Alvo: ${project.targetAudience || 'Adultos'}
         - Língua/Nacionalidade: ${langSpec}
         - Duração Esperada: ${project.duration}
+        - Quantidade de Personagens: ${getCharacterQuantityText(project.characterDetailLevel || 'medium')}
+        - Quantidade de Cenários: ${getSettingQuantityText(project.settingDetailLevel || 'medium')}
 
         ${isPTPT ? "IMPORTANTE: O guião deve ser escrito estritamente em Português de Portugal (ex: 'ecrã' em vez de 'tela', 'comboio' em vez de 'trem', 'autocarro' em vez de 'ônibus', etc.)." : ""}
         O guião deve incluir uma estrutura de 3 atos, descrições ricas dos ambientes e o arco narrativo principal.

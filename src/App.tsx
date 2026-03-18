@@ -33,6 +33,8 @@ const initialProject: Project = {
   videoModel: "flow",
   sceneDetailLevel: "medium",
   takeDetailLevel: "medium",
+  characterDetailLevel: "medium",
+  settingDetailLevel: "medium",
   script: "",
   characters: [],
   settings: [],
