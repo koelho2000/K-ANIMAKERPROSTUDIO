@@ -225,7 +225,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             
             setProject(prev => ({
               ...prev,
-              characters: prev.characters.map(c => c.id === char.id ? { ...c, imageUrl, lastImagePrompt: prompt, updatedAt: Date.now() } : c)
+              characters: prev.characters.map(c => c.id === char.id ? { ...c, imageUrl, lastImagePrompt: prompt } : c)
             }));
           }
           completed++;
@@ -264,7 +264,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             
             setProject(prev => ({
               ...prev,
-              characters: prev.characters.map(c => c.id === char.id ? { ...c, viewsImageUrl, lastViewsPrompt: prompt, updatedAt: Date.now() } : c)
+              characters: prev.characters.map(c => c.id === char.id ? { ...c, viewsImageUrl, lastViewsPrompt: prompt } : c)
             }));
           }
           completed++;
@@ -301,7 +301,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             
             setProject(prev => ({
               ...prev,
-              settings: prev.settings.map(s => s.id === setting.id ? { ...s, imageUrl, lastImagePrompt: prompt, updatedAt: Date.now() } : s)
+              settings: prev.settings.map(s => s.id === setting.id ? { ...s, imageUrl, lastImagePrompt: prompt } : s)
             }));
           }
           completed++;

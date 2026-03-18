@@ -28,6 +28,7 @@ import { AUTOMATION_PHASES } from "../constants";
 import { useRef, useState, useEffect, Dispatch, SetStateAction, ChangeEvent } from "react";
 import { ApiKeyModal } from "./ApiKeyModal";
 import { UsageModal } from "./UsageModal";
+import { ProjectProgressOverlay } from "./ProjectProgressOverlay";
 
 interface SidebarProps {
   currentStep: number;
@@ -74,6 +75,11 @@ export default function Sidebar({
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [manualKey, setManualKey] = useState<string>(localStorage.getItem('GEMINI_API_KEY_MANUAL') || "");
   const [showAutoSettings, setShowAutoSettings] = useState(false);
+  const [isOverlayOpen, setIsOverlayOpen] = useState(false);
+  const [overlayType, setOverlayType] = useState<'save' | 'load'>('save');
+  const [overlayProgress, setOverlayProgress] = useState(0);
+  const [overlayDescription, setOverlayDescription] = useState('');
+  const [overlayTime, setOverlayTime] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     const checkKey = async () => {
@@ -222,7 +228,26 @@ export default function Sidebar({
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setOverlayType('save');
+    setOverlayProgress(10);
+    setOverlayDescription('A preparar dados do projeto');
+    setOverlayTime(3);
+    setIsOverlayOpen(true);
+
+    await new Promise(r => setTimeout(r, 600));
+    setOverlayProgress(40);
+    setOverlayDescription('A processar imagens e ficheiros');
+    setOverlayTime(2);
+
+    await new Promise(r => setTimeout(r, 800));
+    setOverlayProgress(70);
+    setOverlayDescription('A gerar ficheiro de download');
+    setOverlayTime(1);
+
+    // Yield to event loop so UI updates before heavy stringify
+    await new Promise(r => setTimeout(r, 100));
+
     const dataStr = JSON.stringify(project, null, 2);
     const dataUri =
       "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
@@ -234,33 +259,71 @@ export default function Sidebar({
     linkElement.setAttribute("download", exportFileDefaultName);
     linkElement.click();
 
+    setOverlayProgress(100);
+    setOverlayDescription('Projeto gravado com sucesso!');
+    setOverlayTime(0);
+
     if (onSave) onSave();
+
+    await new Promise(r => setTimeout(r, 1000));
+    setIsOverlayOpen(false);
   };
 
-  const handleLoad = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleLoad = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setOverlayType('load');
+    setOverlayProgress(10);
+    setOverlayDescription('A ler ficheiro do projeto');
+    setOverlayTime(3);
+    setIsOverlayOpen(true);
+
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
+        setOverlayProgress(40);
+        setOverlayDescription('A analisar estrutura do projeto');
+        setOverlayTime(2);
+        
+        await new Promise(r => setTimeout(r, 800));
+        
         const json = JSON.parse(event.target?.result as string);
+        
+        setOverlayProgress(80);
+        setOverlayDescription('A carregar recursos e imagens');
+        setOverlayTime(1);
+        
+        await new Promise(r => setTimeout(r, 800));
+        
         setProject(json);
         if (onSave) {
           // Update last saved state to match loaded project
           setTimeout(() => onSave(), 100);
         }
-        alert("Projeto carregado com sucesso!");
+        
+        setOverlayProgress(100);
+        setOverlayDescription('Projeto carregado com sucesso!');
+        setOverlayTime(0);
+        
+        await new Promise(r => setTimeout(r, 1000));
+        setIsOverlayOpen(false);
+        
       } catch (error) {
         console.error("Erro ao carregar projeto:", error);
         alert("Erro ao carregar o ficheiro JSON.");
+        setIsOverlayOpen(false);
       }
     };
     reader.readAsText(file);
+    
+    // Reset file input so the same file can be loaded again
+    e.target.value = '';
   };
 
   return (
-    <div className="w-64 bg-zinc-900 text-zinc-300 flex flex-col h-full border-r border-zinc-800">
+    <>
+      <div className="w-64 bg-zinc-900 text-zinc-300 flex flex-col h-full border-r border-zinc-800">
       <div className="p-4">
         <h1 className="text-xl font-bold text-white flex items-center gap-2">
           <Film className="w-5 h-5 text-indigo-500" />
@@ -505,5 +568,14 @@ export default function Sidebar({
         currentKey={manualKey}
       />
     </div>
-  );
+
+    <ProjectProgressOverlay
+      isOpen={isOverlayOpen}
+      type={overlayType}
+      progress={overlayProgress}
+      description={overlayDescription}
+      timeRemaining={overlayTime}
+    />
+  </>
+);
 }

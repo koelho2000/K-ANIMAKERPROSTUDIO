@@ -30,6 +30,7 @@ import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
 import { ARTISTIC_STYLES } from "../constants";
+import { UpdateTakesModal } from "./UpdateTakesModal";
 
 interface CharactersProps {
   project: Project;
@@ -39,6 +40,7 @@ interface CharactersProps {
 export default function Characters({ project, setProject }: CharactersProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUpdatingTakes, setIsUpdatingTakes] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [extractProgress, setExtractProgress] = useState(0);
   const [generatingImageId, setGeneratingImageId] = useState<string | null>(
     null,
@@ -209,122 +211,8 @@ export default function Characters({ project, setProject }: CharactersProps) {
     }).length;
   }, 0);
 
-  const handleUpdateTakes = async () => {
-    setIsUpdatingTakes(true);
-    try {
-      const updatedScenes = [...project.scenes];
-      let hasChanges = false;
-
-      for (let i = 0; i < updatedScenes.length; i++) {
-        const scene = updatedScenes[i];
-        for (let j = 0; j < scene.takes.length; j++) {
-          const take = scene.takes[j];
-          const takeCharacters = project.characters.filter(c => take.characterIds?.includes(c.id));
-          const isOutdated = takeCharacters.some(c => c.updatedAt && c.updatedAt > (take.updatedAt || 0));
-          
-          if (isOutdated) {
-            hasChanges = true;
-            const charactersContext = project.characters
-              .map((c) => `${c.name}: ${c.description}`)
-              .join("\n");
-            const settingsContext = project.settings
-              .map((s) => `${s.name}: ${s.description}`)
-              .join("\n");
-
-            const prompt = `
-              Refina o seguinte take de um filme de animação.
-              Cena: ${scene.title}
-              Público Alvo: ${project.targetAudience || 'Adultos'}
-              Take Atual:
-              Ação: ${take.action}
-              Câmara: ${take.camera}
-              Diálogo: ${take.dialogue}
-              
-              Contexto de Personagens:
-              ${charactersContext}
-              
-              Contexto de Cenários:
-              ${settingsContext}
-
-              Garante que o novo take é mais detalhado e respeita as descrições fornecidas.
-              
-              REGRAS DE IDENTIFICAÇÃO:
-              1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
-              2. Coloca os nomes EXATOS das personagens (conforme fornecido no Contexto) na lista 'characterNames'.
-              3. Identifica o cenário EXATO onde o take ocorre e coloca o seu nome em 'settingName'.
-            `;
-
-            const schema = {
-              type: Type.OBJECT,
-              properties: {
-                action: { type: Type.STRING },
-                camera: { type: Type.STRING },
-                sound: { type: Type.STRING },
-                dialogue: { type: Type.STRING },
-                characterNames: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                },
-                settingName: { type: Type.STRING },
-                dialogueLines: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      characterName: { type: Type.STRING },
-                      text: { type: Type.STRING },
-                    },
-                    required: ["characterName", "text"],
-                  },
-                },
-              },
-              required: ["action", "camera", "sound", "dialogue", "characterNames", "settingName"],
-            };
-
-            const result = await generateJSON(
-              prompt,
-              schema,
-              "És um realizador de cinema a aperfeiçoar uma storyboard.",
-            );
-            const t = JSON.parse(result);
-            
-            take.action = t.action;
-            take.camera = t.camera;
-            take.sound = t.sound;
-            take.dialogue = t.dialogue;
-            
-            if (t.dialogueLines) {
-              take.dialogueLines = t.dialogueLines.map((dl: any) => ({
-                characterId: project.characters.find((c) => 
-                  c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-                  dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
-                )?.id || "",
-                text: dl.text,
-              }));
-            }
-
-            take.startFrameUrl = undefined;
-            take.endFrameUrl = undefined;
-            take.videoUrl = undefined;
-            take.videoOperationId = undefined;
-            take.lastStartFramePrompt = undefined;
-            take.lastEndFramePrompt = undefined;
-            take.lastVideoPrompt = undefined;
-            take.analysis = undefined;
-            take.updatedAt = Date.now();
-          }
-        }
-      }
-
-      if (hasChanges) {
-        setProject({ ...project, scenes: updatedScenes });
-        alert("Cenas e Takes atualizados com sucesso! (As imagens/vídeos foram limpos e precisam ser gerados novamente)");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao atualizar cenas e takes.");
-    }
-    setIsUpdatingTakes(false);
+  const handleUpdateTakes = () => {
+    setShowUpdateModal(true);
   };
 
   const handleGenerateCharacters = async () => {
@@ -442,7 +330,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
       const imageUrl = await generateImage(editedPrompt, "1:1");
 
       const updatedCharacters = project.characters.map((c) =>
-        c.id === charId ? { ...c, imageUrl, lastImagePrompt: editedPrompt, updatedAt: Date.now() } : c,
+        c.id === charId ? { ...c, imageUrl, lastImagePrompt: editedPrompt } : c,
       );
       setProject({ ...project, characters: updatedCharacters });
     } catch (error) {
@@ -490,7 +378,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
       const viewsImageUrl = await generateImage(editedPrompt, "16:9", [referenceBase64]);
 
       const updatedCharacters = project.characters.map((c) =>
-        c.id === charId ? { ...c, viewsImageUrl, lastViewsPrompt: editedPrompt, updatedAt: Date.now() } : c,
+        c.id === charId ? { ...c, viewsImageUrl, lastViewsPrompt: editedPrompt } : c,
       );
       setProject({ ...project, characters: updatedCharacters });
     } catch (error) {
@@ -534,7 +422,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
             One single front-facing view of the character, full body, neutral background.`;
           setActivePrompt(prompt);
           const imageUrl = await generateImage(prompt, "1:1");
-          char = { ...char, imageUrl, lastImagePrompt: prompt, updatedAt: Date.now() };
+          char = { ...char, imageUrl, lastImagePrompt: prompt };
           updatedCharacters[i] = char;
           setProject({ ...project, characters: [...updatedCharacters] });
         }
@@ -556,7 +444,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
           setActivePrompt(viewsPrompt);
           const referenceBase64 = await getBase64FromUrl(char.imageUrl);
           const viewsImageUrl = await generateImage(viewsPrompt, "16:9", [referenceBase64]);
-          char = { ...char, viewsImageUrl, lastViewsPrompt: viewsPrompt, updatedAt: Date.now() };
+          char = { ...char, viewsImageUrl, lastViewsPrompt: viewsPrompt };
           updatedCharacters[i] = char;
           setProject({ ...project, characters: [...updatedCharacters] });
           setGeneratingViewsId(null);
@@ -692,7 +580,32 @@ export default function Characters({ project, setProject }: CharactersProps) {
       }
       return c;
     });
-    setProject({ ...project, characters: updated });
+
+    let updatedScenes = project.scenes;
+    if (field === "name" && typeof value === "string" && value.trim() !== "" && value !== "Nova Personagem") {
+      const lowerName = value.toLowerCase();
+      const nameRegex = new RegExp(`\\b${lowerName}\\b`, 'i');
+      
+      updatedScenes = project.scenes.map(scene => ({
+        ...scene,
+        takes: scene.takes.map(take => {
+          const actionMatch = nameRegex.test(take.action.toLowerCase());
+          
+          if (actionMatch) {
+            const currentIds = take.characterIds || [];
+            if (!currentIds.includes(id)) {
+              return {
+                ...take,
+                characterIds: [...currentIds, id],
+              };
+            }
+          }
+          return take;
+        })
+      }));
+    }
+
+    setProject({ ...project, characters: updated, scenes: updatedScenes });
   };
 
   const removeCharacter = (id: string) => {
@@ -710,7 +623,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
 
     const updatedCharacters = project.characters.map((c) =>
       c.id === charId 
-        ? { ...c, [isViews ? 'viewsImageUrl' : 'imageUrl']: newUrl, updatedAt: Date.now() } 
+        ? { ...c, [isViews ? 'viewsImageUrl' : 'imageUrl']: newUrl } 
         : c
     );
     setProject({ ...project, characters: updatedCharacters });
@@ -1225,6 +1138,15 @@ export default function Characters({ project, setProject }: CharactersProps) {
           aspectRatio="1:1"
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}
+        />
+      )}
+
+      {showUpdateModal && (
+        <UpdateTakesModal
+          project={project}
+          setProject={setProject}
+          onClose={() => setShowUpdateModal(false)}
+          triggerType="characters"
         />
       )}
     </div>

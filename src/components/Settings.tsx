@@ -21,6 +21,7 @@ import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
 import { ARTISTIC_STYLES } from "../constants";
+import { UpdateTakesModal } from "./UpdateTakesModal";
 
 interface SettingsProps {
   project: Project;
@@ -30,6 +31,7 @@ interface SettingsProps {
 export default function Settings({ project, setProject }: SettingsProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUpdatingTakes, setIsUpdatingTakes] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [extractProgress, setExtractProgress] = useState(0);
   const [generatingImageId, setGeneratingImageId] = useState<string | null>(
     null,
@@ -74,122 +76,8 @@ export default function Settings({ project, setProject }: SettingsProps) {
     }).length;
   }, 0);
 
-  const handleUpdateTakes = async () => {
-    setIsUpdatingTakes(true);
-    try {
-      const updatedScenes = [...project.scenes];
-      let hasChanges = false;
-
-      for (let i = 0; i < updatedScenes.length; i++) {
-        const scene = updatedScenes[i];
-        for (let j = 0; j < scene.takes.length; j++) {
-          const take = scene.takes[j];
-          const takeSetting = project.settings.find(s => s.id === take.settingId);
-          const isOutdated = takeSetting && takeSetting.updatedAt && takeSetting.updatedAt > (take.updatedAt || 0);
-          
-          if (isOutdated) {
-            hasChanges = true;
-            const charactersContext = project.characters
-              .map((c) => `${c.name}: ${c.description}`)
-              .join("\n");
-            const settingsContext = project.settings
-              .map((s) => `${s.name}: ${s.description}`)
-              .join("\n");
-
-            const prompt = `
-              Refina o seguinte take de um filme de animação.
-              Cena: ${scene.title}
-              Público Alvo: ${project.targetAudience || 'Adultos'}
-              Take Atual:
-              Ação: ${take.action}
-              Câmara: ${take.camera}
-              Diálogo: ${take.dialogue}
-              
-              Contexto de Personagens:
-              ${charactersContext}
-              
-              Contexto de Cenários:
-              ${settingsContext}
-
-              Garante que o novo take é mais detalhado e respeita as descrições fornecidas.
-              
-              REGRAS DE IDENTIFICAÇÃO:
-              1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
-              2. Coloca os nomes EXATOS das personagens (conforme fornecido no Contexto) na lista 'characterNames'.
-              3. Identifica o cenário EXATO onde o take ocorre e coloca o seu nome em 'settingName'.
-            `;
-
-            const schema = {
-              type: Type.OBJECT,
-              properties: {
-                action: { type: Type.STRING },
-                camera: { type: Type.STRING },
-                sound: { type: Type.STRING },
-                dialogue: { type: Type.STRING },
-                characterNames: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                },
-                settingName: { type: Type.STRING },
-                dialogueLines: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      characterName: { type: Type.STRING },
-                      text: { type: Type.STRING },
-                    },
-                    required: ["characterName", "text"],
-                  },
-                },
-              },
-              required: ["action", "camera", "sound", "dialogue", "characterNames", "settingName"],
-            };
-
-            const result = await generateJSON(
-              prompt,
-              schema,
-              "És um realizador de cinema a aperfeiçoar uma storyboard.",
-            );
-            const t = JSON.parse(result);
-            
-            take.action = t.action;
-            take.camera = t.camera;
-            take.sound = t.sound;
-            take.dialogue = t.dialogue;
-            
-            if (t.dialogueLines) {
-              take.dialogueLines = t.dialogueLines.map((dl: any) => ({
-                characterId: project.characters.find((c) => 
-                  c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-                  dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
-                )?.id || "",
-                text: dl.text,
-              }));
-            }
-
-            take.startFrameUrl = undefined;
-            take.endFrameUrl = undefined;
-            take.videoUrl = undefined;
-            take.videoOperationId = undefined;
-            take.lastStartFramePrompt = undefined;
-            take.lastEndFramePrompt = undefined;
-            take.lastVideoPrompt = undefined;
-            take.analysis = undefined;
-            take.updatedAt = Date.now();
-          }
-        }
-      }
-
-      if (hasChanges) {
-        setProject({ ...project, scenes: updatedScenes });
-        alert("Cenas e Takes atualizados com sucesso! (As imagens/vídeos foram limpos e precisam ser gerados novamente)");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao atualizar cenas e takes.");
-    }
-    setIsUpdatingTakes(false);
+  const handleUpdateTakes = () => {
+    setShowUpdateModal(true);
   };
 
   const handleGenerateSettings = async () => {
@@ -279,7 +167,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
       const imageUrl = await generateImage(editedPrompt, project.aspectRatio);
 
       const updatedSettings = project.settings.map((s) =>
-        s.id === settingId ? { ...s, imageUrl, lastImagePrompt: editedPrompt, updatedAt: Date.now() } : s,
+        s.id === settingId ? { ...s, imageUrl, lastImagePrompt: editedPrompt } : s,
       );
       setProject({ ...project, settings: updatedSettings });
     } catch (error) {
@@ -319,7 +207,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
             CRITICAL: NO CHARACTERS, NO PEOPLE, NO ANIMALS. Just the empty environment/location.`;
           setActivePrompt(prompt);
           const imageUrl = await generateImage(prompt, project.aspectRatio);
-          updatedSettings[i] = { ...setting, imageUrl, lastImagePrompt: prompt, updatedAt: Date.now() };
+          updatedSettings[i] = { ...setting, imageUrl, lastImagePrompt: prompt };
           // Update project state incrementally to show progress
           setProject({ ...project, settings: [...updatedSettings] });
         }
@@ -398,7 +286,29 @@ export default function Settings({ project, setProject }: SettingsProps) {
     const updated = project.settings.map((s) =>
       s.id === id ? { ...s, [field]: value, updatedAt: Date.now() } : s,
     );
-    setProject({ ...project, settings: updated });
+
+    let updatedScenes = project.scenes;
+    if (field === "name" && typeof value === "string" && value.trim() !== "" && value !== "Novo Cenário") {
+      const lowerName = value.toLowerCase();
+      const nameRegex = new RegExp(`\\b${lowerName}\\b`, 'i');
+      
+      updatedScenes = project.scenes.map(scene => ({
+        ...scene,
+        takes: scene.takes.map(take => {
+          const actionMatch = nameRegex.test(take.action.toLowerCase());
+          
+          if (actionMatch && !take.settingId) {
+            return {
+              ...take,
+              settingId: id,
+            };
+          }
+          return take;
+        })
+      }));
+    }
+
+    setProject({ ...project, settings: updated, scenes: updatedScenes });
   };
 
   const removeSetting = (id: string) => {
@@ -413,7 +323,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
 
     const setId = editingItem.id.replace('set-img-', '');
     const updatedSettings = project.settings.map((s) =>
-      s.id === setId ? { ...s, imageUrl: newUrl, updatedAt: Date.now() } : s
+      s.id === setId ? { ...s, imageUrl: newUrl } : s
     );
     setProject({ ...project, settings: updatedSettings });
   };
@@ -685,6 +595,15 @@ export default function Settings({ project, setProject }: SettingsProps) {
           defaultVideoModel={project.videoModel}
           onSave={handleSaveEdit}
           onClose={() => setEditingItem(null)}
+        />
+      )}
+
+      {showUpdateModal && (
+        <UpdateTakesModal
+          project={project}
+          setProject={setProject}
+          onClose={() => setShowUpdateModal(false)}
+          triggerType="settings"
         />
       )}
     </div>
