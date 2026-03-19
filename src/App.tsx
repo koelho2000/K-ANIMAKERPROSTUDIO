@@ -128,7 +128,7 @@ export default function App() {
           <Preview project={project} setProject={setProject} />
         )}
         {currentStep === 9 && (
-          <Summary project={project} />
+          <Summary project={project} setProject={setProject} />
         )}
         {currentStep === 10 && (
           <MediaLibrary 

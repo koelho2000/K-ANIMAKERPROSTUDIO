@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Project } from '../types';
-import { X, Copy, CheckCircle2 } from 'lucide-react';
+import { X, Copy, CheckCircle2, RefreshCw } from 'lucide-react';
 
 interface TechnicalScriptModalProps {
   project: Project;
+  setProject?: React.Dispatch<React.SetStateAction<Project>>;
   onClose: () => void;
 }
 
-export const TechnicalScriptModal: React.FC<TechnicalScriptModalProps> = ({ project, onClose }) => {
+export const TechnicalScriptModal: React.FC<TechnicalScriptModalProps> = ({ project, setProject, onClose }) => {
   const [copied, setCopied] = useState(false);
 
   const formatTime = (seconds: number) => {
@@ -16,49 +17,80 @@ export const TechnicalScriptModal: React.FC<TechnicalScriptModalProps> = ({ proj
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const getDefaultVideoPrompt = (scene: any, take: any) => {
+    const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
+    
+    const characterNames = (take.characters || []).map((id: string) => {
+      const char = project.characters.find((c: any) => c.id === id);
+      return char ? char.name : '';
+    }).filter(Boolean).join(', ');
+    
+    const dialogueContext = take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo (${characterNames}): ${take.dialogue}.` : "";
+    
+    const narratorType = project.narrator?.type === "character" 
+      ? ` (${project.characters.find((c: any) => c.id === project.narrator.characterId)?.name || 'Personagem'})`
+      : project.narrator?.type === "custom"
+        ? ` (${project.narrator.customName})`
+        : "";
+    
+    const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
+
+    return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
+  };
+
+  const getIntroVideoPrompt = (forceDefault = false) => {
+    if (!forceDefault && project.intro?.lastVideoPrompt) return project.intro.lastVideoPrompt;
+    if (!project.intro?.prompt) return "";
+    const music = project.intro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
+    const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
+    return `${project.intro.prompt}. Add cinematic movement, sound of epic orchestral music, and professional transitions. ${musicPrompt}`;
+  };
+
+  const getOutroVideoPrompt = (forceDefault = false) => {
+    if (!forceDefault && project.outro?.lastVideoPrompt) return project.outro.lastVideoPrompt;
+    if (!project.outro?.prompt) return "";
+    const music = project.outro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
+    const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
+    return `${project.outro.prompt}. Add cinematic movement, sound of gentle closing music, and professional transitions. ${musicPrompt}`;
+  };
+
+  const handleForceUpdate = () => {
+    if (!setProject) return;
+    
+    if (window.confirm("Isto irá atualizar todos os prompts de vídeo com os dados mais recentes (nomes de personagens, cenários, etc.), substituindo quaisquer edições manuais feitas nos prompts. Queres continuar?")) {
+      setProject(prev => {
+        const updated = { ...prev };
+        
+        if (updated.intro) {
+          updated.intro = {
+            ...updated.intro,
+            lastVideoPrompt: getIntroVideoPrompt(true)
+          };
+        }
+        
+        if (updated.outro) {
+          updated.outro = {
+            ...updated.outro,
+            lastVideoPrompt: getOutroVideoPrompt(true)
+          };
+        }
+        
+        updated.scenes = updated.scenes.map(scene => ({
+          ...scene,
+          takes: scene.takes.map(take => ({
+            ...take,
+            lastVideoPrompt: getDefaultVideoPrompt(scene, take)
+          }))
+        }));
+        
+        return updated;
+      });
+    }
+  };
+
   const generateTableData = () => {
     const rows: any[] = [];
     let runningTime = 0;
-
-    const getDefaultVideoPrompt = (scene: any, take: any) => {
-      const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
-      const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
-        ? ` Diálogo${languageInfo}: ` + take.dialogueLines.map((line: any) => {
-            const char = project.characters.find((c: any) => c.id === line.characterId);
-            const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
-            return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
-          }).join(" | ")
-        : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
-
-      const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-      
-      const gender = project.narrationSettings?.gender || 'female';
-      const ageGroup = project.narrationSettings?.ageGroup || 'adult';
-      const genderText = gender === 'male' ? 'Masculino' : 'Feminino';
-      const ageMap: Record<string, string> = { child: 'Criança', youth: 'Jovem', adult: 'Adulto', senior: 'Idoso' };
-      const ageText = ageMap[ageGroup] || '';
-      const narratorType = ` (Voz: ${genderText}, ${ageText})`;
-      
-      const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
-
-      return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
-    };
-
-    const getIntroVideoPrompt = () => {
-      if (project.intro?.lastVideoPrompt) return project.intro.lastVideoPrompt;
-      if (!project.intro?.prompt) return "";
-      const music = project.intro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
-      const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
-      return `${project.intro.prompt}. Add cinematic movement, sound of epic orchestral music, and professional transitions. ${musicPrompt}`;
-    };
-
-    const getOutroVideoPrompt = () => {
-      if (project.outro?.lastVideoPrompt) return project.outro.lastVideoPrompt;
-      if (!project.outro?.prompt) return "";
-      const music = project.outro.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
-      const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
-      return `${project.outro.prompt}. Add cinematic movement, sound of gentle closing music, and professional transitions. ${musicPrompt}`;
-    };
 
       // Intro
       if (project.intro) {
@@ -193,6 +225,16 @@ export const TechnicalScriptModal: React.FC<TechnicalScriptModalProps> = ({ proj
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {setProject && (
+              <button
+                onClick={handleForceUpdate}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-xl font-medium transition-colors"
+                title="Atualizar todos os prompts de vídeo com os dados mais recentes"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Forçar Atualização
+              </button>
+            )}
             <button
               onClick={handleCopy}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl font-medium transition-colors"

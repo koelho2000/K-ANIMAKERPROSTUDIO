@@ -18,9 +18,10 @@ import { TechnicalScriptModal } from "./TechnicalScriptModal";
 
 interface SummaryProps {
   project: Project;
+  setProject: React.Dispatch<React.SetStateAction<Project>>;
 }
 
-export default function Summary({ project }: SummaryProps) {
+export default function Summary({ project, setProject }: SummaryProps) {
   const [showTechnicalScript, setShowTechnicalScript] = useState(false);
 
   const introDuration = project.intro ? 5 : 0;
@@ -620,6 +621,7 @@ export default function Summary({ project }: SummaryProps) {
       {showTechnicalScript && (
         <TechnicalScriptModal
           project={project}
+          setProject={setProject}
           onClose={() => setShowTechnicalScript(false)}
         />
       )}
