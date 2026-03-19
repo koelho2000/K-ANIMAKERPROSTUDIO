@@ -7,8 +7,8 @@ interface WelcomeProps {
 }
 
 export default function Welcome({ onStart }: WelcomeProps) {
-  const version = "V3.0.0";
-  const date = "12/03/2026";
+  const version = "V4.0.0";
+  const date = "19/03/2026";
 
   return (
     <div className="fixed inset-0 z-50 bg-zinc-950 flex items-center justify-center overflow-hidden">
