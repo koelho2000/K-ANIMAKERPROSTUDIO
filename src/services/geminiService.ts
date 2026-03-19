@@ -1011,9 +1011,12 @@ export const analyzeProjectForUpdates = async (project: any) => {
   Exemplos de inconsistências:
   - Personagem mencionada na história/guião mas que não existe na lista de personagens.
   - Cenário mencionado na história/guião mas que não existe na lista de cenários.
+  - O nome de uma personagem ou cenário foi alterado na lista principal, mas o Guião ou as Cenas (Takes) ainda usam o nome antigo. (Neste caso, deves sugerir a atualização do Guião e/ou das Cenas para usar o novo nome).
   - Cenas sem banda sonora gerada.
   - Takes sem prompt de vídeo gerado.
   - Inconsistências na ideia ou conceito.
+  
+  IMPORTANTE: Se sugerires atualizar uma cena (target: "scene"), envia o objeto completo da cena no campo "data", incluindo o array de "takes" atualizado com os novos nomes. Se sugerires atualizar o guião (target: "script"), envia o texto completo do guião atualizado no campo "data" (ex: { "script": "texto atualizado..." }).
   
   Gera pelo menos 2-3 sugestões úteis baseadas nos dados fornecidos. Se tudo estiver perfeito, retorna um array vazio [].
   `;

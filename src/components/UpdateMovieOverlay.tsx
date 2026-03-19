@@ -369,12 +369,25 @@ export function UpdateMovieOverlay({ isOpen, onClose, project, setProject }: Upd
                 </button>
               </>
             ) : progress === 100 ? (
-              <button
-                onClick={onClose}
-                className="px-6 py-2.5 rounded-xl font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
-              >
-                Concluir
-              </button>
+              <>
+                <button
+                  onClick={onClose}
+                  className="px-6 py-2.5 rounded-xl font-medium text-zinc-700 hover:bg-zinc-100 transition-colors"
+                >
+                  Fechar
+                </button>
+                <button
+                  onClick={() => {
+                    setProgress(0);
+                    setElapsedTime(0);
+                    handleAnalyze();
+                  }}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Verificar Alterações
+                </button>
+              </>
             ) : (
               <>
                 <button
