@@ -16,6 +16,7 @@ import Soundtrack from "./components/Soundtrack";
 import EBook from "./components/EBook";
 import MassProductionOverlay from "./components/MassProductionOverlay";
 import IntelligentEditor from "./components/IntelligentEditor";
+import { UpdateMovieOverlay } from "./components/UpdateMovieOverlay";
 import { Project, CustomMedia } from "./types";
 import { v4 as uuidv4 } from "uuid";
 
@@ -52,6 +53,7 @@ export default function App() {
   const [lastSavedProject, setLastSavedProject] = useState<string>(JSON.stringify(initialProject));
   const [showMassProduction, setShowMassProduction] = useState(false);
   const [showIntelligentGenerator, setShowIntelligentGenerator] = useState(false);
+  const [showUpdateMovie, setShowUpdateMovie] = useState(false);
 
   const hasUnsavedChanges = JSON.stringify(project) !== lastSavedProject;
 
@@ -82,6 +84,7 @@ export default function App() {
         onStartMassProduction={() => setShowMassProduction(true)}
         onNewProject={onNewProject}
         onOpenIntelligentGenerator={() => setShowIntelligentGenerator(true)}
+        onOpenUpdateMovie={() => setShowUpdateMovie(true)}
       />
       <main className="flex-1 overflow-y-auto">
         {currentStep === 1 && (
@@ -184,6 +187,13 @@ export default function App() {
           }}
         />
       )}
+
+      <UpdateMovieOverlay
+        isOpen={showUpdateMovie}
+        onClose={() => setShowUpdateMovie(false)}
+        project={project}
+        setProject={setProject}
+      />
     </div>
   );
 }

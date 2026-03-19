@@ -22,6 +22,7 @@ import {
   Music,
   BookOpen,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { Project } from "../types";
 import { AUTOMATION_PHASES } from "../constants";
@@ -40,6 +41,7 @@ interface SidebarProps {
   onStartMassProduction?: () => void;
   onNewProject?: () => void;
   onOpenIntelligentGenerator?: () => void;
+  onOpenUpdateMovie?: () => void;
 }
 
 const steps = [
@@ -68,6 +70,7 @@ export default function Sidebar({
   onStartMassProduction,
   onNewProject,
   onOpenIntelligentGenerator,
+  onOpenUpdateMovie,
 }: SidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showUsageModal, setShowUsageModal] = useState(false);
@@ -111,6 +114,8 @@ export default function Sidebar({
       await window.aistudio.openSelectKey();
       // Assume success and update state (as per guidelines)
       setHasApiKey(true);
+      localStorage.removeItem('GEMINI_API_KEY_MANUAL');
+      setManualKey("");
     }
   };
 
@@ -444,6 +449,13 @@ export default function Sidebar({
         >
           <Sparkles className="w-4 h-4" />
           <span>Gerador Inteligente</span>
+        </button>
+        <button
+          onClick={onOpenUpdateMovie}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium text-emerald-400"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>Update Filme</span>
         </button>
         <button
           onClick={handleSave}

@@ -48,7 +48,7 @@ const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> =>
       
       const errorMsg = error.message?.toLowerCase() || "";
       if (errorMsg.includes("billing") || errorMsg.includes("pay-as-you-go") || errorMsg.includes("faturação")) {
-        throw new Error("A tua chave API não tem uma conta de faturação associada. A geração de vídeo (Veo) e imagens de alta qualidade requerem um projeto pago no Google Cloud.");
+        throw new Error("A tua chave API não tem faturação ativa. A geração de vídeo (Veo) requer um projeto pago no Google Cloud. Por favor, adiciona um cartão de crédito ao teu projeto ou usa apenas a geração de imagens (frames iniciais).");
       }
 
       if (errorMsg.includes("api_key_invalid") || errorMsg.includes("invalid api key")) {
@@ -302,7 +302,7 @@ export const pollVideoOperation = async (operationOrName: any) => {
     const errorMsg = currentOperation.error.message || "Erro desconhecido na geração de vídeo.";
     const lowerMsg = errorMsg.toLowerCase();
     if (lowerMsg.includes("billing") || lowerMsg.includes("pay-as-you-go") || lowerMsg.includes("faturação")) {
-      throw new Error("A tua chave API não tem uma conta de faturação associada. A geração de vídeo (Veo) requer um projeto pago no Google Cloud.");
+      throw new Error("A tua chave API não tem faturação ativa. A geração de vídeo (Veo) requer um projeto pago no Google Cloud. Por favor, adiciona um cartão de crédito ao teu projeto ou usa apenas a geração de imagens (frames iniciais).");
     }
     throw new Error(`Erro na geração do vídeo: ${errorMsg}`);
   }
@@ -976,5 +976,62 @@ export const generateSoundtrackAudio = async (style: string) => {
     }
     throw new Error("Falha ao gerar áudio da banda sonora.");
   });
+};
+
+export const analyzeProjectForUpdates = async (project: any) => {
+  const ai = getGenAI();
+  
+  const prompt = `
+  Analisa o seguinte projeto de filme e identifica inconsistências, elementos em falta ou sugestões de atualização para manter a coerência entre a História (Ideia e Conceito), Guião, Personagens, Cenários, Banda Sonora e Timelapse.
+  
+  Projeto:
+  - Título: ${project.title}
+  - Tipo: ${project.filmType}
+  - Estilo: ${project.filmStyle}
+  - Ideia: ${project.idea}
+  - Conceito: ${project.concept}
+  - Guião: ${project.script}
+  - Personagens atuais: ${JSON.stringify(project.characters)}
+  - Cenários atuais: ${JSON.stringify(project.settings)}
+  - Cenas: ${JSON.stringify(project.scenes)}
+  
+  Retorna um array JSON de tarefas sugeridas com a seguinte estrutura:
+  [
+    {
+      "id": "string_unica",
+      "category": "Personagens" | "Cenários" | "Banda Sonora" | "Guião" | "História" | "Timelapse",
+      "title": "Título curto da tarefa",
+      "description": "Descrição detalhada do porquê desta atualização",
+      "action": "create" | "update" | "delete",
+      "target": "character" | "setting" | "scene" | "soundtrack" | "story" | "script",
+      "data": {} // Objeto com os dados a aplicar (ex: { id: "novo_id", name: "João", role: "Protagonista", description: "..." } para uma nova personagem)
+    }
+  ]
+  
+  Exemplos de inconsistências:
+  - Personagem mencionada na história/guião mas que não existe na lista de personagens.
+  - Cenário mencionado na história/guião mas que não existe na lista de cenários.
+  - Cenas sem banda sonora gerada.
+  - Takes sem prompt de vídeo gerado.
+  - Inconsistências na ideia ou conceito.
+  
+  Gera pelo menos 2-3 sugestões úteis baseadas nos dados fornecidos. Se tudo estiver perfeito, retorna um array vazio [].
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text || "[]";
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Erro ao analisar projeto:", error);
+    return [];
+  }
 };
 

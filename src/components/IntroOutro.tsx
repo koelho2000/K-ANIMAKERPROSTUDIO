@@ -199,6 +199,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       if (!hasManualKey && !hasSystemKey) {
         if ((window as any).aistudio?.openSelectKey) {
           await (window as any).aistudio.openSelectKey();
+          localStorage.removeItem('GEMINI_API_KEY_MANUAL');
         } else {
           alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
           setIsGeneratingVideo(false);

@@ -575,6 +575,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
           if ((window as any).aistudio?.openSelectKey) {
             addLog("Aguardando configuração de Chave API para vídeos...");
             await (window as any).aistudio.openSelectKey();
+            localStorage.removeItem('GEMINI_API_KEY_MANUAL');
           } else {
             addLog("ERRO: Chave API não configurada.");
             alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");

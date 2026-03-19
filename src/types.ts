@@ -173,6 +173,8 @@ export interface Scene {
     style: string;
     audioUrl?: string;
     duration?: number;
+    startTime?: number;
+    endTime?: number;
   };
 }
 

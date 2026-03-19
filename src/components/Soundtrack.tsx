@@ -3,6 +3,8 @@ import { Project, Scene } from "../types";
 import { Music, Play, Pause, Trash2, Sparkles, Loader2, Clock, Volume2, RefreshCw, Download, FileAudio } from "lucide-react";
 import { generateSoundtrackDescription, generateSoundtrackAudio } from "../services/geminiService";
 import JSZip from "jszip";
+import { ConfirmModal } from "./ConfirmModal";
+import { AlertModal } from "./AlertModal";
 
 interface SoundtrackProps {
   project: Project;
@@ -18,6 +20,22 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
   const [bulkProgress, setBulkProgress] = useState(0);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRefs = React.useRef<{ [key: string]: HTMLAudioElement | null }>({});
+
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
+
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+  }>({ isOpen: false, title: "", message: "" });
+
+  const closeConfirm = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
+  const closeAlert = () => setAlertModal(prev => ({ ...prev, isOpen: false }));
 
   const calculateSceneDuration = (scene: Scene) => {
     return scene.takes.reduce((acc, take) => acc + (take.duration || 5), 0);
@@ -57,74 +75,98 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
       setProject({ ...project, scenes: updatedScenes });
     } catch (error: any) {
       console.error("Erro ao gerar áudio da banda sonora:", error);
-      alert(`Erro ao gerar áudio: ${error.message || 'Erro desconhecido'}`);
+      setAlertModal({
+        isOpen: true,
+        title: "Erro",
+        message: `Erro ao gerar áudio: ${error.message || 'Erro desconhecido'}`
+      });
     } finally {
       setIsGenerating(null);
     }
   };
 
-  const handleBulkGenerateDescriptions = async () => {
-    if (!window.confirm("Desejas gerar sugestões de estilo musical para todas as cenas?")) return;
-    
-    setIsBulkDescribing(true);
-    setBulkProgress(0);
-    try {
-      const updatedScenes = [...project.scenes];
-      for (let i = 0; i < updatedScenes.length; i++) {
-        setBulkProgress((i / updatedScenes.length) * 100);
-        const scene = updatedScenes[i];
-        if (!scene.soundtrack?.style) {
-          const sceneAction = scene.takes.map(t => t.action).join(". ");
-          const description = await generateSoundtrackDescription(sceneAction, project.filmStyle, project.filmType);
-          updatedScenes[i] = { ...scene, soundtrack: { ...scene.soundtrack, style: description } };
+  const handleBulkGenerateDescriptions = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Gerar Estilos em Massa",
+      message: "Desejas gerar sugestões de estilo musical para todas as cenas?",
+      onConfirm: async () => {
+        closeConfirm();
+        setIsBulkDescribing(true);
+        setBulkProgress(0);
+        try {
+          const updatedScenes = [...project.scenes];
+          for (let i = 0; i < updatedScenes.length; i++) {
+            setBulkProgress((i / updatedScenes.length) * 100);
+            const scene = updatedScenes[i];
+            if (!scene.soundtrack?.style) {
+              const sceneAction = scene.takes.map(t => t.action).join(". ");
+              const description = await generateSoundtrackDescription(sceneAction, project.filmStyle, project.filmType);
+              updatedScenes[i] = { ...scene, soundtrack: { ...scene.soundtrack, style: description } };
+            }
+          }
+          setProject({ ...project, scenes: updatedScenes });
+          setBulkProgress(100);
+        } catch (error) {
+          console.error("Erro na geração em massa de estilos:", error);
+        } finally {
+          setTimeout(() => {
+            setIsBulkDescribing(false);
+            setBulkProgress(0);
+          }, 1000);
         }
       }
-      setProject({ ...project, scenes: updatedScenes });
-      setBulkProgress(100);
-    } catch (error) {
-      console.error("Erro na geração em massa de estilos:", error);
-    } finally {
-      setTimeout(() => {
-        setIsBulkDescribing(false);
-        setBulkProgress(0);
-      }, 1000);
-    }
+    });
   };
 
-  const handleBulkGenerateAudio = async () => {
+  const handleBulkGenerateAudio = () => {
     const scenesWithStyle = project.scenes.filter(s => s.soundtrack?.style && !s.soundtrack?.audioUrl);
     if (scenesWithStyle.length === 0) {
-      alert("Não existem cenas com estilo definido e sem áudio para gerar.");
+      setAlertModal({
+        isOpen: true,
+        title: "Aviso",
+        message: "Não existem cenas com estilo definido e sem áudio para gerar."
+      });
       return;
     }
 
-    if (!window.confirm(`Desejas gerar o áudio da banda sonora para as ${scenesWithStyle.length} cenas que têm estilo definido?`)) return;
-    
-    setIsBulkGenerating(true);
-    setBulkProgress(0);
-    try {
-      const updatedScenes = [...project.scenes];
-      let processed = 0;
-      for (let i = 0; i < updatedScenes.length; i++) {
-        const scene = updatedScenes[i];
-        if (scene.soundtrack?.style && !scene.soundtrack?.audioUrl) {
-          setBulkProgress((processed / scenesWithStyle.length) * 100);
-          const audioUrl = await generateSoundtrackAudio(scene.soundtrack.style);
-          updatedScenes[i] = { ...scene, soundtrack: { ...scene.soundtrack, audioUrl } };
-          processed++;
+    setConfirmModal({
+      isOpen: true,
+      title: "Gerar Áudio em Massa",
+      message: `Desejas gerar o áudio da banda sonora para as ${scenesWithStyle.length} cenas que têm estilo definido?`,
+      onConfirm: async () => {
+        closeConfirm();
+        setIsBulkGenerating(true);
+        setBulkProgress(0);
+        try {
+          const updatedScenes = [...project.scenes];
+          let processed = 0;
+          for (let i = 0; i < updatedScenes.length; i++) {
+            const scene = updatedScenes[i];
+            if (scene.soundtrack?.style && !scene.soundtrack?.audioUrl) {
+              setBulkProgress((processed / scenesWithStyle.length) * 100);
+              const audioUrl = await generateSoundtrackAudio(scene.soundtrack.style);
+              updatedScenes[i] = { ...scene, soundtrack: { ...scene.soundtrack, audioUrl } };
+              processed++;
+            }
+          }
+          setProject({ ...project, scenes: updatedScenes });
+          setBulkProgress(100);
+        } catch (error) {
+          console.error("Erro na geração em massa de áudio:", error);
+          setAlertModal({
+            isOpen: true,
+            title: "Erro",
+            message: "Ocorreu um erro durante a geração em massa de áudio."
+          });
+        } finally {
+          setTimeout(() => {
+            setIsBulkGenerating(false);
+            setBulkProgress(0);
+          }, 1000);
         }
       }
-      setProject({ ...project, scenes: updatedScenes });
-      setBulkProgress(100);
-    } catch (error) {
-      console.error("Erro na geração em massa de áudio:", error);
-      alert("Ocorreu um erro durante a geração em massa de áudio.");
-    } finally {
-      setTimeout(() => {
-        setIsBulkGenerating(false);
-        setBulkProgress(0);
-      }, 1000);
-    }
+    });
   };
 
   const handleDownloadAudio = async (scene: Scene, index: number) => {
@@ -149,7 +191,11 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
   const handleBulkDownloadAudio = async () => {
     const scenesWithAudio = project.scenes.filter(s => s.soundtrack?.audioUrl);
     if (scenesWithAudio.length === 0) {
-      alert("Não existem bandas sonoras geradas para descarregar.");
+      setAlertModal({
+        isOpen: true,
+        title: "Aviso",
+        message: "Não existem bandas sonoras geradas para descarregar."
+      });
       return;
     }
 
@@ -190,15 +236,69 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
   };
 
   const handleDeleteAudio = (sceneId: string) => {
-    if (!window.confirm("Tens a certeza que desejas apagar a banda sonora desta cena?")) return;
-    
-    if (playingId === sceneId) {
-      audioRefs.current[sceneId]?.pause();
-      setPlayingId(null);
+    setConfirmModal({
+      isOpen: true,
+      title: "Apagar Banda Sonora",
+      message: "Tens a certeza que desejas apagar a banda sonora desta cena?",
+      onConfirm: () => {
+        closeConfirm();
+        if (playingId === sceneId) {
+          audioRefs.current[sceneId]?.pause();
+          setPlayingId(null);
+        }
+
+        const updatedScenes = project.scenes.map(s => 
+          s.id === sceneId ? { ...s, soundtrack: s.soundtrack ? { ...s.soundtrack, audioUrl: undefined } : undefined } : s
+        );
+        setProject({ ...project, scenes: updatedScenes });
+      }
+    });
+  };
+
+  const handleFileUpload = (sceneId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('audio/')) {
+      setAlertModal({
+        isOpen: true,
+        title: "Ficheiro Inválido",
+        message: "Por favor, seleciona um ficheiro de áudio válido (MP3, WAV, etc)."
+      });
+      return;
     }
 
+    const audioUrl = URL.createObjectURL(file);
+    
+    // Create an audio element to get the duration
+    const audio = new Audio(audioUrl);
+    audio.onloadedmetadata = () => {
+      const duration = audio.duration;
+      const updatedScenes = project.scenes.map(s => 
+        s.id === sceneId ? { 
+          ...s, 
+          soundtrack: { 
+            ...s.soundtrack, 
+            style: s.soundtrack?.style || "Upload Manual", 
+            audioUrl,
+            startTime: 0,
+            endTime: duration
+          } 
+        } : s
+      );
+      setProject({ ...project, scenes: updatedScenes });
+    };
+  };
+
+  const handleTimeChange = (sceneId: string, field: 'startTime' | 'endTime', value: number) => {
     const updatedScenes = project.scenes.map(s => 
-      s.id === sceneId ? { ...s, soundtrack: s.soundtrack ? { ...s.soundtrack, audioUrl: undefined } : undefined } : s
+      s.id === sceneId ? { 
+        ...s, 
+        soundtrack: { 
+          ...s.soundtrack!, 
+          [field]: value 
+        } 
+      } : s
     );
     setProject({ ...project, scenes: updatedScenes });
   };
@@ -206,6 +306,9 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
   const togglePlay = (sceneId: string) => {
     const audio = audioRefs.current[sceneId];
     if (!audio) return;
+
+    const scene = project.scenes.find(s => s.id === sceneId);
+    if (!scene) return;
 
     if (playingId === sceneId) {
       audio.pause();
@@ -215,6 +318,15 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
       if (playingId && audioRefs.current[playingId]) {
         audioRefs.current[playingId]?.pause();
       }
+      
+      // Reset to startTime if we're at the end or haven't started
+      const startTime = scene.soundtrack?.startTime || 0;
+      const endTime = scene.soundtrack?.endTime || audio.duration;
+      
+      if (audio.currentTime >= endTime || audio.currentTime < startTime) {
+        audio.currentTime = startTime;
+      }
+      
       audio.play();
       setPlayingId(sceneId);
     }
@@ -345,77 +457,124 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
 
                     <div>
                       <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">Áudio da Banda Sonora</h3>
-                      <div className="flex items-center gap-3">
-                        {scene.soundtrack?.audioUrl ? (
-                          <div className="flex-1 flex items-center gap-3 p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
-                            <button 
-                              onClick={() => togglePlay(scene.id)}
-                              className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center shadow-sm hover:bg-emerald-600 transition-colors"
-                            >
-                              {playingId === scene.id ? (
-                                <Pause className="w-5 h-5 text-white" />
-                              ) : (
-                                <Play className="w-5 h-5 text-white fill-current" />
-                              )}
-                            </button>
-                            <div className="flex-1">
-                              <div className="h-1.5 w-full bg-emerald-100 rounded-full overflow-hidden">
-                                <div 
-                                  className={`h-full bg-emerald-500 transition-all duration-300 ${playingId === scene.id ? 'animate-pulse' : ''}`}
-                                  style={{ width: playingId === scene.id ? '100%' : '0%' }}
-                                />
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                          {scene.soundtrack?.audioUrl ? (
+                            <div className="flex-1 flex flex-col gap-3 p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
+                              <div className="flex items-center gap-3">
+                                <button 
+                                  onClick={() => togglePlay(scene.id)}
+                                  className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center shadow-sm hover:bg-emerald-600 transition-colors shrink-0"
+                                >
+                                  {playingId === scene.id ? (
+                                    <Pause className="w-5 h-5 text-white" />
+                                  ) : (
+                                    <Play className="w-5 h-5 text-white fill-current" />
+                                  )}
+                                </button>
+                                <div className="flex-1">
+                                  <div className="h-1.5 w-full bg-emerald-100 rounded-full overflow-hidden">
+                                    <div 
+                                      className={`h-full bg-emerald-500 transition-all duration-300 ${playingId === scene.id ? 'animate-pulse' : ''}`}
+                                      style={{ width: playingId === scene.id ? '100%' : '0%' }}
+                                    />
+                                  </div>
+                                  <audio 
+                                    ref={el => audioRefs.current[scene.id] = el}
+                                    src={scene.soundtrack.audioUrl} 
+                                    onEnded={() => setPlayingId(null)}
+                                    onTimeUpdate={(e) => {
+                                      if (scene.soundtrack?.endTime && e.currentTarget.currentTime >= scene.soundtrack.endTime) {
+                                        e.currentTarget.pause();
+                                        e.currentTarget.currentTime = scene.soundtrack.startTime || 0;
+                                        setPlayingId(null);
+                                      }
+                                    }}
+                                    className="hidden" 
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button 
+                                    onClick={() => handleDownloadAudio(scene, index)}
+                                    className="p-2 text-zinc-400 hover:text-emerald-600 hover:bg-white rounded-lg transition-all"
+                                    title="Descarregar áudio"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleGenerateAudio(scene.id)}
+                                    disabled={isGenerating === scene.id}
+                                    className="p-2 text-zinc-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                                    title="Gerar novamente"
+                                  >
+                                    {isGenerating === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteAudio(scene.id)}
+                                    className="p-2 text-zinc-400 hover:text-rose-600 hover:bg-white rounded-lg transition-all"
+                                    title="Apagar áudio"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
-                              <audio 
-                                ref={el => audioRefs.current[scene.id] = el}
-                                src={scene.soundtrack.audioUrl} 
-                                onEnded={() => setPlayingId(null)}
-                                className="hidden" 
-                              />
+                              <div className="flex items-center gap-4 pt-2 border-t border-emerald-100/50">
+                                <div className="flex items-center gap-2 flex-1">
+                                  <label className="text-xs font-medium text-emerald-800">Início (s):</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    step="0.1"
+                                    value={scene.soundtrack.startTime || 0}
+                                    onChange={(e) => handleTimeChange(scene.id, 'startTime', parseFloat(e.target.value) || 0)}
+                                    className="w-20 px-2 py-1 text-sm bg-white border border-emerald-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2 flex-1">
+                                  <label className="text-xs font-medium text-emerald-800">Fim (s):</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    step="0.1"
+                                    value={scene.soundtrack.endTime || 0}
+                                    onChange={(e) => handleTimeChange(scene.id, 'endTime', parseFloat(e.target.value) || 0)}
+                                    className="w-20 px-2 py-1 text-sm bg-white border border-emerald-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                  />
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <button 
-                                onClick={() => handleDownloadAudio(scene, index)}
-                                className="p-2 text-zinc-400 hover:text-emerald-600 hover:bg-white rounded-lg transition-all"
-                                title="Descarregar áudio"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                              <button 
+                          ) : (
+                            <div className="flex gap-2 w-full">
+                              <button
                                 onClick={() => handleGenerateAudio(scene.id)}
-                                disabled={isGenerating === scene.id}
-                                className="p-2 text-zinc-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
-                                title="Gerar novamente"
+                                disabled={isGenerating === scene.id || !scene.soundtrack?.style}
+                                className="flex-1 flex items-center justify-center gap-2 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:shadow-none"
                               >
-                                {isGenerating === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                {isGenerating === scene.id ? (
+                                  <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    <span>A gerar áudio...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sparkles className="w-5 h-5" />
+                                    <span>Gerar Banda Sonora</span>
+                                  </>
+                                )}
                               </button>
-                              <button 
-                                onClick={() => handleDeleteAudio(scene.id)}
-                                className="p-2 text-zinc-400 hover:text-rose-600 hover:bg-white rounded-lg transition-all"
-                                title="Apagar áudio"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <label className="flex items-center justify-center gap-2 px-4 py-4 bg-white border-2 border-dashed border-zinc-200 hover:border-indigo-400 hover:bg-indigo-50 text-zinc-600 hover:text-indigo-600 rounded-2xl font-bold transition-all cursor-pointer">
+                                <FileAudio className="w-5 h-5" />
+                                <span>Upload MP3</span>
+                                <input 
+                                  type="file" 
+                                  accept="audio/*" 
+                                  className="hidden" 
+                                  onChange={(e) => handleFileUpload(scene.id, e)}
+                                />
+                              </label>
                             </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleGenerateAudio(scene.id)}
-                            disabled={isGenerating === scene.id || !scene.soundtrack?.style}
-                            className="flex-1 flex items-center justify-center gap-2 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:shadow-none"
-                          >
-                            {isGenerating === scene.id ? (
-                              <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>A gerar áudio...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Sparkles className="w-5 h-5" />
-                                <span>Gerar Banda Sonora</span>
-                              </>
-                            )}
-                          </button>
-                        )}
+                          )}
+                        </div>
                       </div>
                       {!scene.soundtrack?.style && !scene.soundtrack?.audioUrl && (
                         <p className="text-[10px] text-zinc-400 mt-2 text-center">
@@ -430,6 +589,21 @@ export default function Soundtrack({ project, setProject }: SoundtrackProps) {
           })
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        title={alertModal.title}
+        message={alertModal.message}
+        onClose={closeAlert}
+      />
     </div>
   );
 }

@@ -718,7 +718,7 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
               <div className="flex justify-between items-center">
                 <label className="text-sm font-medium text-zinc-700">Quantidade de Personagens</label>
                 <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2 py-1 rounded">
-                  {project.characterDetailLevel === 'low' ? 'Poucas' : project.characterDetailLevel === 'medium' ? 'Média' : 'Muitas'}
+                  {project.characterDetailLevel === 'low' ? 'Mínimo' : project.characterDetailLevel === 'medium' ? 'Médio' : 'Alto'}
                 </span>
               </div>
               <input 
@@ -731,9 +731,9 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
                 className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
               />
               <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-widest px-1">
-                <span>Poucas</span>
-                <span>Média</span>
-                <span>Muitas</span>
+                <span>Mínimo</span>
+                <span>Médio</span>
+                <span>Alto</span>
               </div>
             </div>
 
@@ -741,7 +741,7 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
               <div className="flex justify-between items-center">
                 <label className="text-sm font-medium text-zinc-700">Quantidade de Cenários</label>
                 <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2 py-1 rounded">
-                  {project.settingDetailLevel === 'low' ? 'Poucos' : project.settingDetailLevel === 'medium' ? 'Média' : 'Muitos'}
+                  {project.settingDetailLevel === 'low' ? 'Mínimo' : project.settingDetailLevel === 'medium' ? 'Médio' : 'Alto'}
                 </span>
               </div>
               <input 
@@ -754,9 +754,9 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
                 className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
               />
               <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-widest px-1">
-                <span>Poucos</span>
-                <span>Média</span>
-                <span>Muitos</span>
+                <span>Mínimo</span>
+                <span>Médio</span>
+                <span>Alto</span>
               </div>
             </div>
           </div>

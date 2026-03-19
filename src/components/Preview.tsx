@@ -289,6 +289,15 @@ export default function Preview({ project, setProject }: PreviewProps) {
         soundtrackAudio.src = scene.soundtrack.audioUrl;
         soundtrackAudio.crossOrigin = "anonymous";
         soundtrackAudio.loop = true;
+        soundtrackAudio.currentTime = scene.soundtrack.startTime || 0;
+        
+        // Handle custom loop based on endTime
+        soundtrackAudio.ontimeupdate = () => {
+          if (scene.soundtrack?.endTime && soundtrackAudio && soundtrackAudio.currentTime >= scene.soundtrack.endTime) {
+            soundtrackAudio.currentTime = scene.soundtrack.startTime || 0;
+          }
+        };
+
         soundtrackSource = audioCtx.createMediaElementSource(soundtrackAudio);
         soundtrackSource.connect(audioDest);
       }
@@ -524,6 +533,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
       
       const scene = project.scenes.find(s => s.id === (currentClip as any).sceneId);
       if (isSoundtrackEnabled && soundtrackAudioRef.current && scene?.soundtrack?.audioUrl) {
+        soundtrackAudioRef.current.currentTime = scene.soundtrack.startTime || 0;
         soundtrackAudioRef.current.play().catch(e => console.error("Soundtrack auto-play failed", e));
       }
     }
@@ -670,6 +680,12 @@ export default function Preview({ project, setProject }: PreviewProps) {
                           src={project.scenes.find(s => s.id === (currentClip as any).sceneId)?.soundtrack?.audioUrl}
                           autoPlay={isPlayingFullMovie}
                           loop
+                          onTimeUpdate={(e) => {
+                            const scene = project.scenes.find(s => s.id === (currentClip as any).sceneId);
+                            if (scene?.soundtrack?.endTime && e.currentTarget.currentTime >= scene.soundtrack.endTime) {
+                              e.currentTarget.currentTime = scene.soundtrack.startTime || 0;
+                            }
+                          }}
                         />
                       )}
                     </motion.div>

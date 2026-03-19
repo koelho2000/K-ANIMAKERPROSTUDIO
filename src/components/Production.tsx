@@ -422,7 +422,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
     const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-    const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração: ${take.narration}.` : "";
+    
+    const gender = project.narrationSettings?.gender || 'female';
+    const ageGroup = project.narrationSettings?.ageGroup || 'adult';
+    const genderText = gender === 'male' ? 'Masculino' : 'Feminino';
+    const ageMap: Record<string, string> = { child: 'Criança', youth: 'Jovem', adult: 'Adulto', senior: 'Idoso' };
+    const ageText = ageMap[ageGroup] || '';
+    const narratorType = ` (Voz: ${genderText}, ${ageText})`;
+    
+    const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
 
     return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
   };
@@ -716,6 +724,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     if (!(window as any).aistudio?.hasSelectedApiKey?.()) {
       if ((window as any).aistudio?.openSelectKey) {
         await (window as any).aistudio.openSelectKey();
+        localStorage.removeItem('GEMINI_API_KEY_MANUAL');
       } else {
         alert("Por favor, configura a tua Chave API Gemini primeiro.");
         return;
@@ -742,7 +751,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
           const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-          const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração: ${take.narration}.` : "";
+          
+          const gender = project.narrationSettings?.gender || 'female';
+          const ageGroup = project.narrationSettings?.ageGroup || 'adult';
+          const genderText = gender === 'male' ? 'Masculino' : 'Feminino';
+          const ageMap: Record<string, string> = { child: 'Criança', youth: 'Jovem', adult: 'Adulto', senior: 'Idoso' };
+          const ageText = ageMap[ageGroup] || '';
+          const narratorType = ` (Voz: ${genderText}, ${ageText})`;
+          
+          const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
 
           const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
           
@@ -921,7 +938,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
               const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-              const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração: ${take.narration}.` : "";
+              
+              const gender = project.narrationSettings?.gender || 'female';
+              const ageGroup = project.narrationSettings?.ageGroup || 'adult';
+              const genderText = gender === 'male' ? 'Masculino' : 'Feminino';
+              const ageMap: Record<string, string> = { child: 'Criança', youth: 'Jovem', adult: 'Adulto', senior: 'Idoso' };
+              const ageText = ageMap[ageGroup] || '';
+              const narratorType = ` (Voz: ${genderText}, ${ageText})`;
+              
+              const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
 
               const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
               
@@ -1008,7 +1033,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
       const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-      const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração: ${take.narration}.` : "";
+      
+      const gender = project.narrationSettings?.gender || 'female';
+      const ageGroup = project.narrationSettings?.ageGroup || 'adult';
+      const genderText = gender === 'male' ? 'Masculino' : 'Feminino';
+      const ageMap: Record<string, string> = { child: 'Criança', youth: 'Jovem', adult: 'Adulto', senior: 'Idoso' };
+      const ageText = ageMap[ageGroup] || '';
+      const narratorType = ` (Voz: ${genderText}, ${ageText})`;
+      
+      const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
 
       const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
       
@@ -1035,6 +1068,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       if (!hasManualKey && !hasSystemKey) {
         if ((window as any).aistudio?.openSelectKey) {
           await (window as any).aistudio.openSelectKey();
+          localStorage.removeItem('GEMINI_API_KEY_MANUAL');
         } else {
           alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
           setGeneratingVideoId(null);
@@ -1460,6 +1494,26 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                       </div>
                     ) : (
                       <p className="text-sm italic">{infoModalTake.dialogue || "Sem diálogo"}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Narração</label>
+                  <div className="text-zinc-700 bg-zinc-50 p-4 rounded-xl border border-zinc-100 leading-relaxed">
+                    {infoModalTake.narration && infoModalTake.narration !== "Nenhum" ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2 text-xs mb-2">
+                          <span className="font-bold text-indigo-600">Narrador:</span>
+                          <span className="text-zinc-700">
+                            {`Voz ${project.narrationSettings?.gender === 'male' ? 'Masculina' : 'Feminina'} (${
+                              { child: 'Criança', youth: 'Jovem', adult: 'Adulto', senior: 'Idoso' }[project.narrationSettings?.ageGroup || 'adult'] || ''
+                            })`}
+                          </span>
+                        </div>
+                        <p className="text-sm italic">"{infoModalTake.narration}"</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm italic">Sem narração</p>
                     )}
                   </div>
                 </div>

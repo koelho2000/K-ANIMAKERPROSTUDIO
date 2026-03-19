@@ -31,7 +31,15 @@ export const TechnicalScriptModal: React.FC<TechnicalScriptModalProps> = ({ proj
         : take.dialogue && take.dialogue !== "Nenhum" ? ` Diálogo${languageInfo}: ${take.dialogue}` : "";
 
       const soundContext = take.sound && take.sound !== "Nenhum" ? ` Som: ${take.sound}.` : "";
-      const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração: ${take.narration}.` : "";
+      
+      const gender = project.narrationSettings?.gender || 'female';
+      const ageGroup = project.narrationSettings?.ageGroup || 'adult';
+      const genderText = gender === 'male' ? 'Masculino' : 'Feminino';
+      const ageMap: Record<string, string> = { child: 'Criança', youth: 'Jovem', adult: 'Adulto', senior: 'Idoso' };
+      const ageText = ageMap[ageGroup] || '';
+      const narratorType = ` (Voz: ${genderText}, ${ageText})`;
+      
+      const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
 
       return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
     };
@@ -52,108 +60,121 @@ export const TechnicalScriptModal: React.FC<TechnicalScriptModalProps> = ({ proj
       return `${project.outro.prompt}. Add cinematic movement, sound of gentle closing music, and professional transitions. ${musicPrompt}`;
     };
 
-    // Intro
-    if (project.intro) {
-      rows.push({
-        runningTime: formatTime(runningTime),
-        duration: '5s',
-        sceneRef: 'Intro',
-        takeRef: '-',
-        settingRef: '-',
-        charactersRef: '-',
-        action: '-',
-        sound: '-',
-        camera: '-',
-        dialogue: '-',
-        narration: '-',
-        promptVideo: getIntroVideoPrompt() || '-'
-      });
-      runningTime += 5;
-    }
-
-    // Scenes
-    project.scenes.forEach((scene, sIdx) => {
-      scene.takes.forEach((take, tIdx) => {
-        const duration = take.duration || 5;
-        
-        const setting = project.settings.find(s => s.id === take.settingId);
-        const characters = project.characters
-          .filter(c => take.characterIds?.includes(c.id))
-          .map(c => c.name)
-          .join(', ');
-
-        const dialogueText = take.dialogueLines && take.dialogueLines.length > 0
-          ? take.dialogueLines.map(line => {
-              const char = project.characters.find(c => c.id === line.characterId);
-              return `${char?.name || 'Personagem'}: ${line.text}`;
-            }).join(' | ')
-          : take.dialogue && take.dialogue !== 'Nenhum' ? take.dialogue : '-';
-
+      // Intro
+      if (project.intro) {
         rows.push({
           runningTime: formatTime(runningTime),
-          duration: `${duration}s`,
-          sceneRef: `Cena ${sIdx + 1}`,
-          takeRef: `Take ${tIdx + 1}`,
-          settingRef: setting?.name || '-',
-          charactersRef: characters || '-',
-          action: take.action || '-',
-          sound: take.sound || '-',
-          camera: take.camera || '-',
-          dialogue: dialogueText,
-          narration: take.narration || '-',
-          promptVideo: take.lastVideoPrompt || getDefaultVideoPrompt(scene, take) || '-'
+          duration: '5s',
+          sceneRef: 'Intro',
+          takeRef: '-',
+          settingRef: '-',
+          charactersRef: '-',
+          action: '-',
+          sound: '-',
+          camera: '-',
+          dialogue: '-',
+          narration: '-',
+          soundtrack: '-',
+          promptVideo: getIntroVideoPrompt() || '-'
         });
-        runningTime += duration;
-      });
-    });
+        runningTime += 5;
+      }
 
-    // Outro
-    if (project.outro) {
-      rows.push({
-        runningTime: formatTime(runningTime),
-        duration: '5s',
-        sceneRef: 'Outro',
-        takeRef: '-',
-        settingRef: '-',
-        charactersRef: '-',
-        action: '-',
-        sound: '-',
-        camera: '-',
-        dialogue: '-',
-        narration: '-',
-        promptVideo: getOutroVideoPrompt() || '-'
+      // Scenes
+      project.scenes.forEach((scene, sIdx) => {
+        scene.takes.forEach((take, tIdx) => {
+          const duration = take.duration || 5;
+          
+          const setting = project.settings.find(s => s.id === take.settingId);
+          const characters = project.characters
+            .filter(c => take.characterIds?.includes(c.id))
+            .map(c => c.name)
+            .join(', ');
+
+          const dialogueText = take.dialogueLines && take.dialogueLines.length > 0
+            ? take.dialogueLines.map(line => {
+                const char = project.characters.find(c => c.id === line.characterId);
+                return `${char?.name || 'Personagem'}: ${line.text}`;
+              }).join(' | ')
+            : take.dialogue && take.dialogue !== 'Nenhum' ? take.dialogue : '-';
+
+          const gender = project.narrationSettings?.gender || 'female';
+          const ageGroup = project.narrationSettings?.ageGroup || 'adult';
+          const genderText = gender === 'male' ? 'Masculino' : 'Feminino';
+          const ageMap: Record<string, string> = { child: 'Criança', youth: 'Jovem', adult: 'Adulto', senior: 'Idoso' };
+          const ageText = ageMap[ageGroup] || '';
+          const narratorType = `(Voz: ${genderText}, ${ageText})`;
+          
+          const narrationText = take.narration && take.narration !== "Nenhum" ? `${narratorType} ${take.narration}` : '-';
+
+          rows.push({
+            runningTime: formatTime(runningTime),
+            duration: `${duration}s`,
+            sceneRef: `Cena ${sIdx + 1}`,
+            takeRef: `Take ${tIdx + 1}`,
+            settingRef: setting?.name || '-',
+            charactersRef: characters || '-',
+            action: take.action || '-',
+            sound: take.sound || '-',
+            camera: take.camera || '-',
+            dialogue: dialogueText,
+            narration: narrationText,
+            soundtrack: scene.soundtrack?.style || '-',
+            promptVideo: take.lastVideoPrompt || getDefaultVideoPrompt(scene, take) || '-'
+          });
+          runningTime += duration;
+        });
       });
-    }
+
+      // Outro
+      if (project.outro) {
+        rows.push({
+          runningTime: formatTime(runningTime),
+          duration: '5s',
+          sceneRef: 'Outro',
+          takeRef: '-',
+          settingRef: '-',
+          charactersRef: '-',
+          action: '-',
+          sound: '-',
+          camera: '-',
+          dialogue: '-',
+          narration: '-',
+          soundtrack: '-',
+          promptVideo: getOutroVideoPrompt() || '-'
+        });
+      }
 
     return rows;
   };
 
   const rows = generateTableData();
 
-  const handleCopy = () => {
-    const headers = [
-      'Tempo Corrido', 'Duração', 'Ref Cena', 'Ref Take', 'Ref Cenario', 
-      'Ref Personagens', 'Acção', 'Som', 'Camera', 'Dialogo', 'Narração', 
-      'Prompt Video'
-    ];
-    
-    const tsvContent = [
-      headers.join('\t'),
-      ...rows.map(row => [
-        row.runningTime,
-        row.duration,
-        row.sceneRef,
-        row.takeRef,
-        row.settingRef,
-        row.charactersRef,
-        row.action,
-        row.sound,
-        row.camera,
-        row.dialogue,
-        row.narration,
-        row.promptVideo
-      ].map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join('\t'))
-    ].join('\n');
+    const handleCopy = () => {
+      const headers = [
+        'Tempo Corrido', 'Duração', 'Ref Cena', 'Ref Take', 'Ref Cenario', 
+        'Ref Personagens', 'Acção', 'Som', 'Camera', 'Dialogo', 'Narração', 
+        'Soundtrack', 'Prompt Video'
+      ];
+      
+      const tsvContent = [
+        headers.join('\t'),
+        ...rows.map(row => [
+          row.runningTime,
+          row.duration,
+          row.sceneRef,
+          row.takeRef,
+          row.settingRef,
+          row.charactersRef,
+          row.action,
+          row.sound,
+          row.camera,
+          row.dialogue,
+          row.narration,
+          row.soundtrack,
+          row.promptVideo
+        ].map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join('\t'))
+      ].join('\n');
 
     navigator.clipboard.writeText(tsvContent).then(() => {
       setCopied(true);
@@ -214,6 +235,7 @@ export const TechnicalScriptModal: React.FC<TechnicalScriptModalProps> = ({ proj
                     <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider min-w-[150px]">Camera</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider min-w-[200px]">Dialogo</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider min-w-[200px]">Narração</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider min-w-[200px]">Soundtrack</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider min-w-[300px]">Prompt Video</th>
                   </tr>
                 </thead>
@@ -231,6 +253,7 @@ export const TechnicalScriptModal: React.FC<TechnicalScriptModalProps> = ({ proj
                       <td className="px-4 py-3 text-sm text-zinc-700">{row.camera}</td>
                       <td className="px-4 py-3 text-sm text-zinc-700">{row.dialogue}</td>
                       <td className="px-4 py-3 text-sm text-zinc-700">{row.narration}</td>
+                      <td className="px-4 py-3 text-sm text-zinc-700">{row.soundtrack}</td>
                       <td className="px-4 py-3 text-sm text-zinc-500 font-mono text-xs whitespace-pre-wrap">{row.promptVideo}</td>
                     </tr>
                   ))}

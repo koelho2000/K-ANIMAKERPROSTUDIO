@@ -112,7 +112,14 @@ export default function Timelapse({
     }
   }, [navigationContext, setNavigationContext, timelineEvents]);
 
-  const selectedEvent = timelineEvents[selectedEventIndex];
+  const safeSelectedEventIndex = Math.min(selectedEventIndex, Math.max(0, timelineEvents.length - 1));
+  const selectedEvent = timelineEvents[safeSelectedEventIndex];
+
+  useEffect(() => {
+    if (selectedEventIndex >= timelineEvents.length && timelineEvents.length > 0) {
+      setSelectedEventIndex(timelineEvents.length - 1);
+    }
+  }, [timelineEvents.length, selectedEventIndex]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -131,15 +138,16 @@ export default function Timelapse({
   }, [isPlaying, timelineEvents.length]);
 
   useEffect(() => {
+    if (!selectedEvent) return;
     setNarrationText(selectedEvent.take.narration || "");
     setSubtitleText(selectedEvent.take.dialogue || "");
-  }, [selectedEvent.take.id]);
+  }, [selectedEvent?.take.id]);
 
   const handleGenerateNarration = async () => {
     setIsGeneratingNarration(true);
     try {
       const previousNarrations = timelineEvents
-        .slice(0, selectedEventIndex)
+        .slice(0, safeSelectedEventIndex)
         .map(e => e.take.narration)
         .filter(Boolean) as string[];
 
@@ -399,7 +407,7 @@ export default function Timelapse({
       <div className="bg-white border-b border-zinc-200 p-4 relative">
         <div className="flex items-center gap-2 overflow-x-auto pb-4 custom-scrollbar scroll-smooth">
           {timelineEvents.map((event, idx) => {
-            const isActive = selectedEventIndex === idx;
+            const isActive = safeSelectedEventIndex === idx;
             const hasMedia = event.take.videoUrl || event.take.startFrameUrl || event.take.endFrameUrl;
             
             return (
@@ -520,7 +528,7 @@ export default function Timelapse({
                 setSelectedEventIndex(prev => Math.max(0, prev - 1));
                 setIsPlaying(false);
               }}
-              disabled={selectedEventIndex === 0}
+              disabled={safeSelectedEventIndex === 0}
               className="w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-all pointer-events-auto disabled:opacity-0"
             >
               <ChevronLeft className="w-6 h-6" />
@@ -547,7 +555,7 @@ export default function Timelapse({
                 setSelectedEventIndex(prev => Math.min(timelineEvents.length - 1, prev + 1));
                 setIsPlaying(false);
               }}
-              disabled={selectedEventIndex === timelineEvents.length - 1}
+              disabled={safeSelectedEventIndex === timelineEvents.length - 1}
               className="w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-all pointer-events-auto disabled:opacity-0"
             >
               <ChevronRight className="w-6 h-6" />
@@ -602,7 +610,7 @@ export default function Timelapse({
               {(selectedEvent.take.videoUrl || selectedEvent.take.startFrameUrl) && (
                 <button
                   onClick={() => {
-                    const nextEvent = timelineEvents[selectedEventIndex + 1];
+                    const nextEvent = timelineEvents[safeSelectedEventIndex + 1];
                     const nextMediaUrl = nextEvent?.take.videoUrl || nextEvent?.take.startFrameUrl;
                     
                     setEditingItem({
