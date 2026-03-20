@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import * as htmlToImage from "html-to-image";
 import { Project, Scene, Take } from "../types";
 import { 
   generateJSON,
@@ -9,8 +10,8 @@ import {
   detectSetting,
   extractDialogueLines,
   detectCharactersForDialogueLines,
-  generateStoryboardImage,
-  generateStoryboardPrompt
+  generateTakeStoryboardImage,
+  generateTakeStoryboardPrompt
 } from "../services/geminiService";
 import {
   Loader2,
@@ -67,7 +68,6 @@ export default function Scenes({
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   const [storyboardProgress, setStoryboardProgress] = useState(0);
   const [storyboardTimeElapsed, setStoryboardTimeElapsed] = useState(0);
-  const [editingStoryboardPrompt, setEditingStoryboardPrompt] = useState<{ sceneId: string, prompt: string } | null>(null);
 
   useEffect(() => {
     if (navigationContext?.sceneId) {
@@ -163,29 +163,48 @@ export default function Scenes({
     return () => clearInterval(interval);
   }, [generatingStoryboardId]);
 
-  const handleOpenStoryboardPromptModal = (sceneId: string) => {
-    const scene = project.scenes.find(s => s.id === sceneId);
-    if (!scene || scene.takes.length === 0) return;
-    const prompt = generateStoryboardPrompt(scene, project);
-    setEditingStoryboardPrompt({ sceneId, prompt });
-  };
-
   const handleGenerateStoryboard = async (sceneId: string, customPrompt?: string) => {
     const scene = project.scenes.find(s => s.id === sceneId);
     if (!scene || scene.takes.length === 0) return;
 
-    setEditingStoryboardPrompt(null);
     setGeneratingStoryboardId(sceneId);
     const startTime = Date.now();
     try {
-      const imageUrl = await generateStoryboardImage(scene, project, customPrompt);
-      const timeInSeconds = Math.round((Date.now() - startTime) / 1000);
+      let updatedTakes = [...scene.takes];
+      
+      for (let i = 0; i < updatedTakes.length; i++) {
+        const take = updatedTakes[i];
+        setCurrentOperationLabel(`A gerar storyboard para o take ${i + 1} de ${updatedTakes.length}...`);
+        
+        const takeStartTime = Date.now();
+        const imageUrl = await generateTakeStoryboardImage(take, scene, project, customPrompt);
+        const timeInSeconds = Math.round((Date.now() - takeStartTime) / 1000);
+        
+        updatedTakes[i] = {
+          ...take,
+          storyboardImageUrl: imageUrl,
+          storyboardGenerationTime: timeInSeconds
+        };
+        
+        // Update progress
+        setStoryboardProgress(((i + 1) / updatedTakes.length) * 100);
+        
+        // Update state incrementally
+        setProject(prev => ({
+          ...prev,
+          scenes: prev.scenes.map(s => s.id === sceneId ? { 
+            ...s, 
+            takes: updatedTakes
+          } : s)
+        }));
+      }
+      
+      const totalTimeInSeconds = Math.round((Date.now() - startTime) / 1000);
       setProject(prev => ({
         ...prev,
         scenes: prev.scenes.map(s => s.id === sceneId ? { 
           ...s, 
-          storyboardImageUrl: imageUrl,
-          storyboardGenerationTime: timeInSeconds
+          storyboardGenerationTime: totalTimeInSeconds
         } : s)
       }));
     } catch (error) {
@@ -193,6 +212,35 @@ export default function Scenes({
       alert(`Erro ao gerar storyboard para a cena: ${scene.title}`);
     } finally {
       setGeneratingStoryboardId(null);
+      setCurrentOperationLabel("");
+      setStoryboardProgress(0);
+    }
+  };
+
+  const handleDownloadStoryboardGrid = async (sceneId: string, sceneTitle: string) => {
+    const gridElement = document.getElementById(`storyboard-grid-${sceneId}`);
+    if (!gridElement) return;
+
+    try {
+      const dataUrl = await htmlToImage.toPng(gridElement, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+        filter: (node) => {
+          // Ignore elements with data-html2canvas-ignore attribute
+          if (node instanceof HTMLElement && node.dataset.html2canvasIgnore === 'true') {
+            return false;
+          }
+          return true;
+        }
+      });
+      
+      const link = document.createElement('a');
+      link.download = `storyboard-${sceneTitle.replace(/\s+/g, '-').toLowerCase()}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error('Error generating storyboard image:', error);
+      alert('Erro ao gerar a imagem do storyboard.');
     }
   };
 
@@ -215,12 +263,30 @@ export default function Scenes({
         
         try {
           const startTime = Date.now();
-          const imageUrl = await generateStoryboardImage(scene, project);
-          const timeInSeconds = Math.round((Date.now() - startTime) / 1000);
+          let updatedTakes = [...scene.takes];
+          
+          for (let j = 0; j < updatedTakes.length; j++) {
+            const take = updatedTakes[j];
+            setCurrentOperationLabel(`A gerar storyboard (Cena ${i + 1}/${scenesToGenerate.length}, Take ${j + 1}/${updatedTakes.length})...`);
+            
+            const takeStartTime = Date.now();
+            const imageUrl = await generateTakeStoryboardImage(take, scene, project);
+            const timeInSeconds = Math.round((Date.now() - takeStartTime) / 1000);
+            
+            updatedTakes[j] = {
+              ...take,
+              storyboardImageUrl: imageUrl,
+              storyboardGenerationTime: timeInSeconds
+            };
+            
+            setStoryboardProgress(((j + 1) / updatedTakes.length) * 100);
+          }
+          
+          const totalTimeInSeconds = Math.round((Date.now() - startTime) / 1000);
           updatedScenes[sceneIndex] = { 
             ...updatedScenes[sceneIndex], 
-            storyboardImageUrl: imageUrl,
-            storyboardGenerationTime: timeInSeconds
+            takes: updatedTakes,
+            storyboardGenerationTime: totalTimeInSeconds
           };
         } catch (error) {
           console.error(`Error generating storyboard for scene ${scene.title}:`, error);
@@ -238,6 +304,7 @@ export default function Scenes({
       setGeneratingStoryboardId(null);
       setGlobalProgress(0);
       setCurrentOperationLabel("");
+      setStoryboardProgress(0);
     }
   };
 
@@ -1044,7 +1111,7 @@ export default function Scenes({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleOpenStoryboardPromptModal(scene.id);
+                      handleGenerateStoryboard(scene.id);
                     }}
                     disabled={generatingStoryboardId === scene.id || scene.takes.length === 0}
                     className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
@@ -1101,46 +1168,61 @@ export default function Scenes({
                         />
                       </div>
                     )}
-                    {scene.storyboardImageUrl && (
-                      <div className="border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 p-2">
-                        <div className="flex items-center justify-between mb-2 px-2">
+                    {scene.takes.some(t => t.storyboardImageUrl) && (
+                      <div className="border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 p-4">
+                        <div className="flex items-center justify-between mb-4">
                           <div>
                             <h4 className="text-sm font-bold text-zinc-700 flex items-center gap-2">
                               <ImageIcon className="w-4 h-4" />
                               Storyboard da Cena
                             </h4>
                             <p className="text-[10px] text-zinc-500 mt-0.5">
-                              Motor: Gemini 2.5 Flash Image • Tempo: {scene.storyboardGenerationTime || '--'}s
+                              Motor: Gemini 2.5 Flash Image • Tempo total: {scene.storyboardGenerationTime || '--'}s
                             </p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setFullScreenImage(scene.storyboardImageUrl!)}
-                              className="flex items-center gap-1 text-xs text-zinc-600 hover:text-zinc-900 font-medium bg-white border border-zinc-200 px-2 py-1 rounded-md transition-colors"
-                            >
-                              <Maximize2 className="w-3 h-3" />
-                              Ecrã Inteiro
-                            </button>
-                            <button
-                              onClick={() => {
-                                const a = document.createElement('a');
-                                a.href = scene.storyboardImageUrl!;
-                                a.download = `storyboard-${scene.title.replace(/\s+/g, '-').toLowerCase()}.png`;
-                                a.click();
-                              }}
-                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 px-2 py-1 rounded-md transition-colors"
-                            >
-                              <Download className="w-3 h-3" />
-                              Download
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => handleDownloadStoryboardGrid(scene.id, scene.title)}
+                            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download do Quadro
+                          </button>
                         </div>
-                        <img 
-                          src={scene.storyboardImageUrl} 
-                          alt={`Storyboard for ${scene.title}`} 
-                          className="w-full h-auto rounded-lg shadow-sm"
-                          referrerPolicy="no-referrer"
-                        />
+                        <div id={`storyboard-grid-${scene.id}`} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-zinc-50 p-2 -m-2 rounded-xl">
+                          {scene.takes.map((take, index) => {
+                            if (!take.storyboardImageUrl) return null;
+                            const charactersInTake = take.characterIds && take.characterIds.length > 0 
+                              ? take.characterIds.map(id => project.characters.find(c => c.id === id)?.name).filter(Boolean).join(', ') 
+                              : 'Nenhuma';
+                            return (
+                              <div key={take.id} className="bg-white border border-zinc-200 rounded-lg overflow-hidden flex flex-col shadow-sm">
+                                <div className="bg-zinc-800 text-white text-xs font-bold px-3 py-2 text-center">
+                                  Cena {project.scenes.findIndex(s => s.id === scene.id) + 1} - Take {index + 1}
+                                </div>
+                                <div className="relative aspect-video bg-zinc-100">
+                                  <img 
+                                    src={take.storyboardImageUrl} 
+                                    alt={`Take ${index + 1}`} 
+                                    className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <button
+                                    onClick={() => setFullScreenImage(take.storyboardImageUrl!)}
+                                    data-html2canvas-ignore="true"
+                                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-md backdrop-blur-sm transition-colors"
+                                  >
+                                    <Maximize2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                                <div className="p-3 text-xs text-zinc-600 flex-1 flex flex-col gap-1 bg-zinc-50 border-t border-zinc-100">
+                                  <p><span className="font-semibold text-zinc-800">Ação:</span> {take.action}</p>
+                                  <p><span className="font-semibold text-zinc-800">Câmara:</span> {take.camera}</p>
+                                  <p><span className="font-semibold text-zinc-800">Personagens:</span> {charactersInTake}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                     {scene.takes.map((take, index) => (
@@ -1530,52 +1612,6 @@ export default function Scenes({
             className="max-w-full max-h-full object-contain rounded-lg"
             referrerPolicy="no-referrer"
           />
-        </div>
-      )}
-
-      {editingStoryboardPrompt && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-zinc-100 flex items-center justify-between shrink-0">
-              <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
-                <ImageIcon className="w-5 h-5 text-indigo-600" />
-                Validar Prompt do Storyboard
-              </h3>
-              <button
-                onClick={() => setEditingStoryboardPrompt(null)}
-                className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5 text-zinc-500" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1">
-              <p className="text-sm text-zinc-500 mb-4">
-                Este é o prompt que será enviado para o Gemini gerar o storyboard. Podes editá-lo livremente antes de iniciar a geração para ajustares detalhes visuais, estilo ou conteúdo.
-              </p>
-              <textarea
-                value={editingStoryboardPrompt.prompt}
-                onChange={(e) => setEditingStoryboardPrompt({ ...editingStoryboardPrompt, prompt: e.target.value })}
-                className="w-full h-96 p-4 border border-zinc-200 rounded-xl font-mono text-sm text-zinc-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-              />
-            </div>
-            
-            <div className="p-6 border-t border-zinc-100 bg-zinc-50 rounded-b-2xl flex justify-end gap-3 shrink-0">
-              <button
-                onClick={() => setEditingStoryboardPrompt(null)}
-                className="px-4 py-2 text-zinc-600 hover:bg-zinc-200 bg-zinc-100 rounded-xl font-medium transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => handleGenerateStoryboard(editingStoryboardPrompt.sceneId, editingStoryboardPrompt.prompt)}
-                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium flex items-center gap-2 transition-colors"
-              >
-                <Sparkles className="w-4 h-4" />
-                Gerar Storyboard
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

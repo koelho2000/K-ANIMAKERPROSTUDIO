@@ -197,6 +197,8 @@ export interface Take {
   updatedAt?: number;
   startFrameUrl?: string;
   endFrameUrl?: string;
+  storyboardImageUrl?: string;
+  storyboardGenerationTime?: number;
   videoUrl?: string;
   videoOperationId?: string;
   videoObject?: any;

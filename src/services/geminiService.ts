@@ -107,49 +107,35 @@ export const generateJSON = async (
   });
 };
 
-export const generateStoryboardPrompt = (scene: any, project: any) => {
+export const generateTakeStoryboardPrompt = (take: any, scene: any, project: any) => {
   const charactersContext = project.characters
+    .filter((c: any) => take.characterIds?.includes(c.id))
     .map((c: any) => `${c.name}: ${c.description}`)
     .join("\n");
     
-  const settingsContext = project.settings
-    .map((s: any) => `${s.name}: ${s.description}`)
-    .join("\n");
-  
-  const sceneIndex = project.scenes.findIndex((s: any) => s.id === scene.id) + 1;
+  const setting = project.settings.find((s: any) => s.id === take.settingId);
+  const settingsContext = setting ? `${setting.name}: ${setting.description}` : '';
 
-  const takesDescription = scene.takes.map((t: any, i: number) => {
-    const charactersInTake = t.characters && t.characters.length > 0 ? t.characters.join(', ') : 'None';
-    return `Panel ${i + 1}:
-Visuals: ${t.action}
-Top Text Overlay: "Scene ${sceneIndex} - Take ${i + 1}"
-Bottom Text Overlay: Action: ${t.action} | Characters: ${charactersInTake} | Camera: ${t.camera}`;
-  }).join("\n\n");
-
-  return `A professional storyboard page with a grid of ${scene.takes.length} panels. 
-The storyboard is for an animated film. 
+  return `A professional storyboard panel for an animated film.
 Film style: ${project.filmStyle}. 
-Language for text: ${project.language}.
 Scene: ${scene.title}. 
 
-Characters Context (Use provided reference images if available, otherwise use descriptions):
-${charactersContext}
+Characters in this panel:
+${charactersContext || 'None'}
 
-Settings Context (Use provided reference images if available, otherwise use descriptions):
-${settingsContext}
+Setting for this panel:
+${settingsContext || 'Not specified'}
 
-The panels show the sequence of events:
-${takesDescription}
+Visuals to draw: ${take.action}
+Camera: ${take.camera}
 
-CRITICAL INSTRUCTION FOR TEXT IN THE IMAGE:
-You MUST include exact text overlays on each panel in the language: ${project.language}.
-- At the TOP of each panel, write the exact "Top Text Overlay" (e.g., "Scene X - Take Y" translated to ${project.language}).
-- At the BOTTOM of each panel, write a simple description based on the "Bottom Text Overlay", translated to ${project.language}. It must include the action, characters, and camera.
-The text must be highly legible, written in a clear, professional font.
-Style: professional storyboard, comic book layout, high quality, detailed sketches or renders.`;
+CRITICAL INSTRUCTION:
+Do NOT include any text, captions, or words in the image itself. Just draw the scene.
+Style: professional storyboard panel, high quality, detailed sketch or render.`;
 };
 
-export const generateStoryboardImage = async (
+export const generateTakeStoryboardImage = async (
+  take: any,
   scene: any,
   project: any,
   customPrompt?: string
@@ -157,13 +143,13 @@ export const generateStoryboardImage = async (
   return withRetry(async () => {
     const ai = getGenAI();
     
-    const prompt = customPrompt || generateStoryboardPrompt(scene, project);
+    const prompt = customPrompt || generateTakeStoryboardPrompt(take, scene, project);
     
     const parts: any[] = [];
     
     // Add character images
     if (project.characters && Array.isArray(project.characters)) {
-      project.characters.forEach((c: any) => {
+      project.characters.filter((c: any) => take.characterIds?.includes(c.id)).forEach((c: any) => {
         if (c.imageUrl) {
           const match = c.imageUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
           if (match) {
@@ -179,22 +165,21 @@ export const generateStoryboardImage = async (
       });
     }
 
-    // Add setting images
+    // Add setting image
     if (project.settings && Array.isArray(project.settings)) {
-      project.settings.forEach((s: any) => {
-        if (s.imageUrl) {
-          const match = s.imageUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-          if (match) {
-            parts.push({ text: `Reference image for setting "${s.name}":` });
-            parts.push({
-              inlineData: {
-                mimeType: match[1],
-                data: match[2]
-              }
-            });
-          }
+      const setting = project.settings.find((s: any) => s.id === take.settingId);
+      if (setting && setting.imageUrl) {
+        const match = setting.imageUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+        if (match) {
+          parts.push({ text: `Reference image for setting "${setting.name}":` });
+          parts.push({
+            inlineData: {
+              mimeType: match[1],
+              data: match[2]
+            }
+          });
         }
-      });
+      }
     }
 
     parts.push({ text: prompt });
