@@ -169,6 +169,8 @@ export interface Scene {
   title: string;
   description: string;
   takes: Take[];
+  storyboardImageUrl?: string;
+  storyboardGenerationTime?: number;
   soundtrack?: {
     style: string;
     audioUrl?: string;

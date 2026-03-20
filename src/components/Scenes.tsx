@@ -8,7 +8,9 @@ import {
   detectCharacters,
   detectSetting,
   extractDialogueLines,
-  detectCharactersForDialogueLines
+  detectCharactersForDialogueLines,
+  generateStoryboardImage,
+  generateStoryboardPrompt
 } from "../services/geminiService";
 import {
   Loader2,
@@ -25,6 +27,8 @@ import {
   Info,
   Zap,
   ArrowRightLeft,
+  Image as ImageIcon,
+  Download,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Type } from "@google/genai";
@@ -56,8 +60,14 @@ export default function Scenes({
   const [expandedSceneId, setExpandedSceneId] = useState<string | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
   const [isAutoGeneratingDialogues, setIsAutoGeneratingDialogues] = useState(false);
+  const [isGeneratingAllStoryboards, setIsGeneratingAllStoryboards] = useState(false);
+  const [generatingStoryboardId, setGeneratingStoryboardId] = useState<string | null>(null);
   const [globalProgress, setGlobalProgress] = useState(0);
   const [showCameraHelp, setShowCameraHelp] = useState(false);
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
+  const [storyboardProgress, setStoryboardProgress] = useState(0);
+  const [storyboardTimeElapsed, setStoryboardTimeElapsed] = useState(0);
+  const [editingStoryboardPrompt, setEditingStoryboardPrompt] = useState<{ sceneId: string, prompt: string } | null>(null);
 
   useEffect(() => {
     if (navigationContext?.sceneId) {
@@ -137,6 +147,99 @@ export default function Scenes({
     }
     return () => clearInterval(interval);
   }, [generatingTakesId]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (generatingStoryboardId) {
+      setStoryboardProgress(0);
+      setStoryboardTimeElapsed(0);
+      interval = setInterval(() => {
+        setStoryboardProgress((prev) => (prev >= 95 ? prev : prev + Math.random() * 5));
+        setStoryboardTimeElapsed((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setStoryboardProgress(100);
+    }
+    return () => clearInterval(interval);
+  }, [generatingStoryboardId]);
+
+  const handleOpenStoryboardPromptModal = (sceneId: string) => {
+    const scene = project.scenes.find(s => s.id === sceneId);
+    if (!scene || scene.takes.length === 0) return;
+    const prompt = generateStoryboardPrompt(scene, project);
+    setEditingStoryboardPrompt({ sceneId, prompt });
+  };
+
+  const handleGenerateStoryboard = async (sceneId: string, customPrompt?: string) => {
+    const scene = project.scenes.find(s => s.id === sceneId);
+    if (!scene || scene.takes.length === 0) return;
+
+    setEditingStoryboardPrompt(null);
+    setGeneratingStoryboardId(sceneId);
+    const startTime = Date.now();
+    try {
+      const imageUrl = await generateStoryboardImage(scene, project, customPrompt);
+      const timeInSeconds = Math.round((Date.now() - startTime) / 1000);
+      setProject(prev => ({
+        ...prev,
+        scenes: prev.scenes.map(s => s.id === sceneId ? { 
+          ...s, 
+          storyboardImageUrl: imageUrl,
+          storyboardGenerationTime: timeInSeconds
+        } : s)
+      }));
+    } catch (error) {
+      console.error(error);
+      alert(`Erro ao gerar storyboard para a cena: ${scene.title}`);
+    } finally {
+      setGeneratingStoryboardId(null);
+    }
+  };
+
+  const handleGenerateAllStoryboards = async () => {
+    setIsGeneratingAllStoryboards(true);
+    setGlobalProgress(0);
+    setCurrentOperationLabel("A gerar storyboards para todas as cenas...");
+
+    const scenesToGenerate = project.scenes.filter(s => s.takes.length > 0);
+    let completed = 0;
+
+    try {
+      const updatedScenes = [...project.scenes];
+      for (let i = 0; i < scenesToGenerate.length; i++) {
+        const scene = scenesToGenerate[i];
+        const sceneIndex = updatedScenes.findIndex(s => s.id === scene.id);
+        
+        setGeneratingStoryboardId(scene.id);
+        setExpandedSceneId(scene.id);
+        
+        try {
+          const startTime = Date.now();
+          const imageUrl = await generateStoryboardImage(scene, project);
+          const timeInSeconds = Math.round((Date.now() - startTime) / 1000);
+          updatedScenes[sceneIndex] = { 
+            ...updatedScenes[sceneIndex], 
+            storyboardImageUrl: imageUrl,
+            storyboardGenerationTime: timeInSeconds
+          };
+        } catch (error) {
+          console.error(`Error generating storyboard for scene ${scene.title}:`, error);
+        }
+        
+        completed++;
+        setGlobalProgress((completed / scenesToGenerate.length) * 100);
+        setProject(prev => ({ ...prev, scenes: [...updatedScenes] }));
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar storyboards.");
+    } finally {
+      setIsGeneratingAllStoryboards(false);
+      setGeneratingStoryboardId(null);
+      setGlobalProgress(0);
+      setCurrentOperationLabel("");
+    }
+  };
 
   const handleAutoDetectAll = () => {
     setIsAutoDetecting(true);
@@ -798,10 +901,10 @@ export default function Scenes({
           <Zap className="w-5 h-5 text-indigo-600" />
           <h3 className="font-bold text-zinc-900">Ações Automáticas Globais</h3>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button
             onClick={handleAutoDetectAll}
-            disabled={isAutoDetecting || isAutoGeneratingDialogues || !project.scenes.length}
+            disabled={isAutoDetecting || isAutoGeneratingDialogues || isGeneratingAllStoryboards || !project.scenes.length}
             className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
           >
             {isAutoDetecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
@@ -809,24 +912,33 @@ export default function Scenes({
           </button>
           <button
             onClick={handleAutoGenerateAllDialogues}
-            disabled={isAutoDetecting || isAutoGeneratingDialogues || !project.scenes.length}
+            disabled={isAutoDetecting || isAutoGeneratingDialogues || isGeneratingAllStoryboards || !project.scenes.length}
             className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
           >
             {isAutoGeneratingDialogues ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             Auto-gerar Diálogos
           </button>
+          <button
+            onClick={handleGenerateAllStoryboards}
+            disabled={isAutoDetecting || isAutoGeneratingDialogues || isGeneratingAllStoryboards || !project.scenes.length}
+            className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {isGeneratingAllStoryboards ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+            Gerar Storyboards (Todos)
+          </button>
         </div>
       </div>
 
-      {(isGeneratingScenes || isGeneratingAllTakes || isAutoDetecting || isAutoGeneratingDialogues) && (
+      {(isGeneratingScenes || isGeneratingAllTakes || isAutoDetecting || isAutoGeneratingDialogues || isGeneratingAllStoryboards) && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100">
           <ProgressBar
-            progress={isAutoDetecting || isAutoGeneratingDialogues ? globalProgress : scenesProgress}
+            progress={isAutoDetecting || isAutoGeneratingDialogues || isGeneratingAllStoryboards ? globalProgress : scenesProgress}
             label={
               currentOperationLabel || (
                 isGeneratingAllTakes ? "A gerar todos os takes do filme..." : 
                 isGeneratingScenes ? "A estruturar cenas do filme..." :
                 isAutoDetecting ? "A detetar personagens e cenários em todos os takes..." :
+                isGeneratingAllStoryboards ? "A gerar storyboards para todas as cenas..." :
                 "A extrair diálogos de todos os takes..."
               )
             }
@@ -932,6 +1044,21 @@ export default function Scenes({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      handleOpenStoryboardPromptModal(scene.id);
+                    }}
+                    disabled={generatingStoryboardId === scene.id || scene.takes.length === 0}
+                    className="flex items-center gap-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {generatingStoryboardId === scene.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-4 h-4" />
+                    )}
+                    Gerar Storyboard
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onGenerateTakesForScene(scene);
                     }}
                     disabled={generatingTakesId === scene.id}
@@ -965,6 +1092,57 @@ export default function Scenes({
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {generatingStoryboardId === scene.id && (
+                      <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+                        <ProgressBar
+                          progress={storyboardProgress}
+                          label={`A gerar storyboard... (${storyboardTimeElapsed}s)`}
+                          modelName="Gemini"
+                        />
+                      </div>
+                    )}
+                    {scene.storyboardImageUrl && (
+                      <div className="border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 p-2">
+                        <div className="flex items-center justify-between mb-2 px-2">
+                          <div>
+                            <h4 className="text-sm font-bold text-zinc-700 flex items-center gap-2">
+                              <ImageIcon className="w-4 h-4" />
+                              Storyboard da Cena
+                            </h4>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">
+                              Motor: Gemini 2.5 Flash Image • Tempo: {scene.storyboardGenerationTime || '--'}s
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setFullScreenImage(scene.storyboardImageUrl!)}
+                              className="flex items-center gap-1 text-xs text-zinc-600 hover:text-zinc-900 font-medium bg-white border border-zinc-200 px-2 py-1 rounded-md transition-colors"
+                            >
+                              <Maximize2 className="w-3 h-3" />
+                              Ecrã Inteiro
+                            </button>
+                            <button
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = scene.storyboardImageUrl!;
+                                a.download = `storyboard-${scene.title.replace(/\s+/g, '-').toLowerCase()}.png`;
+                                a.click();
+                              }}
+                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 px-2 py-1 rounded-md transition-colors"
+                            >
+                              <Download className="w-3 h-3" />
+                              Download
+                            </button>
+                          </div>
+                        </div>
+                        <img 
+                          src={scene.storyboardImageUrl} 
+                          alt={`Storyboard for ${scene.title}`} 
+                          className="w-full h-auto rounded-lg shadow-sm"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    )}
                     {scene.takes.map((take, index) => (
                       <div
                         key={take.id}
@@ -1337,6 +1515,69 @@ export default function Scenes({
           </div>
         ))}
       </div>
+
+      {fullScreenImage && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+          <button
+            onClick={() => setFullScreenImage(null)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={fullScreenImage}
+            alt="Storyboard Fullscreen"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      )}
+
+      {editingStoryboardPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between shrink-0">
+              <h3 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-indigo-600" />
+                Validar Prompt do Storyboard
+              </h3>
+              <button
+                onClick={() => setEditingStoryboardPrompt(null)}
+                className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-zinc-500" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              <p className="text-sm text-zinc-500 mb-4">
+                Este é o prompt que será enviado para o Gemini gerar o storyboard. Podes editá-lo livremente antes de iniciar a geração para ajustares detalhes visuais, estilo ou conteúdo.
+              </p>
+              <textarea
+                value={editingStoryboardPrompt.prompt}
+                onChange={(e) => setEditingStoryboardPrompt({ ...editingStoryboardPrompt, prompt: e.target.value })}
+                className="w-full h-96 p-4 border border-zinc-200 rounded-xl font-mono text-sm text-zinc-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+              />
+            </div>
+            
+            <div className="p-6 border-t border-zinc-100 bg-zinc-50 rounded-b-2xl flex justify-end gap-3 shrink-0">
+              <button
+                onClick={() => setEditingStoryboardPrompt(null)}
+                className="px-4 py-2 text-zinc-600 hover:bg-zinc-200 bg-zinc-100 rounded-xl font-medium transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleGenerateStoryboard(editingStoryboardPrompt.sceneId, editingStoryboardPrompt.prompt)}
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium flex items-center gap-2 transition-colors"
+              >
+                <Sparkles className="w-4 h-4" />
+                Gerar Storyboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

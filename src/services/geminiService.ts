@@ -107,7 +107,121 @@ export const generateJSON = async (
   });
 };
 
-export const generateImage = async (prompt: string, aspectRatio: string = "16:9", referenceImagesBase64?: string[]) => {
+export const generateStoryboardPrompt = (scene: any, project: any) => {
+  const charactersContext = project.characters
+    .map((c: any) => `${c.name}: ${c.description}`)
+    .join("\n");
+    
+  const settingsContext = project.settings
+    .map((s: any) => `${s.name}: ${s.description}`)
+    .join("\n");
+  
+  const sceneIndex = project.scenes.findIndex((s: any) => s.id === scene.id) + 1;
+
+  const takesDescription = scene.takes.map((t: any, i: number) => {
+    const charactersInTake = t.characters && t.characters.length > 0 ? t.characters.join(', ') : 'None';
+    return `Panel ${i + 1}:
+Visuals: ${t.action}
+Top Text Overlay: "Scene ${sceneIndex} - Take ${i + 1}"
+Bottom Text Overlay: Action: ${t.action} | Characters: ${charactersInTake} | Camera: ${t.camera}`;
+  }).join("\n\n");
+
+  return `A professional storyboard page with a grid of ${scene.takes.length} panels. 
+The storyboard is for an animated film. 
+Film style: ${project.filmStyle}. 
+Language for text: ${project.language}.
+Scene: ${scene.title}. 
+
+Characters Context (Use provided reference images if available, otherwise use descriptions):
+${charactersContext}
+
+Settings Context (Use provided reference images if available, otherwise use descriptions):
+${settingsContext}
+
+The panels show the sequence of events:
+${takesDescription}
+
+CRITICAL INSTRUCTION FOR TEXT IN THE IMAGE:
+You MUST include exact text overlays on each panel in the language: ${project.language}.
+- At the TOP of each panel, write the exact "Top Text Overlay" (e.g., "Scene X - Take Y" translated to ${project.language}).
+- At the BOTTOM of each panel, write a simple description based on the "Bottom Text Overlay", translated to ${project.language}. It must include the action, characters, and camera.
+The text must be highly legible, written in a clear, professional font.
+Style: professional storyboard, comic book layout, high quality, detailed sketches or renders.`;
+};
+
+export const generateStoryboardImage = async (
+  scene: any,
+  project: any,
+  customPrompt?: string
+) => {
+  return withRetry(async () => {
+    const ai = getGenAI();
+    
+    const prompt = customPrompt || generateStoryboardPrompt(scene, project);
+    
+    const parts: any[] = [];
+    
+    // Add character images
+    if (project.characters && Array.isArray(project.characters)) {
+      project.characters.forEach((c: any) => {
+        if (c.imageUrl) {
+          const match = c.imageUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+          if (match) {
+            parts.push({ text: `Reference image for character "${c.name}":` });
+            parts.push({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2]
+              }
+            });
+          }
+        }
+      });
+    }
+
+    // Add setting images
+    if (project.settings && Array.isArray(project.settings)) {
+      project.settings.forEach((s: any) => {
+        if (s.imageUrl) {
+          const match = s.imageUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+          if (match) {
+            parts.push({ text: `Reference image for setting "${s.name}":` });
+            parts.push({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2]
+              }
+            });
+          }
+        }
+      });
+    }
+
+    parts.push({ text: prompt });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: {
+        parts: parts,
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "16:9",
+        },
+      },
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+
+    throw new Error("No storyboard image generated.");
+  });
+};
+
+export const generateImage = async (prompt: string, aspectRatio: string = "16:9", referenceImagesBase64?: string[], allowText: boolean = false) => {
   return withRetry(async () => {
     const ai = getGenAI();
     const parts: any[] = [{ text: prompt }];
@@ -134,7 +248,9 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
       });
     }
 
-    const finalPrompt = `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the image.`;
+    const finalPrompt = allowText 
+      ? prompt 
+      : `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the image.`;
     
     // Ensure we keep the reference images and replace the prompt text
     const finalParts = parts.map(p => p.text ? { text: finalPrompt } : p);
