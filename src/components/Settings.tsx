@@ -22,6 +22,8 @@ import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
 import { ARTISTIC_STYLES } from "../constants";
 import { UpdateTakesModal } from "./UpdateTakesModal";
+import { WorldMapModal } from "./WorldMapModal";
+import { Map } from "lucide-react";
 
 interface SettingsProps {
   project: Project;
@@ -45,6 +47,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
   const [isGeneratingAllImages, setIsGeneratingAllImages] = useState(false);
   const [globalProgress, setGlobalProgress] = useState(0);
   const [currentOperationLabel, setCurrentOperationLabel] = useState("");
+  const [isWorldMapOpen, setIsWorldMapOpen] = useState(false);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -374,6 +377,13 @@ export default function Settings({ project, setProject }: SettingsProps) {
             </button>
           )}
           <button
+            onClick={() => setIsWorldMapOpen(true)}
+            className="flex items-center gap-2 bg-white hover:bg-zinc-50 text-emerald-600 border border-emerald-200 px-4 py-2 rounded-xl font-medium transition-colors"
+          >
+            <Map className="w-5 h-5" />
+            Mapa do Mundo
+          </button>
+          <button
             onClick={handleGenerateAllImages}
             disabled={generatingImageId !== null || project.settings.length === 0}
             className="flex items-center gap-2 bg-white hover:bg-zinc-50 text-indigo-600 border border-indigo-200 px-4 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
@@ -633,6 +643,13 @@ export default function Settings({ project, setProject }: SettingsProps) {
           triggerType="settings"
         />
       )}
+
+      <WorldMapModal
+        isOpen={isWorldMapOpen}
+        onClose={() => setIsWorldMapOpen(false)}
+        project={project}
+        setProject={setProject}
+      />
     </div>
   );
 }

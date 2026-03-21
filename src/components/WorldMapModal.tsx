@@ -1,0 +1,538 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, Map, Plus, Image as ImageIcon, Download, Save, Sparkles, Loader2, Maximize2, ZoomIn, ZoomOut, Move } from 'lucide-react';
+import { Project, Setting } from '../types';
+import { generateImage } from '../services/geminiService';
+import { v4 as uuidv4 } from 'uuid';
+import { ImageModal } from './ImageModal';
+
+interface WorldMapModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  project: Project;
+  setProject: React.Dispatch<React.SetStateAction<Project>>;
+}
+
+export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, project, setProject }) => {
+  const [nodes, setNodes] = useState<Setting[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [isGeneratingWorld, setIsGeneratingWorld] = useState(false);
+  const [isGeneratingNode, setIsGeneratingNode] = useState<string | null>(null);
+  const [showPromptPreview, setShowPromptPreview] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
+  
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize nodes
+  useEffect(() => {
+    if (isOpen) {
+      // Assign random positions to nodes without position
+      const updatedSettings = project.settings.map((s, index) => {
+        if (!s.position) {
+          // Simple grid layout for initial positions
+          const cols = Math.ceil(Math.sqrt(project.settings.length));
+          const row = Math.floor(index / cols);
+          const col = index % cols;
+          return {
+            ...s,
+            position: { x: col * 300 + 100, y: row * 300 + 100 },
+            connections: s.connections || []
+          };
+        }
+        return { ...s, connections: s.connections || [] };
+      });
+      
+      setNodes(updatedSettings);
+      
+      // Update project if positions were added
+      if (updatedSettings.some(s => !project.settings.find(ps => ps.id === s.id)?.position)) {
+        setProject(prev => ({ ...prev, settings: updatedSettings }));
+      }
+    }
+  }, [isOpen, project.settings]);
+
+  const handleMouseDownNode = (e: React.MouseEvent, nodeId: string) => {
+    e.stopPropagation();
+    const node = nodes.find(n => n.id === nodeId);
+    if (node && node.position) {
+      setIsDragging(nodeId);
+      setSelectedNodeId(nodeId);
+      // Calculate offset from mouse to node top-left
+      // We need to account for pan and zoom
+      const rect = (e.target as HTMLElement).closest('.node-element')?.getBoundingClientRect();
+      if (rect) {
+        setDragOffset({
+          x: (e.clientX - rect.left) / zoom,
+          y: (e.clientY - rect.top) / zoom
+        });
+      }
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - pan.x) / zoom - dragOffset.x;
+      const y = (e.clientY - rect.top - pan.y) / zoom - dragOffset.y;
+      
+      setNodes(prev => prev.map(n => 
+        n.id === isDragging ? { ...n, position: { x, y } } : n
+      ));
+    } else if (isPanning) {
+      setPan(prev => ({
+        x: prev.x + e.movementX,
+        y: prev.y + e.movementY
+      }));
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (isDragging) {
+      // Save new positions to project
+      setProject(prev => ({
+        ...prev,
+        settings: prev.settings.map(s => {
+          const node = nodes.find(n => n.id === s.id);
+          return node ? { ...s, position: node.position } : s;
+        })
+      }));
+      setIsDragging(null);
+    }
+    setIsPanning(false);
+  };
+
+  const handleAddBranch = (sourceId: string) => {
+    const sourceNode = nodes.find(n => n.id === sourceId);
+    if (!sourceNode || !sourceNode.position) return;
+
+    const newSetting: Setting = {
+      id: uuidv4(),
+      name: `Caminho de ${sourceNode.name}`,
+      description: `Uma área de transição ou caminho que liga a partir de ${sourceNode.name}.`,
+      position: { x: sourceNode.position.x + 300, y: sourceNode.position.y + (Math.random() * 100 - 50) },
+      connections: [sourceId]
+    };
+
+    // Also add connection to source node
+    const updatedNodes = nodes.map(n => 
+      n.id === sourceId 
+        ? { ...n, connections: [...(n.connections || []), newSetting.id] }
+        : n
+    );
+
+    setNodes([...updatedNodes, newSetting]);
+    
+    setProject(prev => ({
+      ...prev,
+      settings: [
+        ...prev.settings.map(s => s.id === sourceId ? { ...s, connections: [...(s.connections || []), newSetting.id] } : s),
+        newSetting
+      ]
+    }));
+    
+    setSelectedNodeId(newSetting.id);
+  };
+
+  const handleGenerateWorldMap = async () => {
+    setIsGeneratingWorld(true);
+    try {
+      const prompt = `Um mapa do mundo épico e detalhado para um projeto chamado "${project.title}". 
+      Conceito: ${project.concept}. 
+      O mapa deve mostrar as seguintes localizações interligadas: ${project.settings.map(s => s.name).join(', ')}.
+      Estilo: Mapa de fantasia, cartografia artística, vista de cima, altamente detalhado, estilo ${project.filmStyle || 'cinematográfico'}.`;
+      
+      const imageUrl = await generateImage(prompt, "16:9");
+      
+      setProject(prev => ({
+        ...prev,
+        worldMapImageUrl: imageUrl,
+        worldMapPrompt: prompt
+      }));
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar o mapa do mundo.");
+    } finally {
+      setIsGeneratingWorld(false);
+    }
+  };
+
+  const handleGenerateNodeImage = async (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    setIsGeneratingNode(nodeId);
+    try {
+      const prompt = `Cenário: ${node.name}. ${node.description}. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}. Altamente detalhado, iluminação dramática, composição profissional.`;
+      const imageUrl = await generateImage(prompt, project.aspectRatio);
+      
+      setProject(prev => ({
+        ...prev,
+        settings: prev.settings.map(s => s.id === nodeId ? { ...s, imageUrl, lastImagePrompt: prompt } : s)
+      }));
+      
+      setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, imageUrl, lastImagePrompt: prompt } : n));
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar imagem para o cenário.");
+    } finally {
+      setIsGeneratingNode(null);
+    }
+  };
+
+  const handleSaveToMedia = (imageUrl: string, title: string) => {
+    const newMedia = {
+      id: uuidv4(),
+      url: imageUrl,
+      type: 'image' as const,
+      title: title,
+      source: 'Mapa do Mundo',
+      createdAt: Date.now()
+    };
+    
+    setProject(prev => ({
+      ...prev,
+      customMedia: [newMedia, ...(prev.customMedia || [])]
+    }));
+    
+    alert("Imagem guardada na Biblioteca de Media!");
+  };
+
+  const handleDownload = (imageUrl: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `${filename}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      >
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-zinc-100 bg-white z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+                <Map className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-zinc-900">Mapa do Mundo</h2>
+                <p className="text-sm text-zinc-500">Visualiza e interliga os cenários do teu projeto</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleGenerateWorldMap}
+                disabled={isGeneratingWorld || nodes.length === 0}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                {isGeneratingWorld ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                Gerar Mapa Global
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="flex flex-1 overflow-hidden relative bg-zinc-50">
+            
+            {/* Canvas Area */}
+            <div 
+              ref={containerRef}
+              className="flex-1 relative overflow-hidden cursor-grab active:cursor-grabbing"
+              onMouseDown={(e) => {
+                if ((e.target as HTMLElement).closest('.node-element')) return;
+                setIsPanning(true);
+              }}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onWheel={(e) => {
+                if (e.ctrlKey || e.metaKey) {
+                  e.preventDefault();
+                  const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+                  setZoom(prev => Math.max(0.2, Math.min(3, prev * zoomDelta)));
+                }
+              }}
+            >
+              {/* Controls */}
+              <div className="absolute bottom-6 right-6 z-20 flex flex-col gap-2 bg-white p-2 rounded-xl shadow-lg border border-zinc-100">
+                <button onClick={() => setZoom(z => Math.min(3, z * 1.2))} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-600"><ZoomIn className="w-5 h-5" /></button>
+                <button onClick={() => setZoom(z => Math.max(0.2, z * 0.8))} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-600"><ZoomOut className="w-5 h-5" /></button>
+                <button onClick={() => { setZoom(1); setPan({x:0, y:0}); }} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-600"><Maximize2 className="w-5 h-5" /></button>
+              </div>
+
+              {/* World Map Background Image (if generated) */}
+              {project.worldMapImageUrl && (
+                <div className="absolute top-6 left-6 z-20 w-64 bg-white rounded-xl shadow-lg border border-zinc-100 overflow-hidden">
+                  <div className="p-3 border-b border-zinc-100 flex justify-between items-center bg-zinc-50">
+                    <h3 className="font-medium text-sm text-zinc-900">Mapa Global</h3>
+                    <div className="flex gap-1">
+                      <button onClick={() => handleSaveToMedia(project.worldMapImageUrl!, "Mapa do Mundo")} className="p-1.5 hover:bg-zinc-200 rounded-md text-zinc-500" title="Gravar na Biblioteca">
+                        <Save className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleDownload(project.worldMapImageUrl!, "mapa-do-mundo")} className="p-1.5 hover:bg-zinc-200 rounded-md text-zinc-500" title="Download">
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="relative aspect-video group cursor-pointer" onClick={() => setSelectedImage({ url: project.worldMapImageUrl!, title: "Mapa do Mundo" })}>
+                    <img src={project.worldMapImageUrl} alt="World Map" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <button onClick={(e) => { e.stopPropagation(); setShowPromptPreview(project.worldMapPrompt || null); }} className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-medium backdrop-blur-md transition-colors">
+                        Ver Prompt
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Graph Layer */}
+              <div 
+                className="absolute inset-0 origin-top-left"
+                style={{ 
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transition: isPanning || isDragging ? 'none' : 'transform 0.1s ease-out'
+                }}
+              >
+                {/* Edges */}
+                <svg className="absolute inset-0 overflow-visible pointer-events-none">
+                  {nodes.map(node => 
+                    node.connections?.map(targetId => {
+                      const target = nodes.find(n => n.id === targetId);
+                      if (!target || !node.position || !target.position) return null;
+                      
+                      // Draw line from center to center
+                      const x1 = node.position.x + 120; // half width
+                      const y1 = node.position.y + 80;  // half height
+                      const x2 = target.position.x + 120;
+                      const y2 = target.position.y + 80;
+                      
+                      return (
+                        <g key={`${node.id}-${targetId}`}>
+                          <line 
+                            x1={x1} y1={y1} x2={x2} y2={y2} 
+                            stroke="#cbd5e1" strokeWidth="3" strokeDasharray="6 6"
+                          />
+                          <circle cx={(x1+x2)/2} cy={(y1+y2)/2} r="4" fill="#94a3b8" />
+                        </g>
+                      );
+                    })
+                  )}
+                </svg>
+
+                {/* Nodes */}
+                {nodes.map(node => (
+                  <div
+                    key={node.id}
+                    className={`node-element absolute w-[240px] bg-white rounded-xl shadow-md border-2 transition-colors cursor-pointer ${
+                      selectedNodeId === node.id ? 'border-indigo-500 shadow-indigo-100 shadow-lg z-10' : 'border-zinc-200 hover:border-indigo-300 z-0'
+                    }`}
+                    style={{
+                      left: node.position?.x || 0,
+                      top: node.position?.y || 0,
+                    }}
+                    onMouseDown={(e) => handleMouseDownNode(e, node.id)}
+                  >
+                    {/* Node Image */}
+                    <div className="h-24 bg-zinc-100 rounded-t-lg overflow-hidden relative group cursor-pointer" onClick={(e) => { e.stopPropagation(); if (node.imageUrl) setSelectedImage({ url: node.imageUrl, title: node.name }); }}>
+                      {node.imageUrl ? (
+                        <img src={node.imageUrl} alt={node.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-400">
+                          <ImageIcon className="w-8 h-8 opacity-50" />
+                        </div>
+                      )}
+                      
+                      {/* Hover Actions */}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleGenerateNodeImage(node.id); }}
+                          disabled={isGeneratingNode === node.id}
+                          className="p-2 bg-white/20 hover:bg-white/30 rounded-lg text-white backdrop-blur-sm transition-colors"
+                          title="Gerar Imagem"
+                        >
+                          {isGeneratingNode === node.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        </button>
+                        {node.imageUrl && (
+                          <>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleSaveToMedia(node.imageUrl!, node.name); }}
+                              className="p-2 bg-white/20 hover:bg-white/30 rounded-lg text-white backdrop-blur-sm transition-colors"
+                              title="Gravar na Biblioteca"
+                            >
+                              <Save className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setShowPromptPreview(node.lastImagePrompt || null); }}
+                              className="p-2 bg-white/20 hover:bg-white/30 rounded-lg text-white backdrop-blur-sm transition-colors"
+                              title="Ver Prompt"
+                            >
+                              <ImageIcon className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Node Content */}
+                    <div className="p-3">
+                      <h4 className="font-bold text-zinc-900 truncate">{node.name}</h4>
+                      <p className="text-xs text-zinc-500 line-clamp-2 mt-1">{node.description}</p>
+                    </div>
+                    
+                    {/* Add Branch Button */}
+                    {selectedNodeId === node.id && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAddBranch(node.id); }}
+                        className="absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-indigo-700 hover:scale-110 transition-all z-20"
+                        title="Adicionar Ramal"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Sidebar for Selected Node */}
+            {selectedNodeId && (
+              <div className="w-80 bg-white border-l border-zinc-100 p-6 overflow-y-auto z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.05)]">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-lg text-zinc-900">Detalhes do Cenário</h3>
+                  <button onClick={() => setSelectedNodeId(null)} className="p-1.5 hover:bg-zinc-100 rounded-lg text-zinc-500">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                {nodes.find(n => n.id === selectedNodeId) && (() => {
+                  const node = nodes.find(n => n.id === selectedNodeId)!;
+                  return (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Nome</label>
+                        <input
+                          type="text"
+                          value={node.name}
+                          onChange={(e) => {
+                            const newName = e.target.value;
+                            setNodes(prev => prev.map(n => n.id === node.id ? { ...n, name: newName } : n));
+                            setProject(prev => ({
+                              ...prev,
+                              settings: prev.settings.map(s => s.id === node.id ? { ...s, name: newName } : s)
+                            }));
+                          }}
+                          className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Descrição</label>
+                        <textarea
+                          value={node.description}
+                          onChange={(e) => {
+                            const newDesc = e.target.value;
+                            setNodes(prev => prev.map(n => n.id === node.id ? { ...n, description: newDesc } : n));
+                            setProject(prev => ({
+                              ...prev,
+                              settings: prev.settings.map(s => s.id === node.id ? { ...s, description: newDesc } : s)
+                            }));
+                          }}
+                          rows={4}
+                          className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                        />
+                      </div>
+                      
+                      <div className="pt-4 border-t border-zinc-100">
+                        <button
+                          onClick={() => handleGenerateNodeImage(node.id)}
+                          disabled={isGeneratingNode === node.id}
+                          className="w-full flex items-center justify-center gap-2 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl font-medium hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                        >
+                          {isGeneratingNode === node.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                          {node.imageUrl ? "Regenerar Imagem" : "Gerar Imagem"}
+                        </button>
+                      </div>
+                      
+                      {node.imageUrl && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleSaveToMedia(node.imageUrl!, node.name)}
+                            className="flex-1 flex items-center justify-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-zinc-50 transition-colors"
+                          >
+                            <Save className="w-4 h-4" />
+                            Gravar
+                          </button>
+                          <button
+                            onClick={() => handleDownload(node.imageUrl!, node.name)}
+                            className="flex-1 flex items-center justify-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-zinc-50 transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            Download
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* Prompt Preview Modal */}
+      {showPromptPreview && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-lg text-zinc-900">Prompt Utilizado</h3>
+              <button onClick={() => setShowPromptPreview(null)} className="p-1.5 hover:bg-zinc-100 rounded-lg text-zinc-500">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 text-sm text-zinc-700 font-mono whitespace-pre-wrap">
+              {showPromptPreview}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button onClick={() => setShowPromptPreview(null)} className="px-4 py-2 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800 transition-colors">
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ImageModal
+        isOpen={!!selectedImage}
+        onClose={() => setSelectedImage(null)}
+        imageUrl={selectedImage?.url || null}
+        title={selectedImage?.title}
+      />
+    </AnimatePresence>
+  );
+};

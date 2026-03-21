@@ -76,6 +76,8 @@ export interface Project {
   };
   globalTransition?: TransitionType;
   videoModel?: VideoModel;
+  worldMapImageUrl?: string;
+  worldMapPrompt?: string;
   ebook?: EBook;
   customMedia?: CustomMedia[];
   intro?: {
@@ -162,6 +164,8 @@ export interface Setting {
   imageUrl?: string;
   lastImagePrompt?: string;
   updatedAt?: number;
+  connections?: string[];
+  position?: { x: number; y: number };
 }
 
 export interface Scene {
