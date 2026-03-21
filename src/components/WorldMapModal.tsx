@@ -5,6 +5,7 @@ import { Project, Setting } from '../types';
 import { generateImage } from '../services/geminiService';
 import { v4 as uuidv4 } from 'uuid';
 import { ImageModal } from './ImageModal';
+import ProgressBar from './ProgressBar';
 
 interface WorldMapModalProps {
   isOpen: boolean;
@@ -22,6 +23,9 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
   const [isPanning, setIsPanning] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isGeneratingWorld, setIsGeneratingWorld] = useState(false);
+  const [worldMapProgress, setWorldMapProgress] = useState(0);
+  const [worldMapTask, setWorldMapTask] = useState("");
+  const [worldMapTime, setWorldMapTime] = useState(0);
   const [isGeneratingNode, setIsGeneratingNode] = useState<string | null>(null);
   const [showPromptPreview, setShowPromptPreview] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
@@ -140,13 +144,38 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
 
   const handleGenerateWorldMap = async () => {
     setIsGeneratingWorld(true);
+    setWorldMapProgress(0);
+    setWorldMapTime(0);
+    setWorldMapTask("A preparar prompt...");
+
+    const startTime = Date.now();
+    const timer = setInterval(() => {
+      setWorldMapTime(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
+    let progressInterval: NodeJS.Timeout;
+
     try {
       const prompt = `Um mapa do mundo épico e detalhado para um projeto chamado "${project.title}". 
       Conceito: ${project.concept}. 
       O mapa deve mostrar as seguintes localizações interligadas: ${project.settings.map(s => s.name).join(', ')}.
       Estilo: Mapa de fantasia, cartografia artística, vista de cima, altamente detalhado, estilo ${project.filmStyle || 'cinematográfico'}.`;
       
+      setWorldMapProgress(15);
+      setWorldMapTask("A comunicar com o modelo de imagem...");
+      
+      progressInterval = setInterval(() => {
+        setWorldMapProgress(prev => {
+          if (prev < 90) return prev + (90 - prev) * 0.1;
+          return prev;
+        });
+      }, 500);
+
       const imageUrl = await generateImage(prompt, "16:9");
+      
+      clearInterval(progressInterval);
+      setWorldMapProgress(100);
+      setWorldMapTask("Mapa gerado com sucesso!");
       
       setProject(prev => ({
         ...prev,
@@ -157,7 +186,11 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
       console.error(error);
       alert("Erro ao gerar o mapa do mundo.");
     } finally {
-      setIsGeneratingWorld(false);
+      clearInterval(timer);
+      if (progressInterval) clearInterval(progressInterval);
+      setTimeout(() => {
+        setIsGeneratingWorld(false);
+      }, 1500);
     }
   };
 
@@ -260,6 +293,28 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
           {/* Main Content */}
           <div className="flex flex-1 overflow-hidden relative bg-zinc-50">
             
+            {/* Progress Overlay */}
+            {isGeneratingWorld && (
+              <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center p-8">
+                <div className="w-full max-w-md bg-white p-6 rounded-2xl shadow-xl border border-zinc-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg text-zinc-900">A Gerar Mapa Global</h3>
+                    <div className="text-sm font-medium text-zinc-500 bg-zinc-100 px-2 py-1 rounded-md">
+                      {Math.floor(worldMapTime / 60)}:{(worldMapTime % 60).toString().padStart(2, '0')}
+                    </div>
+                  </div>
+                  <ProgressBar 
+                    progress={worldMapProgress} 
+                    label={worldMapTask} 
+                    modelName="Nanobana" 
+                  />
+                  <p className="text-xs text-zinc-500 mt-4 text-center">
+                    Este processo pode demorar alguns segundos. Por favor, aguarde.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Canvas Area */}
             <div 
               ref={containerRef}
