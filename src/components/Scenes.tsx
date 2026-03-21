@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import * as htmlToImage from "html-to-image";
-import { Project, Scene, Take } from "../types";
+import { Project, Scene, Take, CustomMedia } from "../types";
 import { 
   generateJSON,
   generateNarrationAudio,
@@ -30,6 +30,7 @@ import {
   ArrowRightLeft,
   Image as ImageIcon,
   Download,
+  Save
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Type } from "@google/genai";
@@ -242,6 +243,75 @@ export default function Scenes({
       console.error('Error generating storyboard image:', error);
       alert('Erro ao gerar a imagem do storyboard.');
     }
+  };
+
+  const handleDownloadSingleImage = (imageUrl: string, sceneTitle: string, takeIndex: number) => {
+    try {
+      const link = document.createElement('a');
+      link.download = `storyboard-${sceneTitle.replace(/\s+/g, '-').toLowerCase()}-take-${takeIndex + 1}.png`;
+      link.href = imageUrl;
+      link.click();
+    } catch (error) {
+      console.error('Error downloading image:', error);
+      alert('Erro ao transferir a imagem.');
+    }
+  };
+
+  const handleSaveToMediaLibrary = (imageUrl: string, sceneTitle: string, takeIndex: number) => {
+    const newMedia: CustomMedia = {
+      id: uuidv4(),
+      url: imageUrl,
+      type: 'image',
+      title: `Storyboard: ${sceneTitle} - Take ${takeIndex + 1}`,
+      source: 'Gerado por IA (Storyboard)',
+      createdAt: Date.now()
+    };
+
+    setProject(prev => ({
+      ...prev,
+      customMedia: [...(prev.customMedia || []), newMedia]
+    }));
+    
+    alert('Imagem guardada na biblioteca de media com sucesso!');
+  };
+
+  const handleDownloadAllSceneImages = (scene: Scene) => {
+    const takesWithImages = scene.takes.filter(t => t.storyboardImageUrl);
+    if (takesWithImages.length === 0) {
+      alert('Não existem imagens de storyboard nesta cena para transferir.');
+      return;
+    }
+
+    takesWithImages.forEach((take, index) => {
+      // Small delay to prevent browser from blocking multiple downloads
+      setTimeout(() => {
+        handleDownloadSingleImage(take.storyboardImageUrl!, scene.title, index);
+      }, index * 200);
+    });
+  };
+
+  const handleSaveAllSceneImagesToMediaLibrary = (scene: Scene) => {
+    const takesWithImages = scene.takes.filter(t => t.storyboardImageUrl);
+    if (takesWithImages.length === 0) {
+      alert('Não existem imagens de storyboard nesta cena para guardar.');
+      return;
+    }
+
+    const newMediaItems: CustomMedia[] = takesWithImages.map((take, index) => ({
+      id: uuidv4(),
+      url: take.storyboardImageUrl!,
+      type: 'image',
+      title: `Storyboard: ${scene.title} - Take ${index + 1}`,
+      source: 'Gerado por IA (Storyboard)',
+      createdAt: Date.now() + index // Ensure unique timestamps
+    }));
+
+    setProject(prev => ({
+      ...prev,
+      customMedia: [...(prev.customMedia || []), ...newMediaItems]
+    }));
+    
+    alert(`${newMediaItems.length} imagens guardadas na biblioteca de media com sucesso!`);
   };
 
   const handleGenerateAllStoryboards = async () => {
@@ -1180,13 +1250,31 @@ export default function Scenes({
                               Motor: Gemini 2.5 Flash Image • Tempo total: {scene.storyboardGenerationTime || '--'}s
                             </p>
                           </div>
-                          <button
-                            onClick={() => handleDownloadStoryboardGrid(scene.id, scene.title)}
-                            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            Download do Quadro
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleSaveAllSceneImagesToMediaLibrary(scene)}
+                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                              title="Guardar todas as imagens na Biblioteca de Media"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              Guardar Todas
+                            </button>
+                            <button
+                              onClick={() => handleDownloadAllSceneImages(scene)}
+                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                              title="Transferir todas as imagens individualmente"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Download Todas
+                            </button>
+                            <button
+                              onClick={() => handleDownloadStoryboardGrid(scene.id, scene.title)}
+                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5" />
+                              Download do Quadro
+                            </button>
+                          </div>
                         </div>
                         <div id={`storyboard-grid-${scene.id}`} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-zinc-50 p-2 -m-2 rounded-xl">
                           {scene.takes.map((take, index) => {
@@ -1206,13 +1294,29 @@ export default function Scenes({
                                     className="w-full h-full object-cover"
                                     referrerPolicy="no-referrer"
                                   />
-                                  <button
-                                    onClick={() => setFullScreenImage(take.storyboardImageUrl!)}
-                                    data-html2canvas-ignore="true"
-                                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-md backdrop-blur-sm transition-colors"
-                                  >
-                                    <Maximize2 className="w-3 h-3" />
-                                  </button>
+                                  <div className="absolute top-2 right-2 flex items-center gap-1" data-html2canvas-ignore="true">
+                                    <button
+                                      onClick={() => handleSaveToMediaLibrary(take.storyboardImageUrl!, scene.title, index)}
+                                      title="Guardar na Biblioteca de Media"
+                                      className="p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-md backdrop-blur-sm transition-colors"
+                                    >
+                                      <Save className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDownloadSingleImage(take.storyboardImageUrl!, scene.title, index)}
+                                      title="Transferir Imagem"
+                                      className="p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-md backdrop-blur-sm transition-colors"
+                                    >
+                                      <Download className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => setFullScreenImage(take.storyboardImageUrl!)}
+                                      title="Ver em Ecrã Inteiro"
+                                      className="p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-md backdrop-blur-sm transition-colors"
+                                    >
+                                      <Maximize2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 </div>
                                 <div className="p-3 text-xs text-zinc-600 flex-1 flex flex-col gap-1 bg-zinc-50 border-t border-zinc-100">
                                   <p><span className="font-semibold text-zinc-800">Ação:</span> {take.action}</p>

@@ -42,6 +42,9 @@ export default function Settings({ project, setProject }: SettingsProps) {
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<{ id: string; prompt: string } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string } | null>(null);
+  const [isGeneratingAllImages, setIsGeneratingAllImages] = useState(false);
+  const [globalProgress, setGlobalProgress] = useState(0);
+  const [currentOperationLabel, setCurrentOperationLabel] = useState("");
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -185,14 +188,22 @@ export default function Settings({ project, setProject }: SettingsProps) {
       if (!window.confirm("Todos os cenários já têm imagens. Deseja regenerar todas?")) return;
     }
 
+    setIsGeneratingAllImages(true);
     setGeneratingImageId("bulk-settings");
+    setGlobalProgress(0);
+    
     try {
       const updatedSettings = [...project.settings];
+      const totalToGenerate = settingsToGenerate.length === 0 ? updatedSettings.length : settingsToGenerate.length;
+      let generatedCount = 0;
+
       for (let i = 0; i < updatedSettings.length; i++) {
         const setting = updatedSettings[i];
         // If we confirmed to regenerate all, or if it doesn't have an image
         if (settingsToGenerate.length === 0 || !setting.imageUrl) {
           setGeneratingImageId(setting.id);
+          setCurrentOperationLabel(`A gerar imagem para "${setting.name}" (${generatedCount + 1}/${totalToGenerate})...`);
+          
           const styleToUse = setting.artisticStyle && setting.artisticStyle !== "Nenhum (Usar Descrição)" 
             ? setting.artisticStyle 
             : project.filmStyle;
@@ -205,9 +216,14 @@ export default function Settings({ project, setProject }: SettingsProps) {
             Description: ${setting.description}. 
             Cinematic lighting, highly detailed, wide angle. 
             CRITICAL: NO CHARACTERS, NO PEOPLE, NO ANIMALS. Just the empty environment/location.`;
+          
           setActivePrompt(prompt);
           const imageUrl = await generateImage(prompt, project.aspectRatio);
           updatedSettings[i] = { ...setting, imageUrl, lastImagePrompt: prompt };
+          
+          generatedCount++;
+          setGlobalProgress((generatedCount / totalToGenerate) * 100);
+          
           // Update project state incrementally to show progress
           setProject({ ...project, settings: [...updatedSettings] });
         }
@@ -218,6 +234,9 @@ export default function Settings({ project, setProject }: SettingsProps) {
     } finally {
       setGeneratingImageId(null);
       setActivePrompt(null);
+      setIsGeneratingAllImages(false);
+      setGlobalProgress(0);
+      setCurrentOperationLabel("");
     }
   };
 
@@ -388,12 +407,20 @@ export default function Settings({ project, setProject }: SettingsProps) {
         </div>
       </div>
 
-      {isGenerating && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100">
+      {(isGenerating || isGeneratingAllImages || generatingImageId || isImportingId) && generatingImageId !== "bulk-settings" && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100 mb-6">
           <ProgressBar
-            progress={extractProgress}
-            label="A extrair cenários do guião..."
-            modelName="Gemini"
+            progress={isGeneratingAllImages ? globalProgress : ((generatingImageId || isImportingId) ? imageProgress : extractProgress)}
+            label={
+              isGeneratingAllImages 
+                ? currentOperationLabel 
+                : isImportingId
+                  ? `A analisar imagem importada para "${project.settings.find(s => s.id === isImportingId)?.name || 'cenário'}"...`
+                  : generatingImageId 
+                    ? `A gerar concept art para "${project.settings.find(s => s.id === generatingImageId)?.name || 'cenário'}"...` 
+                    : "A extrair cenários do guião..."
+            }
+            modelName={isGeneratingAllImages || generatingImageId ? "Nanobana" : "Gemini"}
           />
         </div>
       )}

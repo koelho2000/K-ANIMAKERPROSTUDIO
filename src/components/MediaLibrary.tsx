@@ -16,7 +16,8 @@ import {
   FileArchive,
   Loader2,
   ArrowRightLeft,
-  Film
+  Film,
+  Trash2
 } from "lucide-react";
 import IntelligentEditor from "./IntelligentEditor";
 import JSZip from "jszip";
@@ -226,6 +227,72 @@ export default function MediaLibrary({
     }
   };
 
+  const handleDeleteMedia = (idsToDelete: string[]) => {
+    if (!confirm(`Tem a certeza que deseja apagar ${idsToDelete.length > 1 ? 'os ' + idsToDelete.length + ' itens selecionados' : 'este item'}?`)) {
+      return;
+    }
+
+    setProject(prev => {
+      const newProject = { ...prev };
+      
+      // Handle custom media
+      if (newProject.customMedia) {
+        newProject.customMedia = newProject.customMedia.filter(m => !idsToDelete.includes(m.id));
+      }
+
+      // Handle characters
+      newProject.characters = newProject.characters.map(char => {
+        const charCopy = { ...char };
+        if (idsToDelete.includes(`char-img-${char.id}`)) charCopy.imageUrl = undefined;
+        if (idsToDelete.includes(`char-views-${char.id}`)) charCopy.viewsImageUrl = undefined;
+        return charCopy;
+      });
+
+      // Handle settings
+      newProject.settings = newProject.settings.map(set => {
+        const setCopy = { ...set };
+        if (idsToDelete.includes(`set-img-${set.id}`)) setCopy.imageUrl = undefined;
+        return setCopy;
+      });
+
+      // Handle scenes & takes
+      newProject.scenes = newProject.scenes.map(scene => {
+        const sceneCopy = { ...scene };
+        sceneCopy.takes = sceneCopy.takes.map(take => {
+          const takeCopy = { ...take };
+          if (idsToDelete.includes(`take-start-${take.id}`)) takeCopy.startFrameUrl = undefined;
+          if (idsToDelete.includes(`take-end-${take.id}`)) takeCopy.endFrameUrl = undefined;
+          if (idsToDelete.includes(`take-video-${take.id}`)) takeCopy.videoUrl = undefined;
+          return takeCopy;
+        });
+        return sceneCopy;
+      });
+
+      // Handle intro/outro
+      if (newProject.intro) {
+        const introCopy = { ...newProject.intro };
+        if (idsToDelete.includes('intro-img')) introCopy.imageUrl = undefined;
+        if (idsToDelete.includes('intro-video')) introCopy.videoUrl = undefined;
+        newProject.intro = introCopy;
+      }
+      if (newProject.outro) {
+        const outroCopy = { ...newProject.outro };
+        if (idsToDelete.includes('outro-img')) outroCopy.imageUrl = undefined;
+        if (idsToDelete.includes('outro-video')) outroCopy.videoUrl = undefined;
+        newProject.outro = outroCopy;
+      }
+
+      return newProject;
+    });
+
+    // Clear selection for deleted items
+    setSelectedIds(prev => {
+      const newSelected = new Set(prev);
+      idsToDelete.forEach(id => newSelected.delete(id));
+      return newSelected;
+    });
+  };
+
   const handleDownloadIndividual = (items: MediaItem[]) => {
     items.forEach((item, index) => {
       setTimeout(() => {
@@ -318,35 +385,45 @@ export default function MediaLibrary({
         </div>
         <div className="flex items-center gap-3 relative">
           {selectedIds.size > 0 && (
-            <div className="relative">
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowDownloadMenu(showDownloadMenu === 'selected' ? null : 'selected')}
-                disabled={isDownloading}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50"
+                onClick={() => handleDeleteMedia(Array.from(selectedIds))}
+                className="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2"
+                title="Apagar Selecionados"
               >
-                {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                Descarregar Selecionados ({selectedIds.size})
-                <ChevronDown className={`w-4 h-4 transition-transform ${showDownloadMenu === 'selected' ? 'rotate-180' : ''}`} />
+                <Trash2 className="w-5 h-5" />
+                Apagar ({selectedIds.size})
               </button>
-              
-              {showDownloadMenu === 'selected' && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-zinc-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <button
-                    onClick={() => handleDownloadIndividual(filteredItems.filter(i => selectedIds.has(i.id)))}
-                    className="w-full px-4 py-3 text-left hover:bg-zinc-50 flex items-center gap-3 transition-colors"
-                  >
-                    <Download className="w-4 h-4 text-zinc-400" />
-                    <span className="text-sm font-bold text-zinc-700">Download Individual</span>
-                  </button>
-                  <button
-                    onClick={() => handleDownloadZip(filteredItems.filter(i => selectedIds.has(i.id)), `selecionados_${project.title.replace(/\s+/g, '_')}`)}
-                    className="w-full px-4 py-3 text-left hover:bg-zinc-50 flex items-center gap-3 transition-colors"
-                  >
-                    <FileArchive className="w-4 h-4 text-zinc-400" />
-                    <span className="text-sm font-bold text-zinc-700">Download em ZIP</span>
-                  </button>
-                </div>
-              )}
+              <div className="relative">
+                <button
+                  onClick={() => setShowDownloadMenu(showDownloadMenu === 'selected' ? null : 'selected')}
+                  disabled={isDownloading}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                  Descarregar Selecionados ({selectedIds.size})
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showDownloadMenu === 'selected' ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {showDownloadMenu === 'selected' && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-zinc-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <button
+                      onClick={() => handleDownloadIndividual(filteredItems.filter(i => selectedIds.has(i.id)))}
+                      className="w-full px-4 py-3 text-left hover:bg-zinc-50 flex items-center gap-3 transition-colors"
+                    >
+                      <Download className="w-4 h-4 text-zinc-400" />
+                      <span className="text-sm font-bold text-zinc-700">Download Individual</span>
+                    </button>
+                    <button
+                      onClick={() => handleDownloadZip(filteredItems.filter(i => selectedIds.has(i.id)), `selecionados_${project.title.replace(/\s+/g, '_')}`)}
+                      className="w-full px-4 py-3 text-left hover:bg-zinc-50 flex items-center gap-3 transition-colors"
+                    >
+                      <FileArchive className="w-4 h-4 text-zinc-400" />
+                      <span className="text-sm font-bold text-zinc-700">Download em ZIP</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           
@@ -498,6 +575,13 @@ export default function MediaLibrary({
                   >
                     <Download className="w-5 h-5" />
                   </button>
+                  <button 
+                    onClick={() => handleDeleteMedia([item.id])}
+                    className="p-2 bg-red-500 rounded-full text-white hover:bg-red-600 hover:scale-110 transition-transform"
+                    title="Apagar"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
                   {item.sceneId && item.takeId && (
                     <div className="flex flex-col gap-1">
                       <button
@@ -630,6 +714,16 @@ export default function MediaLibrary({
                 >
                   <Download className="w-5 h-5" />
                   Descarregar Ficheiro
+                </button>
+                <button
+                  onClick={() => {
+                    handleDeleteMedia([selectedItem.id]);
+                    setSelectedItem(null);
+                  }}
+                  className="bg-red-500 text-white px-8 py-3 rounded-2xl font-bold hover:bg-red-600 transition-all flex items-center gap-2"
+                >
+                  <Trash2 className="w-5 h-5" />
+                  Apagar
                 </button>
                 <a 
                   href={selectedItem.url}

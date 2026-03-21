@@ -56,6 +56,9 @@ export default function Characters({ project, setProject }: CharactersProps) {
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<{ id: string; prompt: string; type: 'main' | 'views' } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string } | null>(null);
+  const [isGeneratingAllImages, setIsGeneratingAllImages] = useState(false);
+  const [globalProgress, setGlobalProgress] = useState(0);
+  const [currentOperationLabel, setCurrentOperationLabel] = useState("");
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -396,15 +399,25 @@ export default function Characters({ project, setProject }: CharactersProps) {
       if (!window.confirm("Todas as personagens já têm imagens e vistas. Deseja regenerar todas?")) return;
     }
 
+    setIsGeneratingAllImages(true);
     setGeneratingImageId("bulk-characters");
+    setGlobalProgress(0);
+    
     try {
       const updatedCharacters = [...project.characters];
+      const totalTasks = charsToGenerate.length === 0 
+        ? updatedCharacters.length * 2 
+        : charsToGenerate.reduce((acc, c) => acc + (!c.imageUrl ? 1 : 0) + (!c.viewsImageUrl ? 1 : 0), 0);
+      let completedTasks = 0;
+
       for (let i = 0; i < updatedCharacters.length; i++) {
         let char = updatedCharacters[i];
         
         // 1. Generate main image if missing or if we're regenerating all
         if (charsToGenerate.length === 0 || !char.imageUrl) {
           setGeneratingImageId(char.id);
+          setCurrentOperationLabel(`A gerar concept art para "${char.name}" (${completedTasks + 1}/${totalTasks})...`);
+          
           const styleToUse = char.artisticStyle && char.artisticStyle !== "Nenhum (Usar Descrição)" 
             ? char.artisticStyle 
             : project.filmStyle;
@@ -420,16 +433,23 @@ export default function Characters({ project, setProject }: CharactersProps) {
             ${physicalDesc}
             Público Alvo: ${project.targetAudience || 'Adultos'}.
             One single front-facing view of the character, full body, neutral background.`;
+          
           setActivePrompt(prompt);
           const imageUrl = await generateImage(prompt, "1:1");
           char = { ...char, imageUrl, lastImagePrompt: prompt };
           updatedCharacters[i] = char;
+          
+          completedTasks++;
+          setGlobalProgress((completedTasks / totalTasks) * 100);
+          
           setProject({ ...project, characters: [...updatedCharacters] });
         }
 
         // 2. Generate views if missing or if we're regenerating all
         if (char.imageUrl && (charsToGenerate.length === 0 || !char.viewsImageUrl)) {
           setGeneratingViewsId(char.id);
+          setCurrentOperationLabel(`A gerar vistas para "${char.name}" (${completedTasks + 1}/${totalTasks})...`);
+          
           const styleToUse = char.artisticStyle && char.artisticStyle !== "Nenhum (Usar Descrição)" 
             ? char.artisticStyle 
             : project.filmStyle;
@@ -441,11 +461,16 @@ export default function Characters({ project, setProject }: CharactersProps) {
             Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
             Maintain perfect consistency with the reference image. 
             Neutral background, highly detailed.`;
+          
           setActivePrompt(viewsPrompt);
           const referenceBase64 = await getBase64FromUrl(char.imageUrl);
           const viewsImageUrl = await generateImage(viewsPrompt, "16:9", [referenceBase64]);
           char = { ...char, viewsImageUrl, lastViewsPrompt: viewsPrompt };
           updatedCharacters[i] = char;
+          
+          completedTasks++;
+          setGlobalProgress((completedTasks / totalTasks) * 100);
+          
           setProject({ ...project, characters: [...updatedCharacters] });
           setGeneratingViewsId(null);
         }
@@ -457,6 +482,9 @@ export default function Characters({ project, setProject }: CharactersProps) {
       setGeneratingImageId(null);
       setGeneratingViewsId(null);
       setActivePrompt(null);
+      setIsGeneratingAllImages(false);
+      setGlobalProgress(0);
+      setCurrentOperationLabel("");
     }
   };
 
@@ -655,10 +683,10 @@ export default function Characters({ project, setProject }: CharactersProps) {
           )}
           <button
             onClick={handleGenerateAllImages}
-            disabled={generatingImageId !== null || project.characters.length === 0}
+            disabled={isGeneratingAllImages || generatingImageId !== null || project.characters.length === 0}
             className="flex items-center gap-2 bg-white hover:bg-zinc-50 text-indigo-600 border border-indigo-200 px-4 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
           >
-            {generatingImageId === "bulk-characters" ? (
+            {isGeneratingAllImages ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <Sparkles className="w-5 h-5" />
@@ -715,12 +743,22 @@ export default function Characters({ project, setProject }: CharactersProps) {
         </div>
       </div>
 
-      {isGenerating && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100">
+      {(isGenerating || isGeneratingAllImages || generatingImageId || generatingViewsId || isImportingId) && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100 mb-6">
           <ProgressBar
-            progress={extractProgress}
-            label="A extrair personagens do guião..."
-            modelName="Gemini"
+            progress={isGeneratingAllImages ? globalProgress : ((generatingImageId || generatingViewsId || isImportingId) ? imageProgress : extractProgress)}
+            label={
+              isGeneratingAllImages 
+                ? currentOperationLabel 
+                : isImportingId
+                  ? `A analisar imagem importada para "${project.characters.find(c => c.id === isImportingId)?.name || 'personagem'}"...`
+                  : generatingViewsId
+                    ? `A gerar vistas para "${project.characters.find(c => c.id === generatingViewsId)?.name || 'personagem'}"...`
+                    : generatingImageId 
+                      ? `A gerar concept art para "${project.characters.find(c => c.id === generatingImageId)?.name || 'personagem'}"...` 
+                      : "A extrair personagens do guião..."
+            }
+            modelName={isGeneratingAllImages || generatingImageId || generatingViewsId ? "Nanobana" : "Gemini"}
           />
         </div>
       )}
