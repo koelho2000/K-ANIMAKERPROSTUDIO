@@ -17,10 +17,13 @@ import {
   Loader2,
   ArrowRightLeft,
   Film,
-  Trash2
+  Trash2,
+  Camera
 } from "lucide-react";
 import IntelligentEditor from "./IntelligentEditor";
+import CameraViewModal from "./CameraViewModal";
 import JSZip from "jszip";
+import { v4 as uuidv4 } from "uuid";
 
 interface MediaLibraryProps {
   project: Project;
@@ -38,6 +41,9 @@ interface MediaItem {
   source: string;
   sceneId?: string;
   takeId?: string;
+  topViewImageUrl?: string;
+  sideViewImageUrl?: string;
+  viewsGeneratedFromImageUrl?: string;
 }
 
 export default function MediaLibrary({ 
@@ -49,6 +55,8 @@ export default function MediaLibrary({
 }: MediaLibraryProps) {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
+  const [cameraNode, setCameraNode] = useState<any>(null);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<'all' | 'image' | 'video'>('all');
   const [isDownloading, setIsDownloading] = useState(false);
@@ -67,7 +75,10 @@ export default function MediaLibrary({
         url: char.imageUrl,
         type: 'image',
         title: char.name,
-        source: 'Personagem'
+        source: 'Personagem',
+        topViewImageUrl: char.topViewImageUrl,
+        sideViewImageUrl: char.sideViewImageUrl,
+        viewsGeneratedFromImageUrl: char.viewsGeneratedFromImageUrl
       });
     }
     if (char.viewsImageUrl) {
@@ -89,7 +100,10 @@ export default function MediaLibrary({
         url: set.imageUrl,
         type: 'image',
         title: set.name,
-        source: 'Cenário'
+        source: 'Cenário',
+        topViewImageUrl: set.topViewImageUrl,
+        sideViewImageUrl: set.sideViewImageUrl,
+        viewsGeneratedFromImageUrl: set.viewsGeneratedFromImageUrl
       });
     }
   });
@@ -554,6 +568,28 @@ export default function MediaLibrary({
 
                 {/* Overlay Actions */}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  {item.type === 'image' && (
+                    <button 
+                      onClick={() => {
+                        setCameraNode({
+                          id: item.id,
+                          name: item.title,
+                          description: project.concept || 'O mundo do projeto',
+                          topViewImageUrl: item.topViewImageUrl,
+                          sideViewImageUrl: item.sideViewImageUrl,
+                          viewsGeneratedFromImageUrl: item.viewsGeneratedFromImageUrl,
+                          imageUrl: item.url,
+                          artisticStyle: project.filmStyle,
+                          source: item.source
+                        });
+                        setIsCameraModalOpen(true);
+                      }}
+                      className="p-2 bg-zinc-800 rounded-full text-white hover:scale-110 transition-transform"
+                      title="Vista de Câmara"
+                    >
+                      <Camera className="w-5 h-5" />
+                    </button>
+                  )}
                   <button 
                     onClick={() => setEditingItem(item)}
                     className="p-2 bg-indigo-600 rounded-full text-white hover:scale-110 transition-transform"
@@ -646,6 +682,79 @@ export default function MediaLibrary({
         />
       )}
 
+      <CameraViewModal
+        isOpen={isCameraModalOpen}
+        onClose={() => {
+          setIsCameraModalOpen(false);
+          setCameraNode(null);
+        }}
+        node={cameraNode}
+        project={project}
+        isCharacter={cameraNode?.source === 'Personagens'}
+        onSaveToMedia={(url, title) => {
+          const newMedia = {
+            id: uuidv4(),
+            url,
+            type: 'image' as const,
+            title,
+            source: 'camera',
+            createdAt: Date.now()
+          };
+          setProject(prev => ({
+            ...prev,
+            customMedia: [newMedia, ...(prev.customMedia || [])]
+          }));
+        }}
+        onReplaceImage={(nodeId, url, prompt) => {
+          setProject(prev => {
+            if (nodeId.startsWith('char-img-')) {
+              const charId = nodeId.replace('char-img-', '');
+              return {
+                ...prev,
+                characters: prev.characters.map(c => c.id === charId ? { ...c, imageUrl: url, lastImagePrompt: prompt } : c)
+              };
+            }
+            if (nodeId.startsWith('set-img-')) {
+              const setId = nodeId.replace('set-img-', '');
+              return {
+                ...prev,
+                settings: prev.settings.map(s => s.id === setId ? { ...s, imageUrl: url, lastImagePrompt: prompt } : s)
+              };
+            }
+            return {
+              ...prev,
+              customMedia: prev.customMedia?.map(m => 
+                m.id === nodeId ? { ...m, url, prompt } : m
+              ) || []
+            };
+          });
+        }}
+        onUpdateViews={(nodeId, topUrl, sideUrl, sourceImageUrl) => {
+          setProject(prev => {
+            if (nodeId.startsWith('char-img-')) {
+              const charId = nodeId.replace('char-img-', '');
+              return {
+                ...prev,
+                characters: prev.characters.map(c => c.id === charId ? { ...c, topViewImageUrl: topUrl, sideViewImageUrl: sideUrl, viewsGeneratedFromImageUrl: sourceImageUrl } : c)
+              };
+            }
+            if (nodeId.startsWith('set-img-')) {
+              const setId = nodeId.replace('set-img-', '');
+              return {
+                ...prev,
+                settings: prev.settings.map(s => s.id === setId ? { ...s, topViewImageUrl: topUrl, sideViewImageUrl: sideUrl, viewsGeneratedFromImageUrl: sourceImageUrl } : s)
+              };
+            }
+            return {
+              ...prev,
+              customMedia: prev.customMedia?.map(m => 
+                m.id === nodeId ? { ...m, topViewImageUrl: topUrl, sideViewImageUrl: sideUrl, viewsGeneratedFromImageUrl: sourceImageUrl } : m
+              ) || []
+            };
+          });
+        }}
+      />
+
       {selectedItem && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4 md:p-10 animate-in fade-in duration-300">
           <button 
@@ -680,6 +789,29 @@ export default function MediaLibrary({
               </div>
               <h3 className="text-2xl font-bold text-white">{selectedItem.title}</h3>
               <div className="flex items-center justify-center gap-4 pt-4">
+                {selectedItem.type === 'image' && (
+                  <button
+                    onClick={() => {
+                      setCameraNode({
+                        id: selectedItem.id,
+                        name: selectedItem.title,
+                        description: project.concept || 'O mundo do projeto',
+                        topViewImageUrl: selectedItem.topViewImageUrl,
+                        sideViewImageUrl: selectedItem.sideViewImageUrl,
+                        viewsGeneratedFromImageUrl: selectedItem.viewsGeneratedFromImageUrl,
+                        imageUrl: selectedItem.url,
+                        artisticStyle: project.filmStyle,
+                        source: selectedItem.source
+                      });
+                      setIsCameraModalOpen(true);
+                      setSelectedItem(null);
+                    }}
+                    className="bg-zinc-800 text-white px-8 py-3 rounded-2xl font-bold hover:bg-zinc-700 transition-all flex items-center gap-2"
+                  >
+                    <Camera className="w-5 h-5" />
+                    Vista de Câmara
+                  </button>
+                )}
                 {selectedItem.sceneId && selectedItem.takeId && (
                   <>
                     <button

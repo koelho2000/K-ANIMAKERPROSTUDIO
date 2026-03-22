@@ -126,6 +126,9 @@ export interface CustomMedia {
   title: string;
   source: string;
   createdAt: number;
+  topViewImageUrl?: string;
+  sideViewImageUrl?: string;
+  viewsGeneratedFromImageUrl?: string;
 }
 
 export interface Character {
@@ -148,6 +151,9 @@ export interface Character {
   lastImagePrompt?: string;
   viewsImageUrl?: string;
   lastViewsPrompt?: string;
+  topViewImageUrl?: string;
+  sideViewImageUrl?: string;
+  viewsGeneratedFromImageUrl?: string;
   updatedAt?: number;
   analysis?: {
     status: 'ok' | 'warning' | 'error';

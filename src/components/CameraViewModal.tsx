@@ -12,6 +12,7 @@ interface CameraViewModalProps {
   onSaveToMedia: (url: string, title: string) => void;
   onReplaceImage: (nodeId: string, url: string, prompt: string) => void;
   onUpdateViews?: (nodeId: string, topUrl: string, sideUrl: string, sourceImageUrl: string) => void;
+  isCharacter?: boolean;
 }
 
 export default function CameraViewModal({
@@ -21,7 +22,8 @@ export default function CameraViewModal({
   project,
   onSaveToMedia,
   onReplaceImage,
-  onUpdateViews
+  onUpdateViews,
+  isCharacter = false
 }: CameraViewModalProps) {
   const [cameraPos, setCameraPos] = useState({ x: 50, y: 50 }); // percentages
   const [rotation, setRotation] = useState(0); // degrees
@@ -33,6 +35,7 @@ export default function CameraViewModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [task, setTask] = useState('');
+  const [tasks, setTasks] = useState<{name: string, status: 'pending'|'active'|'completed'}[]>([]);
   const [time, setTime] = useState(0);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
@@ -43,6 +46,7 @@ export default function CameraViewModal({
   const [isGeneratingViews, setIsGeneratingViews] = useState(false);
   const [viewsProgress, setViewsProgress] = useState(0);
   const [viewsTask, setViewsTask] = useState('');
+  const [viewsTasks, setViewsTasks] = useState<{name: string, status: 'pending'|'active'|'completed'}[]>([]);
   const [topViewImage, setTopViewImage] = useState<string | null>(null);
   const [sideViewImage, setSideViewImage] = useState<string | null>(null);
 
@@ -53,45 +57,99 @@ export default function CameraViewModal({
     }
   }, [isOpen, node?.id, node?.topViewImageUrl, node?.sideViewImageUrl]);
 
+  const getBase64FromUrl = async (url: string): Promise<string> => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          const base64Data = base64String.split(',')[1];
+          if (base64Data) {
+            resolve(base64Data);
+          } else {
+            reject(new Error("Failed to extract base64 data"));
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error("Error converting image to base64:", error);
+      throw error;
+    }
+  };
+
   const generateViews = async (forceRegenerate = false) => {
     if (!node) return;
     setIsGeneratingViews(true);
     setViewsProgress(0);
     setViewsTask('A inicializar vistas técnicas...');
+    
+    const initialTasks: {name: string, status: 'pending'|'active'|'completed'}[] = [
+      { name: 'A gerar vista superior (planta)', status: 'pending' },
+      { name: 'A gerar vista lateral (corte)', status: 'pending' },
+      { name: 'A finalizar', status: 'pending' }
+    ];
+    setViewsTasks(initialTasks);
 
     try {
       let topUrl = forceRegenerate ? null : node.topViewImageUrl;
       let sideUrl = forceRegenerate ? null : node.sideViewImageUrl;
+      const sourceImage = node.imageUrl || node.url;
+      
+      let referenceImages: string[] | undefined;
+      if (sourceImage) {
+        setViewsTask('A processar imagem de referência...');
+        const base64 = await getBase64FromUrl(sourceImage);
+        referenceImages = [base64];
+      }
 
       if (!topUrl) {
+        setViewsTasks(prev => prev.map((t, i) => i === 0 ? { ...t, status: 'active' } : t));
         setViewsTask('A gerar vista superior (planta)...');
         setViewsProgress(20);
-        const topPrompt = `Vista de topo (planta) do cenário: ${node.name}. ${node.description}. Estilo arquitetónico/esquemático, vista perfeitamente de cima para baixo (top-down), mostrando o layout e a disposição dos elementos. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`;
-        topUrl = await generateImage(topPrompt, '1:1');
+        const topPrompt = isCharacter
+          ? `Vista de topo (planta) estrita da personagem na imagem de referência: ${node.name || ''}. ${node.description || ''}. Vista perfeitamente de cima para baixo (top-down). A imagem deve focar-se EXCLUSIVAMENTE na personagem da imagem de referência, mantendo as mesmas proporções, cores e detalhes. Fundo branco puro ou transparente. Sem cenário, sem fundo. Apenas a personagem. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`
+          : `Vista de topo (planta) estrita do sujeito/cenário na imagem de referência: ${node.name || ''}. ${node.description || ''}. Estilo arquitetónico/esquemático, vista perfeitamente de cima para baixo (top-down). A imagem deve focar-se EXCLUSIVAMENTE no sujeito ou cenário da imagem de referência, mantendo as mesmas proporções, cores e detalhes. Fundo neutro. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`;
+        topUrl = await generateImage(topPrompt, '1:1', referenceImages);
         setTopViewImage(topUrl);
         setViewsProgress(50);
+        setViewsTasks(prev => prev.map((t, i) => i === 0 ? { ...t, status: 'completed' } : t));
+      } else {
+        setViewsTasks(prev => prev.map((t, i) => i === 0 ? { ...t, status: 'completed' } : t));
       }
 
       if (!sideUrl) {
+        setViewsTasks(prev => prev.map((t, i) => i === 1 ? { ...t, status: 'active' } : t));
         setViewsTask('A gerar vista lateral (corte)...');
         setViewsProgress(70);
-        const sidePrompt = `Vista lateral em corte (cross-section) do cenário: ${node.name}. ${node.description}. Estilo arquitetónico/esquemático, vista perfeitamente de lado, mostrando a altura e proporções dos elementos. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`;
-        sideUrl = await generateImage(sidePrompt, '16:9');
+        const sidePrompt = isCharacter
+          ? `Vista lateral em perfil estrito da personagem na imagem de referência: ${node.name || ''}. ${node.description || ''}. Vista perfeitamente de lado. A imagem deve focar-se EXCLUSIVAMENTE na personagem da imagem de referência, mantendo as mesmas proporções, cores e detalhes. Fundo branco puro ou transparente. Sem cenário, sem fundo. Apenas a personagem. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`
+          : `Vista lateral em corte (cross-section) ou perfil estrito do sujeito/cenário na imagem de referência: ${node.name || ''}. ${node.description || ''}. Estilo arquitetónico/esquemático, vista perfeitamente de lado. A imagem deve focar-se EXCLUSIVAMENTE no sujeito ou cenário da imagem de referência, mantendo as mesmas proporções, cores e detalhes. Fundo neutro. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`;
+        sideUrl = await generateImage(sidePrompt, '16:9', referenceImages);
         setSideViewImage(sideUrl);
         setViewsProgress(90);
+        setViewsTasks(prev => prev.map((t, i) => i === 1 ? { ...t, status: 'completed' } : t));
+      } else {
+        setViewsTasks(prev => prev.map((t, i) => i === 1 ? { ...t, status: 'completed' } : t));
       }
 
+      setViewsTasks(prev => prev.map((t, i) => i === 2 ? { ...t, status: 'active' } : t));
       if (onUpdateViews && topUrl && sideUrl) {
-        onUpdateViews(node.id, topUrl, sideUrl, node.imageUrl || '');
+        onUpdateViews(node.id, topUrl, sideUrl, sourceImage || '');
       }
       
       setViewsTask('Vistas técnicas geradas com sucesso!');
       setViewsProgress(100);
+      setViewsTasks(prev => prev.map((t, i) => i === 2 ? { ...t, status: 'completed' } : t));
       setTimeout(() => setIsGeneratingViews(false), 1000);
 
     } catch (error) {
       console.error('Error generating views:', error);
       setViewsTask('Erro ao gerar vistas técnicas.');
+      setViewsTasks(prev => prev.map(t => t.status === 'active' ? { ...t, status: 'pending' } : t));
       setTimeout(() => setIsGeneratingViews(false), 2000);
     }
   };
@@ -136,6 +194,11 @@ export default function CameraViewModal({
     setProgress(0);
     setTime(0);
     setTask('A preparar a cena...');
+    setTasks([
+      { name: "Preparar a cena e calcular perspetiva", status: "active" },
+      { name: "Renderizar a imagem da câmara", status: "pending" },
+      { name: "Finalizar renderização", status: "pending" }
+    ]);
     
     try {
       // Simulate progress
@@ -148,28 +211,67 @@ export default function CameraViewModal({
           return prev + 10;
         });
         setTask('A renderizar a perspetiva da câmara...');
+        setTasks(prev => [
+          { ...prev[0], status: "completed" },
+          { ...prev[1], status: "active" },
+          prev[2]
+        ]);
       }, 500);
 
-      const prompt = `Cenário: ${node.name}. ${node.description}. 
+      const prompt = isCharacter
+        ? `Personagem: ${node.name}. ${node.description}. 
 Vista a partir de uma ${cameraType} com lente ${lens}.
 A câmara está posicionada a ${height} metros de altura, com uma inclinação de ${tilt} graus e rotação de ${rotation} graus.
+A imagem deve focar-se EXCLUSIVAMENTE na personagem da imagem de referência, mantendo as mesmas proporções, cores e detalhes.
+Fundo branco puro ou transparente. Sem cenário, sem fundo. Apenas a personagem.
+Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}. 
+Altamente detalhado, iluminação dramática, composição profissional.`
+        : `Sujeito/Cenário: ${node.name}. ${node.description}. 
+Vista a partir de uma ${cameraType} com lente ${lens}.
+A câmara está posicionada a ${height} metros de altura, com uma inclinação de ${tilt} graus e rotação de ${rotation} graus.
+A imagem deve focar-se EXCLUSIVAMENTE no sujeito ou cenário da imagem de referência, mantendo as mesmas proporções, cores e detalhes.
 Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}. 
 Altamente detalhado, iluminação dramática, composição profissional.`;
 
-      const imageUrl = await generateImage(prompt, project.aspectRatio);
+      const sourceImage = node.imageUrl || node.url;
+      let referenceImages: string[] | undefined;
+      if (sourceImage) {
+        const base64 = await getBase64FromUrl(sourceImage);
+        referenceImages = [base64];
+      }
+
+      const imageUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
       
       clearInterval(progressInterval);
-      setProgress(100);
-      setTask('Imagem gerada com sucesso!');
+      setProgress(95);
+      setTask('A finalizar renderização...');
+      setTasks(prev => [
+        prev[0],
+        { ...prev[1], status: "completed" },
+        { ...prev[2], status: "active" }
+      ]);
+      
       setGeneratedImage(imageUrl);
       setGeneratedPrompt(prompt);
       
       setTimeout(() => {
+        setProgress(100);
+        setTask('Imagem gerada com sucesso!');
+        setTasks(prev => [
+          prev[0],
+          prev[1],
+          { ...prev[2], status: "completed" }
+        ]);
+      }, 500);
+
+      setTimeout(() => {
         setIsGenerating(false);
-      }, 1000);
+      }, 1500);
       
     } catch (error) {
       console.error(error);
+      setTask('Erro ao gerar imagem.');
+      setTasks(prev => prev.map(t => t.status === 'active' ? { ...t, status: 'pending' } : t));
       alert('Erro ao gerar imagem da câmara.');
       setIsGenerating(false);
     }
@@ -279,7 +381,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
                       <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-2" />
                       <p className="text-xs text-zinc-600 text-center">{viewsTask}</p>
                       <div className="w-full max-w-[150px] mt-2">
-                        <ProgressBar progress={viewsProgress} label="" />
+                        <ProgressBar progress={viewsProgress} label="" modelName="Nanobana" tasks={viewsTasks} />
                       </div>
                     </div>
                   ) : null}
@@ -478,6 +580,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
                     progress={progress} 
                     label={task} 
                     modelName="Nanobana" 
+                    tasks={tasks}
                   />
                   <p className="text-xs text-zinc-500 mt-4 text-center">
                     A renderizar a perspetiva exata da câmara selecionada.

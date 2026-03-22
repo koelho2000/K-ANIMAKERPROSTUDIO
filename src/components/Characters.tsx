@@ -21,6 +21,7 @@ import {
   Info,
   Palette,
   Zap,
+  Camera,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { v4 as uuidv4 } from "uuid";
@@ -31,6 +32,7 @@ import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
 import { ARTISTIC_STYLES } from "../constants";
 import { UpdateTakesModal } from "./UpdateTakesModal";
+import CameraViewModal from "./CameraViewModal";
 
 interface CharactersProps {
   project: Project;
@@ -59,6 +61,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
   const [isGeneratingAllImages, setIsGeneratingAllImages] = useState(false);
   const [globalProgress, setGlobalProgress] = useState(0);
   const [currentOperationLabel, setCurrentOperationLabel] = useState("");
+  const [cameraModalCharacterId, setCameraModalCharacterId] = useState<string | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -802,6 +805,13 @@ export default function Characters({ project, setProject }: CharactersProps) {
                 {char.imageUrl && (
                   <>
                     <button
+                      onClick={() => setCameraModalCharacterId(char.id)}
+                      className="bg-zinc-800 text-white p-2 rounded-lg hover:bg-zinc-700 shadow-sm transition-colors"
+                      title="Vista de Câmara"
+                    >
+                      <Camera className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => setEditingItem({
                         id: `char-img-${char.id}`,
                         url: char.imageUrl!,
@@ -1187,6 +1197,62 @@ export default function Characters({ project, setProject }: CharactersProps) {
           triggerType="characters"
         />
       )}
+
+      <CameraViewModal
+        isOpen={!!cameraModalCharacterId}
+        onClose={() => setCameraModalCharacterId(null)}
+        node={project.characters.find(c => c.id === cameraModalCharacterId)}
+        project={project}
+        isCharacter={true}
+        onSaveToMedia={(url, title) => {
+          setProject(prev => ({
+            ...prev,
+            customMedia: [
+              ...(prev.customMedia || []),
+              {
+                id: uuidv4(),
+                url,
+                type: 'image',
+                title,
+                source: 'camera',
+                createdAt: Date.now()
+              }
+            ]
+          }));
+        }}
+        onReplaceImage={(nodeId, url, prompt) => {
+          setProject(prev => {
+            const character = prev.characters.find(c => c.id === nodeId);
+            const oldImageUrl = character?.imageUrl;
+            
+            const newMedia = oldImageUrl ? {
+              id: uuidv4(),
+              url: oldImageUrl,
+              type: 'image' as const,
+              title: `Personagem Original: ${character.name}`,
+              source: 'camera',
+              createdAt: Date.now()
+            } : null;
+
+            return {
+              ...prev,
+              characters: prev.characters.map(c => c.id === nodeId ? { ...c, imageUrl: url, lastImagePrompt: prompt } : c),
+              customMedia: newMedia ? [newMedia, ...(prev.customMedia || [])] : prev.customMedia
+            };
+          });
+        }}
+        onUpdateViews={(nodeId, topUrl, sideUrl, sourceImageUrl) => {
+          setProject(prev => ({
+            ...prev,
+            characters: prev.characters.map(c => c.id === nodeId ? { 
+              ...c, 
+              topViewImageUrl: topUrl, 
+              sideViewImageUrl: sideUrl,
+              viewsGeneratedFromImageUrl: sourceImageUrl
+            } : c)
+          }));
+        }}
+      />
     </div>
   );
 }

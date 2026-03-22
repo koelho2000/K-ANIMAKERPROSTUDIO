@@ -26,16 +26,19 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
   const [isGeneratingWorld, setIsGeneratingWorld] = useState(false);
   const [worldMapProgress, setWorldMapProgress] = useState(0);
   const [worldMapTask, setWorldMapTask] = useState("");
+  const [worldMapTasks, setWorldMapTasks] = useState<{name: string, status: 'pending'|'active'|'completed'}[]>([]);
   const [worldMapTime, setWorldMapTime] = useState(0);
   const [isGeneratingPerspectives, setIsGeneratingPerspectives] = useState(false);
   const [perspectivesProgress, setPerspectivesProgress] = useState(0);
   const [perspectivesTask, setPerspectivesTask] = useState("");
+  const [perspectivesTasks, setPerspectivesTasks] = useState<{name: string, status: 'pending'|'active'|'completed'}[]>([]);
   const [perspectivesTime, setPerspectivesTime] = useState(0);
   const [isGeneratingNode, setIsGeneratingNode] = useState<string | null>(null);
   const [showPromptPreview, setShowPromptPreview] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [connectingFromNodeId, setConnectingFromNodeId] = useState<string | null>(null);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [cameraNode, setCameraNode] = useState<any>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -292,6 +295,11 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
     setWorldMapProgress(0);
     setWorldMapTime(0);
     setWorldMapTask("A preparar prompt...");
+    setWorldMapTasks([
+      { name: "Preparar prompt", status: "active" },
+      { name: "Comunicar com o modelo de imagem", status: "pending" },
+      { name: "Processar imagem gerada", status: "pending" }
+    ]);
 
     const startTime = Date.now();
     const timer = setInterval(() => {
@@ -308,6 +316,11 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
       
       setWorldMapProgress(15);
       setWorldMapTask("A comunicar com o modelo de imagem...");
+      setWorldMapTasks(prev => [
+        { ...prev[0], status: "completed" },
+        { ...prev[1], status: "active" },
+        prev[2]
+      ]);
       
       progressInterval = setInterval(() => {
         setWorldMapProgress(prev => {
@@ -319,20 +332,35 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
       const imageUrl = await generateImage(prompt, "16:9");
       
       clearInterval(progressInterval);
-      setWorldMapProgress(100);
-      setWorldMapTask("Mapa gerado com sucesso!");
+      setWorldMapProgress(95);
+      setWorldMapTask("A processar imagem gerada...");
+      setWorldMapTasks(prev => [
+        prev[0],
+        { ...prev[1], status: "completed" },
+        { ...prev[2], status: "active" }
+      ]);
       
       setProject(prev => ({
         ...prev,
         worldMapImageUrl: imageUrl,
         worldMapPrompt: prompt
       }));
+      
+      setWorldMapProgress(100);
+      setWorldMapTask("Mapa gerado com sucesso!");
+      setWorldMapTasks(prev => [
+        prev[0],
+        prev[1],
+        { ...prev[2], status: "completed" }
+      ]);
     } catch (error) {
       console.error(error);
+      setWorldMapTask("Erro ao gerar mapa.");
+      setWorldMapTasks(prev => prev.map(t => t.status === 'active' ? { ...t, status: 'pending' } : t));
       alert("Erro ao gerar o mapa do mundo.");
     } finally {
       clearInterval(timer);
-      if (progressInterval) clearInterval(progressInterval);
+      if (progressInterval!) clearInterval(progressInterval);
       setTimeout(() => {
         setIsGeneratingWorld(false);
       }, 1500);
@@ -457,6 +485,7 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                     progress={isGeneratingWorld ? worldMapProgress : perspectivesProgress} 
                     label={isGeneratingWorld ? worldMapTask : perspectivesTask} 
                     modelName="Nanobana" 
+                    tasks={isGeneratingWorld ? worldMapTasks : perspectivesTasks}
                   />
                   <p className="text-xs text-zinc-500 mt-4 text-center">
                     Este processo pode demorar alguns segundos. Por favor, aguarde.
@@ -501,6 +530,24 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                   <div className="p-3 border-b border-zinc-100 flex justify-between items-center bg-zinc-50">
                     <h3 className="font-medium text-sm text-zinc-900">Mapa Global</h3>
                     <div className="flex gap-1">
+                      <button 
+                        onClick={() => {
+                          setCameraNode({
+                            id: 'world-map',
+                            name: 'Mapa do Mundo',
+                            description: project.concept || 'O mundo do projeto',
+                            topViewImageUrl: project.worldMapImageUrl,
+                            sideViewImageUrl: project.worldMapImageUrl,
+                            imageUrl: project.worldMapImageUrl,
+                            artisticStyle: project.filmStyle
+                          });
+                          setIsCameraModalOpen(true);
+                        }} 
+                        className="p-1.5 hover:bg-zinc-200 rounded-md text-zinc-500" 
+                        title="Vista de Câmara"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                      </button>
                       <button onClick={() => handleSaveToMedia(project.worldMapImageUrl!, "Mapa do Mundo")} className="p-1.5 hover:bg-zinc-200 rounded-md text-zinc-500" title="Gravar na Biblioteca">
                         <Save className="w-3.5 h-3.5" />
                       </button>
@@ -802,11 +849,22 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
 
       <CameraViewModal
         isOpen={isCameraModalOpen}
-        onClose={() => setIsCameraModalOpen(false)}
-        node={nodes.find(n => n.id === selectedNodeId)}
+        onClose={() => {
+          setIsCameraModalOpen(false);
+          setCameraNode(null);
+        }}
+        node={cameraNode || nodes.find(n => n.id === selectedNodeId)}
         project={project}
         onSaveToMedia={handleSaveToMedia}
         onReplaceImage={(nodeId, url, prompt) => {
+          if (nodeId === 'world-map') {
+            setProject(prev => ({
+              ...prev,
+              worldMapImageUrl: url,
+              worldMapPrompt: prompt
+            }));
+            return;
+          }
           setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, imageUrl: url, lastImagePrompt: prompt } : n));
           setProject(prev => {
             const setting = prev.settings.find(s => s.id === nodeId);
@@ -829,6 +887,10 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
           });
         }}
         onUpdateViews={(nodeId, topUrl, sideUrl, sourceImageUrl) => {
+          if (nodeId === 'world-map') {
+            // Not saving views for world map yet, but we could
+            return;
+          }
           setNodes(prev => prev.map(n => n.id === nodeId ? { 
             ...n, 
             topViewImageUrl: topUrl, 
