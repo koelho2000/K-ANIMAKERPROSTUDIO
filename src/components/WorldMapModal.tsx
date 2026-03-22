@@ -29,6 +29,7 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
   const [isGeneratingNode, setIsGeneratingNode] = useState<string | null>(null);
   const [showPromptPreview, setShowPromptPreview] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
+  const [connectingFromNodeId, setConnectingFromNodeId] = useState<string | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -62,6 +63,15 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
 
   const handleMouseDownNode = (e: React.MouseEvent, nodeId: string) => {
     e.stopPropagation();
+
+    if (connectingFromNodeId) {
+      if (connectingFromNodeId !== nodeId) {
+        handleConnectNodes(connectingFromNodeId, nodeId);
+      }
+      setConnectingFromNodeId(null);
+      return;
+    }
+
     const node = nodes.find(n => n.id === nodeId);
     if (node && node.position) {
       setIsDragging(nodeId);
@@ -135,6 +145,89 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
       ...prev,
       settings: [
         ...prev.settings.map(s => s.id === sourceId ? { ...s, connections: [...(s.connections || []), newSetting.id] } : s),
+        newSetting
+      ]
+    }));
+    
+    setSelectedNodeId(newSetting.id);
+  };
+
+  const handleGeneratePerspectives = (sourceId: string) => {
+    const sourceNode = nodes.find(n => n.id === sourceId);
+    if (!sourceNode || !sourceNode.position) return;
+
+    const offsets = [
+      { name: 'Norte', dx: 0, dy: -300 },
+      { name: 'Sul', dx: 0, dy: 300 },
+      { name: 'Este', dx: 300, dy: 0 },
+      { name: 'Oeste', dx: -300, dy: 0 }
+    ];
+
+    const newSettings: Setting[] = offsets.map(offset => ({
+      id: uuidv4(),
+      name: `Vista ${offset.name} de ${sourceNode.name}`,
+      description: `Uma perspetiva diferente de ${sourceNode.name}, olhando a partir da direção ${offset.name}.`,
+      position: { 
+        x: sourceNode.position!.x + offset.dx, 
+        y: sourceNode.position!.y + offset.dy 
+      },
+      connections: [sourceId]
+    }));
+
+    const newSettingIds = newSettings.map(s => s.id);
+
+    const updatedNodes = nodes.map(n => 
+      n.id === sourceId 
+        ? { ...n, connections: [...(n.connections || []), ...newSettingIds] }
+        : n
+    );
+
+    setNodes([...updatedNodes, ...newSettings]);
+    
+    setProject(prev => ({
+      ...prev,
+      settings: [
+        ...prev.settings.map(s => s.id === sourceId ? { ...s, connections: [...(s.connections || []), ...newSettingIds] } : s),
+        ...newSettings
+      ]
+    }));
+  };
+
+  const handleConnectNodes = (sourceId: string, targetId: string) => {
+    const sourceNode = nodes.find(n => n.id === sourceId);
+    const targetNode = nodes.find(n => n.id === targetId);
+    
+    if (!sourceNode || !targetNode || !sourceNode.position || !targetNode.position) return;
+
+    const newSetting: Setting = {
+      id: uuidv4(),
+      name: `Caminho: ${sourceNode.name} ↔ ${targetNode.name}`,
+      description: `Uma área de transição ou caminho que liga ${sourceNode.name} a ${targetNode.name}.`,
+      position: { 
+        x: (sourceNode.position.x + targetNode.position.x) / 2, 
+        y: (sourceNode.position.y + targetNode.position.y) / 2 
+      },
+      connections: [sourceId, targetId]
+    };
+
+    const updatedNodes = nodes.map(n => {
+      if (n.id === sourceId || n.id === targetId) {
+        return { ...n, connections: [...(n.connections || []), newSetting.id] };
+      }
+      return n;
+    });
+
+    setNodes([...updatedNodes, newSetting]);
+    
+    setProject(prev => ({
+      ...prev,
+      settings: [
+        ...prev.settings.map(s => {
+          if (s.id === sourceId || s.id === targetId) {
+            return { ...s, connections: [...(s.connections || []), newSetting.id] };
+          }
+          return s;
+        }),
         newSetting
       ]
     }));
@@ -318,9 +411,13 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
             {/* Canvas Area */}
             <div 
               ref={containerRef}
-              className="flex-1 relative overflow-hidden cursor-grab active:cursor-grabbing"
+              className={`flex-1 relative overflow-hidden ${connectingFromNodeId ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
               onMouseDown={(e) => {
                 if ((e.target as HTMLElement).closest('.node-element')) return;
+                if (connectingFromNodeId) {
+                  setConnectingFromNodeId(null);
+                  return;
+                }
                 setIsPanning(true);
               }}
               onMouseMove={handleMouseMove}
@@ -398,6 +495,21 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                       );
                     })
                   )}
+                  
+                  {/* Connecting Line Preview */}
+                  {connectingFromNodeId && (() => {
+                    const sourceNode = nodes.find(n => n.id === connectingFromNodeId);
+                    if (!sourceNode || !sourceNode.position) return null;
+                    
+                    const x1 = sourceNode.position.x + 120;
+                    const y1 = sourceNode.position.y + 80;
+                    
+                    return (
+                      <g>
+                        <circle cx={x1} cy={y1} r="8" fill="#10b981" className="animate-pulse" />
+                      </g>
+                    );
+                  })()}
                 </svg>
 
                 {/* Nodes */}
@@ -405,7 +517,13 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                   <div
                     key={node.id}
                     className={`node-element absolute w-[240px] bg-white rounded-xl shadow-md border-2 transition-colors cursor-pointer ${
-                      selectedNodeId === node.id ? 'border-indigo-500 shadow-indigo-100 shadow-lg z-10' : 'border-zinc-200 hover:border-indigo-300 z-0'
+                      connectingFromNodeId === node.id 
+                        ? 'border-emerald-500 shadow-emerald-100 shadow-lg z-10 ring-4 ring-emerald-500/20' 
+                        : connectingFromNodeId 
+                          ? 'border-zinc-200 hover:border-emerald-400 z-0'
+                          : selectedNodeId === node.id 
+                            ? 'border-indigo-500 shadow-indigo-100 shadow-lg z-10' 
+                            : 'border-zinc-200 hover:border-indigo-300 z-0'
                     }`}
                     style={{
                       left: node.position?.x || 0,
@@ -461,7 +579,7 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                     </div>
                     
                     {/* Add Branch Button */}
-                    {selectedNodeId === node.id && (
+                    {selectedNodeId === node.id && !connectingFromNodeId && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleAddBranch(node.id); }}
                         className="absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-indigo-700 hover:scale-110 transition-all z-20"
@@ -530,6 +648,27 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                         >
                           {isGeneratingNode === node.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                           {node.imageUrl ? "Regenerar Imagem" : "Gerar Imagem"}
+                        </button>
+                      </div>
+
+                      <div className="pt-4 border-t border-zinc-100 space-y-2">
+                        <button
+                          onClick={() => handleGeneratePerspectives(node.id)}
+                          className="w-full flex items-center justify-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl font-medium hover:bg-zinc-50 transition-colors"
+                        >
+                          <Maximize2 className="w-4 h-4" />
+                          Gerar 4 Perspetivas
+                        </button>
+                        <button
+                          onClick={() => setConnectingFromNodeId(connectingFromNodeId === node.id ? null : node.id)}
+                          className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-medium transition-colors ${
+                            connectingFromNodeId === node.id 
+                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' 
+                              : 'bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50'
+                          }`}
+                        >
+                          <Move className="w-4 h-4" />
+                          {connectingFromNodeId === node.id ? 'A ligar... (Clique no destino)' : 'Ligar a outro cenário'}
                         </button>
                       </div>
                       
