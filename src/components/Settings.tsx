@@ -23,7 +23,8 @@ import IntelligentEditor from "./IntelligentEditor";
 import { ARTISTIC_STYLES } from "../constants";
 import { UpdateTakesModal } from "./UpdateTakesModal";
 import { WorldMapModal } from "./WorldMapModal";
-import { Map } from "lucide-react";
+import CameraViewModal from "./CameraViewModal";
+import { Map, Camera } from "lucide-react";
 
 interface SettingsProps {
   project: Project;
@@ -48,6 +49,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
   const [globalProgress, setGlobalProgress] = useState(0);
   const [currentOperationLabel, setCurrentOperationLabel] = useState("");
   const [isWorldMapOpen, setIsWorldMapOpen] = useState(false);
+  const [cameraModalSettingId, setCameraModalSettingId] = useState<string | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -554,6 +556,14 @@ export default function Settings({ project, setProject }: SettingsProps) {
                   )}
                   {setting.imageUrl ? "Regenerar Concept" : "Gerar Concept Art"}
                 </button>
+                <button
+                  onClick={() => setCameraModalSettingId(setting.id)}
+                  className="bg-white text-zinc-900 px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-zinc-100 transition-colors"
+                  title="Vista de Câmara"
+                >
+                  <Camera className="w-4 h-4" />
+                  Câmara
+                </button>
               </div>
             </div>
 
@@ -649,6 +659,61 @@ export default function Settings({ project, setProject }: SettingsProps) {
         onClose={() => setIsWorldMapOpen(false)}
         project={project}
         setProject={setProject}
+      />
+
+      <CameraViewModal
+        isOpen={!!cameraModalSettingId}
+        onClose={() => setCameraModalSettingId(null)}
+        node={project.settings.find(s => s.id === cameraModalSettingId)}
+        project={project}
+        onSaveToMedia={(url, title) => {
+          setProject(prev => ({
+            ...prev,
+            customMedia: [
+              ...(prev.customMedia || []),
+              {
+                id: uuidv4(),
+                url,
+                type: 'image',
+                title,
+                source: 'camera',
+                createdAt: Date.now()
+              }
+            ]
+          }));
+        }}
+        onReplaceImage={(nodeId, url, prompt) => {
+          setProject(prev => {
+            const setting = prev.settings.find(s => s.id === nodeId);
+            const oldImageUrl = setting?.imageUrl;
+            
+            const newMedia = oldImageUrl ? {
+              id: uuidv4(),
+              url: oldImageUrl,
+              type: 'image' as const,
+              title: `Cenário Original: ${setting.name}`,
+              source: 'camera',
+              createdAt: Date.now()
+            } : null;
+
+            return {
+              ...prev,
+              settings: prev.settings.map(s => s.id === nodeId ? { ...s, imageUrl: url, lastImagePrompt: prompt } : s),
+              customMedia: newMedia ? [newMedia, ...(prev.customMedia || [])] : prev.customMedia
+            };
+          });
+        }}
+        onUpdateViews={(nodeId, topUrl, sideUrl, sourceImageUrl) => {
+          setProject(prev => ({
+            ...prev,
+            settings: prev.settings.map(s => s.id === nodeId ? { 
+              ...s, 
+              topViewImageUrl: topUrl, 
+              sideViewImageUrl: sideUrl,
+              viewsGeneratedFromImageUrl: sourceImageUrl
+            } : s)
+          }));
+        }}
       />
     </div>
   );

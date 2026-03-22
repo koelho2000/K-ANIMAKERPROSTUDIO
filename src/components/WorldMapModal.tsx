@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Map, Plus, Image as ImageIcon, Download, Save, Sparkles, Loader2, Maximize2, ZoomIn, ZoomOut, Move } from 'lucide-react';
+import { X, Map, Plus, Image as ImageIcon, Download, Save, Sparkles, Loader2, Maximize2, ZoomIn, ZoomOut, Move, Camera } from 'lucide-react';
 import { Project, Setting } from '../types';
 import { generateImage } from '../services/geminiService';
 import { v4 as uuidv4 } from 'uuid';
 import { ImageModal } from './ImageModal';
 import ProgressBar from './ProgressBar';
+import CameraViewModal from './CameraViewModal';
 
 interface WorldMapModalProps {
   isOpen: boolean;
@@ -26,10 +27,15 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
   const [worldMapProgress, setWorldMapProgress] = useState(0);
   const [worldMapTask, setWorldMapTask] = useState("");
   const [worldMapTime, setWorldMapTime] = useState(0);
+  const [isGeneratingPerspectives, setIsGeneratingPerspectives] = useState(false);
+  const [perspectivesProgress, setPerspectivesProgress] = useState(0);
+  const [perspectivesTask, setPerspectivesTask] = useState("");
+  const [perspectivesTime, setPerspectivesTime] = useState(0);
   const [isGeneratingNode, setIsGeneratingNode] = useState<string | null>(null);
   const [showPromptPreview, setShowPromptPreview] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [connectingFromNodeId, setConnectingFromNodeId] = useState<string | null>(null);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -152,45 +158,91 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
     setSelectedNodeId(newSetting.id);
   };
 
-  const handleGeneratePerspectives = (sourceId: string) => {
+  const handleGeneratePerspectives = async (sourceId: string) => {
     const sourceNode = nodes.find(n => n.id === sourceId);
     if (!sourceNode || !sourceNode.position) return;
 
-    const offsets = [
-      { name: 'Norte', dx: 0, dy: -300 },
-      { name: 'Sul', dx: 0, dy: 300 },
-      { name: 'Este', dx: 300, dy: 0 },
-      { name: 'Oeste', dx: -300, dy: 0 }
-    ];
+    setIsGeneratingPerspectives(true);
+    setPerspectivesProgress(0);
+    setPerspectivesTask("A preparar as 4 perspetivas...");
+    setPerspectivesTime(0);
 
-    const newSettings: Setting[] = offsets.map(offset => ({
-      id: uuidv4(),
-      name: `Vista ${offset.name} de ${sourceNode.name}`,
-      description: `Uma perspetiva diferente de ${sourceNode.name}, olhando a partir da direção ${offset.name}.`,
-      position: { 
-        x: sourceNode.position!.x + offset.dx, 
-        y: sourceNode.position!.y + offset.dy 
-      },
-      connections: [sourceId]
-    }));
+    const timer = setInterval(() => {
+      setPerspectivesTime(prev => prev + 1);
+    }, 1000);
 
-    const newSettingIds = newSettings.map(s => s.id);
+    try {
+      const offsets = [
+        { name: 'Norte', dx: 0, dy: -300 },
+        { name: 'Sul', dx: 0, dy: 300 },
+        { name: 'Este', dx: 300, dy: 0 },
+        { name: 'Oeste', dx: -300, dy: 0 }
+      ];
 
-    const updatedNodes = nodes.map(n => 
-      n.id === sourceId 
-        ? { ...n, connections: [...(n.connections || []), ...newSettingIds] }
-        : n
-    );
+      const newSettings: Setting[] = offsets.map(offset => ({
+        id: uuidv4(),
+        name: `Vista ${offset.name} de ${sourceNode.name}`,
+        description: `Uma perspetiva diferente de ${sourceNode.name}, olhando a partir da direção ${offset.name}.`,
+        position: { 
+          x: sourceNode.position!.x + offset.dx, 
+          y: sourceNode.position!.y + offset.dy 
+        },
+        connections: [sourceId]
+      }));
 
-    setNodes([...updatedNodes, ...newSettings]);
-    
-    setProject(prev => ({
-      ...prev,
-      settings: [
-        ...prev.settings.map(s => s.id === sourceId ? { ...s, connections: [...(s.connections || []), ...newSettingIds] } : s),
-        ...newSettings
-      ]
-    }));
+      const newSettingIds = newSettings.map(s => s.id);
+
+      const updatedNodes = nodes.map(n => 
+        n.id === sourceId 
+          ? { ...n, connections: [...(n.connections || []), ...newSettingIds] }
+          : n
+      );
+
+      setNodes([...updatedNodes, ...newSettings]);
+      
+      setProject(prev => ({
+        ...prev,
+        settings: [
+          ...prev.settings.map(s => s.id === sourceId ? { ...s, connections: [...(s.connections || []), ...newSettingIds] } : s),
+          ...newSettings
+        ]
+      }));
+
+      // Generate images for each perspective
+      for (let i = 0; i < newSettings.length; i++) {
+        const setting = newSettings[i];
+        setPerspectivesTask(`A gerar perspetiva ${i + 1} de 4 (${setting.name})...`);
+        setPerspectivesProgress(10 + (i * 20)); // 10% to 90%
+        
+        try {
+          const prompt = `Cenário: ${setting.name}. ${setting.description}. Estilo visual: ${setting.artisticStyle || project.filmStyle || 'cinematográfico'}. Altamente detalhado, iluminação dramática, composição profissional.`;
+          const imageUrl = await generateImage(prompt, project.aspectRatio);
+          
+          // Update state with the new image
+          setNodes(prev => prev.map(n => n.id === setting.id ? { ...n, imageUrl, lastImagePrompt: prompt } : n));
+          setProject(prev => ({
+            ...prev,
+            settings: prev.settings.map(s => s.id === setting.id ? { ...s, imageUrl, lastImagePrompt: prompt } : s)
+          }));
+        } catch (error) {
+          console.error(`Error generating image for ${setting.name}:`, error);
+        }
+      }
+
+      setPerspectivesProgress(100);
+      setPerspectivesTask("Perspetivas geradas com sucesso!");
+      
+      setTimeout(() => {
+        setIsGeneratingPerspectives(false);
+      }, 1500);
+
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar perspetivas.");
+      setIsGeneratingPerspectives(false);
+    } finally {
+      clearInterval(timer);
+    }
   };
 
   const handleConnectNodes = (sourceId: string, targetId: string) => {
@@ -368,7 +420,7 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
             <div className="flex items-center gap-3">
               <button
                 onClick={handleGenerateWorldMap}
-                disabled={isGeneratingWorld || nodes.length === 0}
+                disabled={isGeneratingWorld || isGeneratingPerspectives || nodes.length === 0}
                 className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
               >
                 {isGeneratingWorld ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -387,18 +439,23 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
           <div className="flex flex-1 overflow-hidden relative bg-zinc-50">
             
             {/* Progress Overlay */}
-            {isGeneratingWorld && (
+            {(isGeneratingWorld || isGeneratingPerspectives) && (
               <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center p-8">
                 <div className="w-full max-w-md bg-white p-6 rounded-2xl shadow-xl border border-zinc-100">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-lg text-zinc-900">A Gerar Mapa Global</h3>
+                    <h3 className="font-bold text-lg text-zinc-900">
+                      {isGeneratingWorld ? "A Gerar Mapa Global" : "A Gerar Perspetivas"}
+                    </h3>
                     <div className="text-sm font-medium text-zinc-500 bg-zinc-100 px-2 py-1 rounded-md">
-                      {Math.floor(worldMapTime / 60)}:{(worldMapTime % 60).toString().padStart(2, '0')}
+                      {isGeneratingWorld 
+                        ? `${Math.floor(worldMapTime / 60)}:${(worldMapTime % 60).toString().padStart(2, '0')}`
+                        : `${Math.floor(perspectivesTime / 60)}:${(perspectivesTime % 60).toString().padStart(2, '0')}`
+                      }
                     </div>
                   </div>
                   <ProgressBar 
-                    progress={worldMapProgress} 
-                    label={worldMapTask} 
+                    progress={isGeneratingWorld ? worldMapProgress : perspectivesProgress} 
+                    label={isGeneratingWorld ? worldMapTask : perspectivesTask} 
                     modelName="Nanobana" 
                   />
                   <p className="text-xs text-zinc-500 mt-4 text-center">
@@ -551,6 +608,13 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                         >
                           {isGeneratingNode === node.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                         </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setSelectedNodeId(node.id); setIsCameraModalOpen(true); }}
+                          className="p-2 bg-white/20 hover:bg-white/30 rounded-lg text-white backdrop-blur-sm transition-colors"
+                          title="Vista de Câmara"
+                        >
+                          <Camera className="w-4 h-4" />
+                        </button>
                         {node.imageUrl && (
                           <>
                             <button 
@@ -653,10 +717,18 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
 
                       <div className="pt-4 border-t border-zinc-100 space-y-2">
                         <button
-                          onClick={() => handleGeneratePerspectives(node.id)}
-                          className="w-full flex items-center justify-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl font-medium hover:bg-zinc-50 transition-colors"
+                          onClick={() => setIsCameraModalOpen(true)}
+                          className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-indigo-700 transition-colors"
                         >
-                          <Maximize2 className="w-4 h-4" />
+                          <Camera className="w-4 h-4" />
+                          Vista de Câmara
+                        </button>
+                        <button
+                          onClick={() => handleGeneratePerspectives(node.id)}
+                          disabled={isGeneratingPerspectives}
+                          className="w-full flex items-center justify-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
+                        >
+                          {isGeneratingPerspectives ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
                           Gerar 4 Perspetivas
                         </button>
                         <button
@@ -726,6 +798,36 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
         onClose={() => setSelectedImage(null)}
         imageUrl={selectedImage?.url || null}
         title={selectedImage?.title}
+      />
+
+      <CameraViewModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        node={nodes.find(n => n.id === selectedNodeId)}
+        project={project}
+        onSaveToMedia={handleSaveToMedia}
+        onReplaceImage={(nodeId, url, prompt) => {
+          setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, imageUrl: url, lastImagePrompt: prompt } : n));
+          setProject(prev => {
+            const setting = prev.settings.find(s => s.id === nodeId);
+            const oldImageUrl = setting?.imageUrl;
+            
+            const newMedia = oldImageUrl ? {
+              id: uuidv4(),
+              url: oldImageUrl,
+              type: 'image' as const,
+              title: `Cenário Original: ${setting?.name || 'Cenário'}`,
+              source: 'camera',
+              createdAt: Date.now()
+            } : null;
+
+            return {
+              ...prev,
+              settings: prev.settings.map(s => s.id === nodeId ? { ...s, imageUrl: url, lastImagePrompt: prompt } : s),
+              customMedia: newMedia ? [newMedia, ...(prev.customMedia || [])] : prev.customMedia
+            };
+          });
+        }}
       />
     </AnimatePresence>
   );

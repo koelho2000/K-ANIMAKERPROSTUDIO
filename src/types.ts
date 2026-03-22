@@ -163,6 +163,9 @@ export interface Setting {
   artisticStyle?: string;
   imageUrl?: string;
   lastImagePrompt?: string;
+  topViewImageUrl?: string;
+  sideViewImageUrl?: string;
+  viewsGeneratedFromImageUrl?: string;
   updatedAt?: number;
   connections?: string[];
   position?: { x: number; y: number };
