@@ -828,6 +828,23 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
             };
           });
         }}
+        onUpdateViews={(nodeId, topUrl, sideUrl, sourceImageUrl) => {
+          setNodes(prev => prev.map(n => n.id === nodeId ? { 
+            ...n, 
+            topViewImageUrl: topUrl, 
+            sideViewImageUrl: sideUrl,
+            viewsGeneratedFromImageUrl: sourceImageUrl
+          } : n));
+          setProject(prev => ({
+            ...prev,
+            settings: prev.settings.map(s => s.id === nodeId ? { 
+              ...s, 
+              topViewImageUrl: topUrl, 
+              sideViewImageUrl: sideUrl,
+              viewsGeneratedFromImageUrl: sourceImageUrl
+            } : s)
+          }));
+        }}
       />
     </AnimatePresence>
   );
