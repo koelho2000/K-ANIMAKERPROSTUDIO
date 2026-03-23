@@ -22,7 +22,7 @@ import { PromptEditorModal } from "./PromptEditorModal";
 import IntelligentEditor from "./IntelligentEditor";
 import { ARTISTIC_STYLES } from "../constants";
 import { UpdateTakesModal } from "./UpdateTakesModal";
-import { WorldMapModal } from "./WorldMapModal";
+
 import CameraViewModal from "./CameraViewModal";
 import { Map, Camera } from "lucide-react";
 
@@ -48,7 +48,6 @@ export default function Settings({ project, setProject }: SettingsProps) {
   const [isGeneratingAllImages, setIsGeneratingAllImages] = useState(false);
   const [globalProgress, setGlobalProgress] = useState(0);
   const [currentOperationLabel, setCurrentOperationLabel] = useState("");
-  const [isWorldMapOpen, setIsWorldMapOpen] = useState(false);
   const [cameraModalSettingId, setCameraModalSettingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -378,13 +377,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
               Update Cenas e Takes ({outdatedTakesCount})
             </button>
           )}
-          <button
-            onClick={() => setIsWorldMapOpen(true)}
-            className="flex items-center gap-2 bg-white hover:bg-zinc-50 text-emerald-600 border border-emerald-200 px-4 py-2 rounded-xl font-medium transition-colors"
-          >
-            <Map className="w-5 h-5" />
-            Mapa do Mundo
-          </button>
+
           <button
             onClick={handleGenerateAllImages}
             disabled={generatingImageId !== null || project.settings.length === 0}
@@ -654,12 +647,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
         />
       )}
 
-      <WorldMapModal
-        isOpen={isWorldMapOpen}
-        onClose={() => setIsWorldMapOpen(false)}
-        project={project}
-        setProject={setProject}
-      />
+
 
       <CameraViewModal
         isOpen={!!cameraModalSettingId}

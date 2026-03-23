@@ -22,6 +22,7 @@ import {
   Palette,
   Zap,
   Camera,
+  Save,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { v4 as uuidv4 } from "uuid";
@@ -348,6 +349,22 @@ export default function Characters({ project, setProject }: CharactersProps) {
     }
   };
 
+  const handleSaveToMedia = (url: string, title: string) => {
+    const newMedia = {
+      id: uuidv4(),
+      url,
+      type: 'image' as const,
+      title,
+      source: 'Personagens',
+      createdAt: Date.now()
+    };
+    setProject(prev => ({
+      ...prev,
+      customMedia: [...(prev.customMedia || []), newMedia]
+    }));
+    alert('Imagem guardada no Media com sucesso!');
+  };
+
   const handleGenerateViews = async (character: Character) => {
     if (!character.imageUrl) {
       alert("Gere primeiro a imagem principal da personagem.");
@@ -358,12 +375,11 @@ export default function Characters({ project, setProject }: CharactersProps) {
       ? character.artisticStyle 
       : project.filmStyle;
 
-    const prompt = `Character design turnaround sheet based on the provided character image. 
+    const prompt = `Character design based on the provided character image. 
       Tipo de Filme: ${project.filmType}.
       Estilo Visual: ${styleToUse}. 
       Público Alvo: ${project.targetAudience || 'Adultos'}.
-      Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
-      CRITICAL: You MUST maintain 100% consistency with the provided reference image. The character in all views must look exactly like the character in the reference image.
+      CRITICAL: You MUST maintain 100% consistency with the provided reference image. The character must look exactly like the character in the reference image.
       Neutral background, highly detailed.`;
     
     setEditingPrompt({ id: character.id, prompt, type: 'views' });
@@ -381,10 +397,68 @@ export default function Characters({ project, setProject }: CharactersProps) {
     try {
       setActivePrompt(editedPrompt);
       const referenceBase64 = await getBase64FromUrl(character.imageUrl);
-      const viewsImageUrl = await generateImage(editedPrompt, "16:9", [referenceBase64]);
+      
+      const viewsToGenerate = [
+        { key: 'frontViewImageUrl', prompt: `${editedPrompt} Front view in "T" pose.` },
+        { key: 'backViewImageUrl', prompt: `${editedPrompt} Back view.` },
+        { key: 'leftViewImageUrl', prompt: `${editedPrompt} Left side view.` },
+        { key: 'rightViewImageUrl', prompt: `${editedPrompt} Right side view.` },
+        { key: 'topViewImageUrl', prompt: `${editedPrompt} Top down view.` }
+      ];
+
+      const generatedViews: Record<string, string> = {};
+      
+      for (const view of viewsToGenerate) {
+        generatedViews[view.key] = await generateImage(view.prompt, "1:1", [referenceBase64]);
+      }
+
+      // Create composite image
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024 * 3;
+      canvas.height = 1024 * 2;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const loadImg = (src: string): Promise<HTMLImageElement> => {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => resolve(img);
+            img.src = src;
+          });
+        };
+
+        const [frontImg, backImg, leftImg, rightImg, topImg] = await Promise.all([
+          loadImg(generatedViews.frontViewImageUrl),
+          loadImg(generatedViews.backViewImageUrl),
+          loadImg(generatedViews.leftViewImageUrl),
+          loadImg(generatedViews.rightViewImageUrl),
+          loadImg(generatedViews.topViewImageUrl)
+        ]);
+
+        ctx.drawImage(frontImg, 0, 0, 1024, 1024);
+        ctx.drawImage(backImg, 1024, 0, 1024, 1024);
+        ctx.drawImage(topImg, 2048, 0, 1024, 1024);
+        ctx.drawImage(leftImg, 0, 1024, 1024, 1024);
+        ctx.drawImage(rightImg, 1024, 1024, 1024, 1024);
+      }
+      
+      const compositeImageUrl = canvas.toDataURL('image/jpeg', 0.9);
 
       const updatedCharacters = project.characters.map((c) =>
-        c.id === charId ? { ...c, viewsImageUrl, lastViewsPrompt: editedPrompt } : c,
+        c.id === charId ? { 
+          ...c, 
+          viewsImageUrl: compositeImageUrl,
+          frontViewImageUrl: generatedViews.frontViewImageUrl,
+          backViewImageUrl: generatedViews.backViewImageUrl,
+          leftViewImageUrl: generatedViews.leftViewImageUrl,
+          rightViewImageUrl: generatedViews.rightViewImageUrl,
+          topViewImageUrl: generatedViews.topViewImageUrl,
+          lastViewsPrompt: editedPrompt 
+        } : c,
       );
       setProject({ ...project, characters: updatedCharacters });
     } catch (error) {
@@ -1152,6 +1226,42 @@ export default function Characters({ project, setProject }: CharactersProps) {
                   </button>
                 </div>
               </div>
+
+              {/* Separate Views */}
+              {char.frontViewImageUrl && (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {[
+                    { url: char.frontViewImageUrl, label: 'Frente' },
+                    { url: char.backViewImageUrl, label: 'Trás' },
+                    { url: char.leftViewImageUrl, label: 'Esquerda' },
+                    { url: char.rightViewImageUrl, label: 'Direita' },
+                    { url: char.topViewImageUrl, label: 'Topo' }
+                  ].map((view, idx) => view.url && (
+                    <div key={idx} className="relative group rounded-lg overflow-hidden border border-zinc-200 aspect-square">
+                      <img src={view.url} alt={`Vista ${view.label}`} className="w-full h-full object-cover" />
+                      <div className="absolute top-1 left-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-medium">
+                        {view.label}
+                      </div>
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleExportImage(view.url, `${char.name}-vista-${view.label.toLowerCase()}`)}
+                          className="p-1.5 bg-white text-zinc-900 rounded-md hover:bg-zinc-100 transition-colors"
+                          title="Download"
+                        >
+                          <Download className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleSaveToMedia(view.url, `Vista ${view.label}: ${char.name}`)}
+                          className="p-1.5 bg-white text-zinc-900 rounded-md hover:bg-zinc-100 transition-colors"
+                          title="Gravar no Media"
+                        >
+                          <Save className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}

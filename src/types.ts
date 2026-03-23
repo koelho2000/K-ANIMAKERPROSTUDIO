@@ -32,6 +32,9 @@ export type NarratorAge = 'Criança' | 'Adulto' | 'Idoso';
 
 export interface Project {
   id: string;
+  userId?: string;
+  createdAt?: number;
+  updatedAt?: number;
   title: string;
   idea: string;
   concept: string;
@@ -78,6 +81,17 @@ export interface Project {
   videoModel?: VideoModel;
   worldMapImageUrl?: string;
   worldMapPrompt?: string;
+  storyworld?: {
+    description?: string;
+    rules?: string;
+    connections?: {
+      fromSceneIndex: number;
+      toSceneIndex: number;
+      distance: string;
+      time: string;
+      method: string;
+    }[];
+  };
   ebook?: EBook;
   customMedia?: CustomMedia[];
   intro?: {
@@ -150,6 +164,10 @@ export interface Character {
   imageUrl?: string;
   lastImagePrompt?: string;
   viewsImageUrl?: string;
+  frontViewImageUrl?: string;
+  backViewImageUrl?: string;
+  leftViewImageUrl?: string;
+  rightViewImageUrl?: string;
   lastViewsPrompt?: string;
   topViewImageUrl?: string;
   sideViewImageUrl?: string;

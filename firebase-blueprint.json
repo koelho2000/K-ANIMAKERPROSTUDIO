@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A film project containing all settings, characters, script, and generated media.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique identifier of the project (Title+Director+Author+Date+UniqueCode)."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who owns the project."
+        },
+        "title": {
+          "type": "string"
+        },
+        "idea": {
+          "type": "string"
+        },
+        "concept": {
+          "type": "string"
+        },
+        "filmType": {
+          "type": "string"
+        },
+        "filmStyle": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "duration": {
+          "type": "string"
+        },
+        "aspectRatio": {
+          "type": "string"
+        },
+        "director": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp of creation"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp of last update"
+        },
+        "projectData": {
+          "type": "string",
+          "description": "JSON stringified project data to handle complex nested structures."
+        }
+      },
+      "required": ["id", "userId", "title", "createdAt", "updatedAt", "projectData"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/projects/{projectId}": {
+      "schema": {
+        "$ref": "#/entities/Project"
+      },
+      "description": "Projects owned by the user."
+    }
+  }
+}

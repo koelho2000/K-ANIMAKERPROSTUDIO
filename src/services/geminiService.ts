@@ -212,7 +212,7 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
     const parts: any[] = [{ text: prompt }];
 
     if (referenceImagesBase64 && referenceImagesBase64.length > 0) {
-      referenceImagesBase64.forEach(img => {
+      referenceImagesBase64.forEach((img, index) => {
         if (img && img.startsWith('data:')) {
           const parts_split = img.split(";base64,");
           if (parts_split.length === 2) {
@@ -226,6 +226,7 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
                 mimeType: mimeType,
               },
             });
+            parts.unshift({ text: `[Reference Image ${index + 1}]:` });
           }
         } else {
           console.warn("A ignorar imagem de referência que não é data URL ou está malformada:", img?.substring(0, 50));
@@ -237,8 +238,9 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
       ? prompt 
       : `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the image.`;
     
-    // Ensure we keep the reference images and replace the prompt text
-    const finalParts = parts.map(p => p.text ? { text: finalPrompt } : p);
+    // Replace only the last text part (which is the original prompt)
+    const finalParts = [...parts];
+    finalParts[finalParts.length - 1] = { text: finalPrompt };
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",

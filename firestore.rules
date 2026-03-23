@@ -1,0 +1,109 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users/{userId}/projects
+    // Document ID: [Title+Director+Author+Date+UniqueCode]
+    // Fields:
+    //   - id: string (required) - The unique identifier of the project
+    //   - userId: string (required) - The ID of the user who owns the project
+    //   - title: string (required) - Title of the project
+    //   - idea: string (optional)
+    //   - concept: string (optional)
+    //   - filmType: string (optional)
+    //   - filmStyle: string (optional)
+    //   - language: string (optional)
+    //   - duration: string (optional)
+    //   - aspectRatio: string (optional)
+    //   - director: string (optional)
+    //   - author: string (optional)
+    //   - createdAt: number (required) - Timestamp of creation
+    //   - updatedAt: number (required) - Timestamp of last update
+    //   - projectData: string (required) - JSON stringified project data
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user owns the resource (for user-owned documents)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    // Validate that the document contains only the allowed fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    
+    // Validate that the document hasn't changed in the fields that are not allowed to be changed
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    
+    function isValidProject() {
+      let allowedFields = ['id', 'userId', 'title', 'idea', 'concept', 'filmType', 'filmStyle', 'language', 'duration', 'aspectRatio', 'director', 'author', 'createdAt', 'updatedAt', 'projectData', 'chunksCount'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(['id', 'userId', 'title', 'createdAt', 'updatedAt', 'projectData']) &&
+             request.resource.data.id is string && request.resource.data.id.size() > 0 && request.resource.data.id.size() < 500 &&
+             request.resource.data.userId is string && request.resource.data.userId == request.auth.uid &&
+             request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() < 200 &&
+             request.resource.data.createdAt is number &&
+             request.resource.data.updatedAt is number &&
+             request.resource.data.projectData is string && request.resource.data.projectData.size() < 1000000 && // Max 1MB
+             (!('chunksCount' in request.resource.data) || (request.resource.data.chunksCount is number && request.resource.data.chunksCount >= 1)) &&
+             (!('idea' in request.resource.data) || (request.resource.data.idea is string && request.resource.data.idea.size() < 10000)) &&
+             (!('concept' in request.resource.data) || (request.resource.data.concept is string && request.resource.data.concept.size() < 10000)) &&
+             (!('filmType' in request.resource.data) || (request.resource.data.filmType is string && request.resource.data.filmType.size() < 100)) &&
+             (!('filmStyle' in request.resource.data) || (request.resource.data.filmStyle is string && request.resource.data.filmStyle.size() < 100)) &&
+             (!('language' in request.resource.data) || (request.resource.data.language is string && request.resource.data.language.size() < 100)) &&
+             (!('duration' in request.resource.data) || (request.resource.data.duration is string && request.resource.data.duration.size() < 100)) &&
+             (!('aspectRatio' in request.resource.data) || (request.resource.data.aspectRatio is string && request.resource.data.aspectRatio.size() < 20)) &&
+             (!('director' in request.resource.data) || (request.resource.data.director is string && request.resource.data.director.size() < 100)) &&
+             (!('author' in request.resource.data) || (request.resource.data.author is string && request.resource.data.author.size() < 100));
+    }
+
+    function isValidChunk() {
+      return hasOnlyAllowedFields(['data']) &&
+             hasRequiredFields(['data']) &&
+             request.resource.data.data is string && request.resource.data.data.size() <= 1000000; // Max 1MB
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId}/projects/{projectId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidProject();
+      allow update: if isOwner(userId) && isValidProject() && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt']);
+      allow delete: if isOwner(userId);
+      
+      match /chunks/{chunkId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChunk();
+        allow update: if isOwner(userId) && isValidChunk();
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

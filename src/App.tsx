@@ -4,6 +4,7 @@ import Setup from "./components/Setup";
 import Story from "./components/Story";
 import Characters from "./components/Characters";
 import Settings from "./components/Settings";
+import Storyworld from "./components/Storyworld";
 import Scenes from "./components/Scenes";
 import Production from "./components/Production";
 import IntroOutro from "./components/IntroOutro";
@@ -57,8 +58,8 @@ export default function App() {
 
   const hasUnsavedChanges = JSON.stringify(project) !== lastSavedProject;
 
-  const onSave = () => {
-    setLastSavedProject(JSON.stringify(project));
+  const onSave = (savedProject?: Project) => {
+    setLastSavedProject(JSON.stringify(savedProject || project));
   };
 
   const onNewProject = () => {
@@ -68,8 +69,18 @@ export default function App() {
     setCurrentStep(1);
   };
 
+  const onStart = (loadedProject?: Project) => {
+    if (loadedProject) {
+      setProject(loadedProject);
+      setLastSavedProject(JSON.stringify(loadedProject));
+    } else {
+      onNewProject();
+    }
+    setShowWelcome(false);
+  };
+
   if (showWelcome) {
-    return <Welcome onStart={() => setShowWelcome(false)} />;
+    return <Welcome onStart={onStart} />;
   }
 
   return (
@@ -85,6 +96,7 @@ export default function App() {
         onNewProject={onNewProject}
         onOpenIntelligentGenerator={() => setShowIntelligentGenerator(true)}
         onOpenUpdateMovie={() => setShowUpdateMovie(true)}
+        onGoHome={() => setShowWelcome(true)}
       />
       <main className="flex-1 overflow-y-auto">
         {currentStep === 1 && (
@@ -111,6 +123,9 @@ export default function App() {
             setNavigationContext={setNavigationContext}
             setCurrentStep={setCurrentStep}
           />
+        )}
+        {currentStep === 14 && (
+          <Storyworld project={project} setProject={setProject} />
         )}
         {currentStep === 6 && (
           <Production 

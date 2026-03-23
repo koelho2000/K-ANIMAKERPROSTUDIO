@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Download, Save, Image as ImageIcon, Loader2, Sparkles, RotateCcw, Move, RefreshCw } from 'lucide-react';
+import { X, Camera, Download, Save, Image as ImageIcon, Loader2, Sparkles, RotateCcw, Move, RefreshCw, Check } from 'lucide-react';
 import { generateImage } from '../services/geminiService';
 import { v4 as uuidv4 } from 'uuid';
 import ProgressBar from './ProgressBar';
@@ -49,11 +49,13 @@ export default function CameraViewModal({
   const [viewsTasks, setViewsTasks] = useState<{name: string, status: 'pending'|'active'|'completed'}[]>([]);
   const [topViewImage, setTopViewImage] = useState<string | null>(null);
   const [sideViewImage, setSideViewImage] = useState<string | null>(null);
+  const [isSavedToMedia, setIsSavedToMedia] = useState(false);
 
   useEffect(() => {
     if (isOpen && node) {
       setTopViewImage(node.topViewImageUrl || null);
       setSideViewImage(node.sideViewImageUrl || null);
+      setIsSavedToMedia(false);
     }
   }, [isOpen, node?.id, node?.topViewImageUrl, node?.sideViewImageUrl]);
 
@@ -65,9 +67,8 @@ export default function CameraViewModal({
         const reader = new FileReader();
         reader.onloadend = () => {
           const base64String = reader.result as string;
-          const base64Data = base64String.split(',')[1];
-          if (base64Data) {
-            resolve(base64Data);
+          if (base64String) {
+            resolve(base64String); // Return the full data URL
           } else {
             reject(new Error("Failed to extract base64 data"));
           }
@@ -81,12 +82,15 @@ export default function CameraViewModal({
     }
   };
 
-  const generateViews = async (forceRegenerate = false) => {
+  const generateViews = async (viewType: 'all' | 'top' | 'side' = 'all') => {
     if (!node) return;
     setIsGeneratingViews(true);
     setViewsProgress(0);
     setViewsTask('A inicializar vistas técnicas...');
     
+    if (viewType === 'all' || viewType === 'top') setTopViewImage(null);
+    if (viewType === 'all' || viewType === 'side') setSideViewImage(null);
+
     const initialTasks: {name: string, status: 'pending'|'active'|'completed'}[] = [
       { name: 'A gerar vista superior (planta)', status: 'pending' },
       { name: 'A gerar vista lateral (corte)', status: 'pending' },
@@ -95,45 +99,53 @@ export default function CameraViewModal({
     setViewsTasks(initialTasks);
 
     try {
-      let topUrl = forceRegenerate ? null : node.topViewImageUrl;
-      let sideUrl = forceRegenerate ? null : node.sideViewImageUrl;
+      let topUrl = (viewType === 'all' || viewType === 'top') ? null : node.topViewImageUrl;
+      let sideUrl = (viewType === 'all' || viewType === 'side') ? null : node.sideViewImageUrl;
       const sourceImage = node.imageUrl || node.url;
       
       let referenceImages: string[] | undefined;
       if (sourceImage) {
         setViewsTask('A processar imagem de referência...');
-        const base64 = await getBase64FromUrl(sourceImage);
-        referenceImages = [base64];
+        try {
+          const base64 = await getBase64FromUrl(sourceImage);
+          referenceImages = [base64];
+        } catch (e) {
+          console.error("Failed to get base64 for reference image", e);
+        }
       }
 
-      if (!topUrl) {
+      if (!topUrl && (viewType === 'all' || viewType === 'top')) {
         setViewsTasks(prev => prev.map((t, i) => i === 0 ? { ...t, status: 'active' } : t));
         setViewsTask('A gerar vista superior (planta)...');
         setViewsProgress(20);
         const topPrompt = isCharacter
-          ? `Vista de topo (planta) estrita da personagem na imagem de referência: ${node.name || ''}. ${node.description || ''}. Vista perfeitamente de cima para baixo (top-down). A imagem deve focar-se EXCLUSIVAMENTE na personagem da imagem de referência, mantendo as mesmas proporções, cores e detalhes. Fundo branco puro ou transparente. Sem cenário, sem fundo. Apenas a personagem. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`
+          ? `Vista de topo (planta) estrita da personagem na imagem de referência. Vista perfeitamente de cima para baixo (top-down). A imagem deve basear-se APENAS na imagem da personagem fornecida como referência, mantendo as mesmas proporções, cores e detalhes. Foco EXCLUSIVO na personagem. Fundo branco puro ou transparente. Sem cenário, sem fundo, sem outros elementos. Apenas a personagem isolada.`
           : `Vista de topo (planta) estrita do sujeito/cenário na imagem de referência: ${node.name || ''}. ${node.description || ''}. Estilo arquitetónico/esquemático, vista perfeitamente de cima para baixo (top-down). A imagem deve focar-se EXCLUSIVAMENTE no sujeito ou cenário da imagem de referência, mantendo as mesmas proporções, cores e detalhes. Fundo neutro. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`;
+        
         topUrl = await generateImage(topPrompt, '1:1', referenceImages);
         setTopViewImage(topUrl);
         setViewsProgress(50);
         setViewsTasks(prev => prev.map((t, i) => i === 0 ? { ...t, status: 'completed' } : t));
       } else {
         setViewsTasks(prev => prev.map((t, i) => i === 0 ? { ...t, status: 'completed' } : t));
+        if (topUrl) setTopViewImage(topUrl);
       }
 
-      if (!sideUrl) {
+      if (!sideUrl && (viewType === 'all' || viewType === 'side')) {
         setViewsTasks(prev => prev.map((t, i) => i === 1 ? { ...t, status: 'active' } : t));
         setViewsTask('A gerar vista lateral (corte)...');
         setViewsProgress(70);
         const sidePrompt = isCharacter
-          ? `Vista lateral em perfil estrito da personagem na imagem de referência: ${node.name || ''}. ${node.description || ''}. Vista perfeitamente de lado. A imagem deve focar-se EXCLUSIVAMENTE na personagem da imagem de referência, mantendo as mesmas proporções, cores e detalhes. Fundo branco puro ou transparente. Sem cenário, sem fundo. Apenas a personagem. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`
+          ? `Vista lateral em perfil estrito da personagem na imagem de referência. Vista perfeitamente de lado. A imagem deve basear-se APENAS na imagem da personagem fornecida como referência, mantendo as mesmas proporções, cores e detalhes. Foco EXCLUSIVO na personagem. Fundo branco puro ou transparente. Sem cenário, sem fundo, sem outros elementos. Apenas a personagem isolada.`
           : `Vista lateral em corte (cross-section) ou perfil estrito do sujeito/cenário na imagem de referência: ${node.name || ''}. ${node.description || ''}. Estilo arquitetónico/esquemático, vista perfeitamente de lado. A imagem deve focar-se EXCLUSIVAMENTE no sujeito ou cenário da imagem de referência, mantendo as mesmas proporções, cores e detalhes. Fundo neutro. Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}.`;
+        
         sideUrl = await generateImage(sidePrompt, '16:9', referenceImages);
         setSideViewImage(sideUrl);
         setViewsProgress(90);
         setViewsTasks(prev => prev.map((t, i) => i === 1 ? { ...t, status: 'completed' } : t));
       } else {
         setViewsTasks(prev => prev.map((t, i) => i === 1 ? { ...t, status: 'completed' } : t));
+        if (sideUrl) setSideViewImage(sideUrl);
       }
 
       setViewsTasks(prev => prev.map((t, i) => i === 2 ? { ...t, status: 'active' } : t));
@@ -187,6 +199,43 @@ export default function CameraViewModal({
     const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
     const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
     setCameraPos({ x, y });
+
+    const dx = x - 50;
+    const dy = y - 50;
+    let newRotation = Math.atan2(dx, dy) * (180 / Math.PI);
+    if (newRotation < 0) newRotation += 360;
+    setRotation(Math.round(newRotation));
+  };
+
+  const handleRotationChange = (newRotation: number) => {
+    setRotation(newRotation);
+    const radius = 40;
+    const rad = newRotation * (Math.PI / 180);
+    const x = 50 + Math.sin(rad) * radius;
+    const y = 50 + Math.cos(rad) * radius;
+    setCameraPos({ x, y });
+  };
+
+  const getCameraDescription = (rot: number, t: number, h: number) => {
+    let r = rot % 360;
+    if (r < 0) r += 360;
+    
+    let angleDesc = "de frente (vista frontal)";
+    if (r >= 22.5 && r < 67.5) angleDesc = "em três quartos de frente (lado direito)";
+    else if (r >= 67.5 && r < 112.5) angleDesc = "de perfil (lado direito)";
+    else if (r >= 112.5 && r < 157.5) angleDesc = "em três quartos de costas (lado direito)";
+    else if (r >= 157.5 && r < 202.5) angleDesc = "de costas (vista traseira)";
+    else if (r >= 202.5 && r < 247.5) angleDesc = "em três quartos de costas (lado esquerdo)";
+    else if (r >= 247.5 && r < 292.5) angleDesc = "de perfil (lado esquerdo)";
+    else if (r >= 292.5 && r < 337.5) angleDesc = "em três quartos de frente (lado esquerdo)";
+
+    let tiltDesc = "ao nível dos olhos";
+    if (t > 60) tiltDesc = "em vista de pássaro (top-down, olhando diretamente para baixo)";
+    else if (t > 15) tiltDesc = "em picado (ângulo alto, olhando para baixo)";
+    else if (t < -60) tiltDesc = "em vista de verme (bottom-up, olhando diretamente para cima)";
+    else if (t < -15) tiltDesc = "em contrapicado (ângulo baixo, olhando para cima)";
+
+    return `A câmara está posicionada a ${h} metros de altura, ${tiltDesc} (inclinação de ${t} graus), captando o sujeito ${angleDesc} (rotação de ${r} graus).`;
   };
 
   const handleGenerate = async () => {
@@ -218,17 +267,19 @@ export default function CameraViewModal({
         ]);
       }, 500);
 
+      const cameraDesc = getCameraDescription(rotation, tilt, height);
+
       const prompt = isCharacter
         ? `Personagem: ${node.name}. ${node.description}. 
 Vista a partir de uma ${cameraType} com lente ${lens}.
-A câmara está posicionada a ${height} metros de altura, com uma inclinação de ${tilt} graus e rotação de ${rotation} graus.
+${cameraDesc}
 A imagem deve focar-se EXCLUSIVAMENTE na personagem da imagem de referência, mantendo as mesmas proporções, cores e detalhes.
 Fundo branco puro ou transparente. Sem cenário, sem fundo. Apenas a personagem.
 Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}. 
 Altamente detalhado, iluminação dramática, composição profissional.`
         : `Sujeito/Cenário: ${node.name}. ${node.description}. 
 Vista a partir de uma ${cameraType} com lente ${lens}.
-A câmara está posicionada a ${height} metros de altura, com uma inclinação de ${tilt} graus e rotação de ${rotation} graus.
+${cameraDesc}
 A imagem deve focar-se EXCLUSIVAMENTE no sujeito ou cenário da imagem de referência, mantendo as mesmas proporções, cores e detalhes.
 Estilo visual: ${node.artisticStyle || project.filmStyle || 'cinematográfico'}. 
 Altamente detalhado, iluminação dramática, composição profissional.`;
@@ -236,8 +287,12 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
       const sourceImage = node.imageUrl || node.url;
       let referenceImages: string[] | undefined;
       if (sourceImage) {
-        const base64 = await getBase64FromUrl(sourceImage);
-        referenceImages = [base64];
+        try {
+          const base64 = await getBase64FromUrl(sourceImage);
+          referenceImages = [base64];
+        } catch (e) {
+          console.error("Failed to get base64 for reference image", e);
+        }
       }
 
       const imageUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
@@ -329,7 +384,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
                     As vistas técnicas (planta e corte) ajudam a posicionar a câmara com precisão no espaço 3D.
                   </p>
                   <button
-                    onClick={() => generateViews(false)}
+                    onClick={() => generateViews('all')}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors w-full flex items-center justify-center gap-2"
                   >
                     <Sparkles className="w-4 h-4" />
@@ -344,7 +399,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
                     Aviso: A imagem do cenário foi alterada desde que estas vistas foram geradas.
                   </p>
                   <button
-                    onClick={() => generateViews(true)}
+                    onClick={() => generateViews('all')}
                     disabled={isGeneratingViews}
                     className="bg-amber-100 text-amber-800 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-200 transition-colors w-full flex items-center justify-center gap-2 disabled:opacity-50"
                   >
@@ -360,9 +415,9 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
                   <label className="block text-sm font-medium text-zinc-700">Vista Superior (Planta)</label>
                   {topViewImage && !isGeneratingViews && (
                     <button 
-                      onClick={() => generateViews(true)}
+                      onClick={() => generateViews('top')}
                       className="text-xs text-zinc-500 hover:text-indigo-600 flex items-center gap-1"
-                      title="Regenerar vistas"
+                      title="Regenerar vista superior"
                     >
                       <RefreshCw className="w-3 h-3" />
                     </button>
@@ -423,12 +478,26 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
 
               {/* Side View Map */}
               <div className="space-y-3 pt-4 border-t border-zinc-100">
-                <label className="block text-sm font-medium text-zinc-700">Vista Lateral (Corte)</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-zinc-700">Vista Lateral (Corte)</label>
+                  {sideViewImage && !isGeneratingViews && (
+                    <button 
+                      onClick={() => generateViews('side')}
+                      className="text-xs text-zinc-500 hover:text-indigo-600 flex items-center gap-1"
+                      title="Regenerar vista lateral"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
                 <div className="relative w-full aspect-video bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200">
                   {isGeneratingViews && !sideViewImage ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm z-10 p-4">
                       <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-2" />
                       <p className="text-xs text-zinc-600 text-center">{viewsTask}</p>
+                      <div className="w-full max-w-[150px] mt-2">
+                        <ProgressBar progress={viewsProgress} label="" modelName="Nanobana" tasks={viewsTasks} />
+                      </div>
                     </div>
                   ) : null}
 
@@ -447,11 +516,19 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
                     {/* Ground line */}
                     <div className="absolute bottom-4 left-0 right-0 h-0.5 bg-zinc-400/50" />
                     
+                    {/* Character/Setting Height Reference */}
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-12 border-l-2 border-r-2 border-t-2 border-indigo-200/50 flex items-center justify-center"
+                         style={{ height: isCharacter ? '60%' : '80%' }}>
+                      <span className="text-[10px] text-indigo-400/70 font-mono">
+                        {isCharacter ? (node.physical?.height || '1.7m') : 'Cenário'}
+                      </span>
+                    </div>
+
                     {/* Camera indicator */}
                     <div 
                       className="absolute left-1/2 w-6 h-6 -ml-3 text-indigo-600 drop-shadow-md transition-all duration-300"
                       style={{ 
-                        bottom: `calc(1rem + ${Math.min(100, height * 2)}%)`, // Scale height for visual representation
+                        bottom: `calc(1rem + ${Math.min(90, (height / (isCharacter ? parseFloat(node.physical?.height || '1.7') : 5)) * (isCharacter ? 60 : 80))}%)`,
                         transform: `rotate(${tilt}deg)`
                       }}
                     >
@@ -475,7 +552,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
                     min="0" 
                     max="360" 
                     value={rotation}
-                    onChange={(e) => setRotation(Number(e.target.value))}
+                    onChange={(e) => handleRotationChange(Number(e.target.value))}
                     className="w-full accent-indigo-600"
                   />
                 </div>
@@ -592,6 +669,14 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
             <div className="flex-1 bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden flex items-center justify-center relative">
               {generatedImage ? (
                 <img src={generatedImage} alt="Vista da Câmara" className="w-full h-full object-contain" />
+              ) : node.imageUrl ? (
+                <div className="relative w-full h-full">
+                  <img src={node.imageUrl} alt="Imagem de Referência" className="w-full h-full object-contain opacity-50" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 bg-white/20 backdrop-blur-[2px]">
+                    <Camera className="w-16 h-16 mb-4 opacity-50 drop-shadow-md" />
+                    <p className="font-medium bg-white/80 px-4 py-2 rounded-lg shadow-sm">Ajuste as definições e clique em "Gerar Vista da Câmara"</p>
+                  </div>
+                </div>
               ) : (
                 <div className="text-center text-zinc-400">
                   <Camera className="w-16 h-16 mx-auto mb-4 opacity-20" />
@@ -610,11 +695,19 @@ Altamente detalhado, iluminação dramática, composição profissional.`;
                   Download
                 </button>
                 <button
-                  onClick={() => onSaveToMedia(generatedImage, `Vista da Câmara: ${node.name}`)}
-                  className="flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl font-medium hover:bg-zinc-50 transition-colors"
+                  onClick={() => {
+                    onSaveToMedia(generatedImage, `Vista da Câmara: ${node.name}`);
+                    setIsSavedToMedia(true);
+                    setTimeout(() => setIsSavedToMedia(false), 3000);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-colors ${
+                    isSavedToMedia 
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' 
+                      : 'bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50'
+                  }`}
                 >
-                  <Save className="w-4 h-4" />
-                  Gravar no Media
+                  {isSavedToMedia ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                  {isSavedToMedia ? 'Gravado no Media!' : 'Gravar no Media'}
                 </button>
                 <button
                   onClick={() => {
