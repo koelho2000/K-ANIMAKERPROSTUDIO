@@ -30,7 +30,10 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
   };
 
   const handleValidate = async () => {
-    if (!project.title || !project.idea || !project.concept) return;
+    if (!project.title || !project.idea || !project.concept) {
+      alert("Por favor, preenche o Título, Ideia Central e Conceito antes de analisar a consistência.");
+      return;
+    }
     
     setIsValidating(true);
     try {
@@ -69,10 +72,18 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
         config: { responseMimeType: "application/json" }
       });
 
-      const result = JSON.parse(response.text || "{}");
+      let text = response.text || "{}";
+      if (text.startsWith("```json")) {
+        text = text.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+      } else if (text.startsWith("```")) {
+        text = text.replace(/^```\n?/, "").replace(/\n?```$/, "");
+      }
+
+      const result = JSON.parse(text);
       setProject(prev => ({ ...prev, validation: result }));
     } catch (error) {
       console.error("Erro na validação:", error);
+      alert("Ocorreu um erro ao validar a configuração. Por favor, tenta novamente.");
     } finally {
       setIsValidating(false);
     }

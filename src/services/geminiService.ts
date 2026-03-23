@@ -6,11 +6,7 @@ export const getApiKey = () => {
   const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
   
   // 2. Try to get from environment
-  // In AI Studio, the key is often injected into process.env.API_KEY or similar
-  const envKey = 
-    (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : null) ||
-    (import.meta as any).env?.VITE_API_KEY || 
-    (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  const envKey = process.env.GEMINI_API_KEY;
   
   return manualKey || envKey;
 };
@@ -103,7 +99,13 @@ export const generateJSON = async (
         responseSchema: schema,
       },
     });
-    return response.text || "";
+    let text = response.text || "";
+    if (text.startsWith("```json")) {
+      text = text.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+    } else if (text.startsWith("```")) {
+      text = text.replace(/^```\n?/, "").replace(/\n?```$/, "");
+    }
+    return text;
   });
 };
 
@@ -485,7 +487,8 @@ export async function extractDialogueLines(action: string, characters: any[]): P
   };
 
   try {
-    const result = await generateJSON(prompt, schema, "És um assistente especializado em análise de guiões e extração de diálogos.");
+    const resultStr = await generateJSON(prompt, schema, "És um assistente especializado em análise de guiões e extração de diálogos.");
+    const result = JSON.parse(resultStr);
     if (!result || !Array.isArray(result)) return [];
 
     return result.map((dl: any) => {
@@ -723,7 +726,14 @@ export const analyzeCoherence = async (
       },
     });
 
-    return JSON.parse(response.text || "{}");
+    let text = response.text || "{}";
+    if (text.startsWith("```json")) {
+      text = text.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+    } else if (text.startsWith("```")) {
+      text = text.replace(/^```\n?/, "").replace(/\n?```$/, "");
+    }
+
+    return JSON.parse(text);
   });
 };
 
@@ -1133,7 +1143,13 @@ export const analyzeProjectForUpdates = async (project: any) => {
       }
     });
 
-    const text = response.text || "[]";
+    let text = response.text || "[]";
+    if (text.startsWith("```json")) {
+      text = text.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+    } else if (text.startsWith("```")) {
+      text = text.replace(/^```\n?/, "").replace(/\n?```$/, "");
+    }
+
     return JSON.parse(text);
   } catch (error) {
     console.error("Erro ao analisar projeto:", error);
