@@ -10,8 +10,8 @@ interface WelcomeProps {
 }
 
 export default function Welcome({ onStart }: WelcomeProps) {
-  const version = "V4.0.0";
-  const date = "19/03/2026";
+  const version = "V5.0.0";
+  const date = "24/03/2026";
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
