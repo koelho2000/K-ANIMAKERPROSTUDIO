@@ -561,7 +561,7 @@ export default function Scenes({
         Se a opção de áudio for 'Mudo', não geres diálogo nem narração.
         Se a opção de áudio for 'Narração', podes gerar narração mas não diálogo.
         Se a opção de áudio for 'Diálogo', podes gerar diálogo mas não narração.
-        Se a opção de áudio for 'Narração e Diálogo', podes gerar ambos.
+        Se a opção de áudio for 'Narração e Diálogo', podes gerar ambos, MAS NUNCA NO MESMO TAKE. Se um take tiver diálogo, não pode ter narração, e vice-versa.
 
         REGRAS DE IDENTIFICAÇÃO:
         1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
@@ -632,20 +632,24 @@ export default function Scenes({
         const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
         const settingId = detectSetting(t.action, t.settingName, project.settings) || project.settings.find((s) => s.name === t.settingName)?.id;
 
+        const parsedDialogueLines = t.dialogueLines?.map((dl: any) => ({
+          characterId: project.characters.find((c) => 
+            c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+            dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+          )?.id || "",
+          text: dl.text,
+        })).filter((dl: any) => dl.characterId !== "") || [];
+
+        const hasDialogue = (t.dialogue && t.dialogue !== 'Nenhum' && t.dialogue.trim() !== '') || parsedDialogueLines.length > 0;
+
         return {
           id: uuidv4(),
           action: t.action,
           camera: t.camera,
           sound: t.sound,
           dialogue: t.dialogue,
-          narration: t.narration && t.narration !== 'Nenhum' ? t.narration : undefined,
-          dialogueLines: t.dialogueLines?.map((dl: any) => ({
-            characterId: project.characters.find((c) => 
-              c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-              dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
-            )?.id || "",
-            text: dl.text,
-          })).filter((dl: any) => dl.characterId !== ""),
+          narration: hasDialogue ? undefined : (t.narration && t.narration !== 'Nenhum' ? t.narration : undefined),
+          dialogueLines: parsedDialogueLines,
           characterIds,
           settingId,
           duration: 5, // Default duration
@@ -751,7 +755,7 @@ export default function Scenes({
         Se a opção de áudio for 'Mudo', não geres diálogo nem narração.
         Se a opção de áudio for 'Narração', podes gerar narração mas não diálogo.
         Se a opção de áudio for 'Diálogo', podes gerar diálogo mas não narração.
-        Se a opção de áudio for 'Narração e Diálogo', podes gerar ambos.
+        Se a opção de áudio for 'Narração e Diálogo', podes gerar ambos, MAS NUNCA NO MESMO TAKE. Se um take tiver diálogo, não pode ter narração, e vice-versa.
 
         REGRAS DE IDENTIFICAÇÃO:
         1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
@@ -801,20 +805,24 @@ export default function Scenes({
         const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
         const settingId = detectSetting(t.action, t.settingName, project.settings) || project.settings.find((s) => s.name === t.settingName)?.id;
 
+        const parsedDialogueLines = t.dialogueLines?.map((dl: any) => ({
+          characterId: project.characters.find((c) => 
+            c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+            dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+          )?.id || "",
+          text: dl.text,
+        })).filter((dl: any) => dl.characterId !== "") || [];
+
+        const hasDialogue = (t.dialogue && t.dialogue !== 'Nenhum' && t.dialogue.trim() !== '') || parsedDialogueLines.length > 0;
+
         return {
           id: uuidv4(),
           action: t.action,
           camera: t.camera,
           sound: t.sound,
           dialogue: t.dialogue,
-          narration: t.narration && t.narration !== 'Nenhum' ? t.narration : undefined,
-          dialogueLines: t.dialogueLines?.map((dl: any) => ({
-            characterId: project.characters.find((c) => 
-              c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-              dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
-            )?.id || "",
-            text: dl.text,
-          })).filter((dl: any) => dl.characterId !== ""),
+          narration: hasDialogue ? undefined : (t.narration && t.narration !== 'Nenhum' ? t.narration : undefined),
+          dialogueLines: parsedDialogueLines,
           characterIds,
           settingId,
           duration: 5,
@@ -855,14 +863,18 @@ export default function Scenes({
         .map((s) => `${s.name}: ${s.description}`)
         .join("\n");
 
+      const audioOption = project.audioOption || 'Mudo';
+
       const prompt = `
         Refina o seguinte take de um filme de animação.
         Cena: ${scene.title}
         Público Alvo: ${project.targetAudience || 'Adultos'}
+        Opção de Áudio: ${audioOption}
         Take Atual:
         Ação: ${take.action}
         Câmara: ${take.camera}
         Diálogo: ${take.dialogue}
+        Narração: ${take.narration || 'Nenhum'}
         
         Contexto de Personagens:
         ${charactersContext}
@@ -871,6 +883,10 @@ export default function Scenes({
         ${settingsContext}
 
         Garante que o novo take é mais detalhado e respeita as descrições fornecidas.
+        Se a opção de áudio for 'Mudo', não geres diálogo nem narração.
+        Se a opção de áudio for 'Narração', podes gerar narração mas não diálogo.
+        Se a opção de áudio for 'Diálogo', podes gerar diálogo mas não narração.
+        Se a opção de áudio for 'Narração e Diálogo', podes gerar ambos, MAS NUNCA NO MESMO TAKE. Se um take tiver diálogo, não pode ter narração, e vice-versa.
         
         REGRAS DE IDENTIFICAÇÃO:
         1. Identifica TODAS as personagens que aparecem ou são mencionadas na 'ação' ou 'diálogo' de cada take.
@@ -915,6 +931,16 @@ export default function Scenes({
       const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
       const settingId = detectSetting(t.action, t.settingName, project.settings) || project.settings.find((s) => s.name === t.settingName)?.id;
 
+      const parsedDialogueLines = t.dialogueLines?.map((dl: any) => ({
+        characterId: project.characters.find((c) => 
+          c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
+          dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+        )?.id || "",
+        text: dl.text,
+      })).filter((dl: any) => dl.characterId !== "") || [];
+
+      const hasDialogue = (t.dialogue && t.dialogue !== 'Nenhum' && t.dialogue.trim() !== '') || parsedDialogueLines.length > 0;
+
       const updatedScenes = project.scenes.map((s) => {
         if (s.id === sceneId) {
           return {
@@ -927,14 +953,8 @@ export default function Scenes({
                     camera: t.camera,
                     sound: t.sound,
                     dialogue: t.dialogue,
-                    narration: t.narration && t.narration !== 'Nenhum' ? t.narration : undefined,
-                    dialogueLines: t.dialogueLines?.map((dl: any) => ({
-                      characterId: project.characters.find((c) => 
-                        c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-                        dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
-                      )?.id || "",
-                      text: dl.text,
-                    })).filter((dl: any) => dl.characterId !== ""),
+                    narration: hasDialogue ? undefined : (t.narration && t.narration !== 'Nenhum' ? t.narration : undefined),
+                    dialogueLines: parsedDialogueLines,
                     characterIds,
                     settingId,
                     duration: oldT.duration || 5,

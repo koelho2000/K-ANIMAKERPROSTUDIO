@@ -28,6 +28,7 @@ import {
   CheckSquare,
   Square,
   ArrowRightLeft,
+  Copy,
 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
@@ -303,6 +304,75 @@ export default function Production({
     }
 
     return true;
+  };
+
+  const handleImportFromPreviousTake = async (sceneId: string, takeId: string, index: number) => {
+    const sceneIndex = project.scenes.findIndex(s => s.id === sceneId);
+    if (sceneIndex === -1) return;
+
+    let previousTake: Take | undefined;
+    if (index > 0) {
+      previousTake = project.scenes[sceneIndex].takes[index - 1];
+    } else if (sceneIndex > 0) {
+      const prevScene = project.scenes[sceneIndex - 1];
+      if (prevScene.takes.length > 0) {
+        previousTake = prevScene.takes[prevScene.takes.length - 1];
+      }
+    }
+
+    if (!previousTake || !previousTake.videoUrl) {
+      alert("Não existe vídeo gerado no take anterior para importar o frame.");
+      return;
+    }
+
+    try {
+      // Create a hidden video element to extract the last frame
+      const video = document.createElement('video');
+      video.src = previousTake.videoUrl;
+      video.muted = true;
+      video.playsInline = true;
+
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          // Seek to near the end (subtract 0.1s to ensure we don't hit the very end where it might be blank)
+          video.currentTime = Math.max(0, video.duration - 0.1);
+        };
+        video.onseeked = () => resolve(true);
+        video.onerror = (e) => reject(new Error("Erro ao carregar o vídeo."));
+        video.load();
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error("Could not get canvas context");
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const base64 = canvas.toDataURL('image/jpeg', 0.9);
+
+      const updatedScenes = project.scenes.map((s) => {
+        if (s.id === sceneId) {
+          return {
+            ...s,
+            takes: s.takes.map((t) =>
+              t.id === takeId
+                ? {
+                    ...t,
+                    startFrameUrl: base64,
+                    updatedAt: Date.now(),
+                  }
+                : t,
+            ),
+          };
+        }
+        return s;
+      });
+      setProject({ ...project, scenes: updatedScenes });
+    } catch (error) {
+      console.error("Erro ao extrair frame do vídeo:", error);
+      alert("Ocorreu um erro ao extrair o último frame do vídeo anterior.");
+    }
   };
 
   const handleFileUpload = async (sceneId: string, takeId: string, type: "start" | "end", e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1899,6 +1969,32 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                         Frame Inicial
                       </span>
                       <div className="flex items-center gap-1">
+                        {(() => {
+                          const sceneIndex = project.scenes.findIndex(s => s.id === expandedSceneId);
+                          let previousTake: Take | undefined;
+                          if (index > 0) {
+                            previousTake = project.scenes[sceneIndex]?.takes[index - 1];
+                          } else if (sceneIndex > 0) {
+                            const prevScene = project.scenes[sceneIndex - 1];
+                            if (prevScene?.takes.length > 0) {
+                              previousTake = prevScene.takes[prevScene.takes.length - 1];
+                            }
+                          }
+                          
+                          if (previousTake?.videoUrl) {
+                            return (
+                              <button
+                                onClick={() => handleImportFromPreviousTake(expandedSceneId!, take.id, index)}
+                                className="text-[10px] flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1 rounded transition-colors"
+                                title="Importar último frame do vídeo do take anterior"
+                              >
+                                <Copy className="w-3 h-3" />
+                                Do Take Anterior
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
                         <label className="cursor-pointer text-[10px] flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-1 rounded transition-colors">
                           <Upload className="w-3 h-3" />
                           Importar

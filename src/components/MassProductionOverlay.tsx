@@ -703,7 +703,8 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         const allTakes: { sceneId: string, takeId: string, action: string, duration?: number }[] = [];
         project.scenes.forEach(scene => {
           scene.takes.forEach(take => {
-            if (!take.narrationAudioUrl) {
+            const hasDialogue = (take.dialogue && take.dialogue !== 'Nenhum' && take.dialogue.trim() !== '') || (take.dialogueLines && take.dialogueLines.length > 0);
+            if (!take.narrationAudioUrl && !hasDialogue) {
               allTakes.push({ 
                 sceneId: scene.id, 
                 takeId: take.id, 

@@ -298,8 +298,11 @@ export default function Timelapse({
       for (let sIdx = 0; sIdx < updatedScenes.length; sIdx++) {
         for (let tIdx = 0; tIdx < updatedScenes[sIdx].takes.length; tIdx++) {
           const take = updatedScenes[sIdx].takes[tIdx];
-          if (take.narration && take.narrationAudioUrl) {
-            currentNarrations.push(take.narration);
+          
+          const hasDialogue = (take.dialogue && take.dialogue !== 'Nenhum' && take.dialogue.trim() !== '') || (take.dialogueLines && take.dialogueLines.length > 0);
+          
+          if ((take.narration && take.narrationAudioUrl) || hasDialogue) {
+            if (take.narration) currentNarrations.push(take.narration);
             continue;
           }
 
@@ -782,8 +785,9 @@ export default function Timelapse({
                   </div>
                   <button
                     onClick={handleGenerateNarration}
-                    disabled={isGeneratingNarration}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors disabled:opacity-50"
+                    disabled={isGeneratingNarration || ((selectedEvent.take.dialogue && selectedEvent.take.dialogue !== 'Nenhum' && selectedEvent.take.dialogue.trim() !== '') || (selectedEvent.take.dialogueLines && selectedEvent.take.dialogueLines.length > 0))}
+                    title={((selectedEvent.take.dialogue && selectedEvent.take.dialogue !== 'Nenhum' && selectedEvent.take.dialogue.trim() !== '') || (selectedEvent.take.dialogueLines && selectedEvent.take.dialogueLines.length > 0)) ? "Não é possível gerar narração num take com diálogo" : "Gerar Narração"}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isGeneratingNarration ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
