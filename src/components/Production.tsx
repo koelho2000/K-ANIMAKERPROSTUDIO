@@ -199,15 +199,15 @@ export default function Production({
 
       // Collect reference images
       const referenceImages: string[] = [];
-      if (takeSetting?.imageUrl) {
-        const base64 = await getBase64FromUrl(takeSetting.imageUrl);
-        referenceImages.push(base64);
-      }
       for (const c of takeCharacters) {
         if (c.imageUrl) {
           const base64 = await getBase64FromUrl(c.imageUrl);
           referenceImages.push(base64);
         }
+      }
+      if (takeSetting?.imageUrl) {
+        const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+        referenceImages.push(base64);
       }
 
       // Add start frame as reference for end frame
@@ -839,15 +839,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           );
           const takeSetting = project.settings.find((s) => s.id === take.settingId);
           const referenceImages: string[] = [];
-          if (takeSetting?.imageUrl) {
-            const base64 = await getBase64FromUrl(takeSetting.imageUrl);
-            referenceImages.push(base64);
-          }
           for (const c of takeCharacters) {
             if (c.imageUrl) {
               const base64 = await getBase64FromUrl(c.imageUrl);
               referenceImages.push(base64);
             }
+          }
+          if (takeSetting?.imageUrl) {
+            const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+            referenceImages.push(base64);
           }
 
           const operation = await generateVideo(
@@ -1025,15 +1025,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
               );
               const takeSetting = project.settings.find((s) => s.id === take.settingId);
               const referenceImages: string[] = [];
-              if (takeSetting?.imageUrl) {
-                const base64 = await getBase64FromUrl(takeSetting.imageUrl);
-                referenceImages.push(base64);
-              }
               for (const c of takeCharacters) {
                 if (c.imageUrl) {
                   const base64 = await getBase64FromUrl(c.imageUrl);
                   referenceImages.push(base64);
                 }
+              }
+              if (takeSetting?.imageUrl) {
+                const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+                referenceImages.push(base64);
               }
 
               try {
@@ -1152,15 +1152,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       );
       const takeSetting = project.settings.find((s) => s.id === take.settingId);
       const referenceImages: string[] = [];
-      if (takeSetting?.imageUrl) {
-        const base64 = await getBase64FromUrl(takeSetting.imageUrl);
-        referenceImages.push(base64);
-      }
       for (const c of takeCharacters) {
         if (c.imageUrl) {
           const base64 = await getBase64FromUrl(c.imageUrl);
           referenceImages.push(base64);
         }
+      }
+      if (takeSetting?.imageUrl) {
+        const base64 = await getBase64FromUrl(takeSetting.imageUrl);
+        referenceImages.push(base64);
       }
 
       const operation = await generateVideo(
@@ -1362,10 +1362,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
 
       // Collect reference images
       const referenceImages: string[] = [];
-      if (takeSetting?.imageUrl) referenceImages.push(takeSetting.imageUrl);
       takeCharacters.forEach((c) => {
         if (c.imageUrl) referenceImages.push(c.imageUrl);
       });
+      if (takeSetting?.imageUrl) referenceImages.push(takeSetting.imageUrl);
 
       const charactersContext = takeCharacters
         .map((c) => `${c.name}: ${c.description}`)
@@ -2220,12 +2220,31 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
 
                   {/* Video */}
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-zinc-500 uppercase">
+                    <div className="flex items-start justify-between">
+                      <span className="text-xs font-semibold text-zinc-500 uppercase mt-1">
                         Vídeo Final
                       </span>
-                      <div className="flex items-center gap-2">
-                        <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="flex flex-wrap items-center gap-1 justify-end">
+                          {take.settingId && (() => {
+                            const setting = project.settings.find(s => s.id === take.settingId);
+                            if (!setting) return null;
+                            return (
+                              <span key={setting.id} className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded border border-emerald-200 flex items-center gap-1" title="Cenário">
+                                <MapPin className="w-2.5 h-2.5" />
+                                {setting.name}
+                              </span>
+                            );
+                          })()}
+                          {project.characters.filter(char => take.characterIds?.includes(char.id)).map(char => (
+                            <span key={char.id} className="text-[9px] px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded border border-indigo-200 flex items-center gap-1" title="Personagem">
+                              <Users className="w-2.5 h-2.5" />
+                              {char.name}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
                           <button
                             onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo-3.1')}
                             className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
@@ -2318,6 +2337,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           </button>
                         )}
                       </div>
+                    </div>
                     </div>
                     <div 
                       className="w-full bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative group"
