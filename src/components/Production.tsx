@@ -831,13 +831,21 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           
           const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
 
-          const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
-          
-          // Collect reference images for consistency
           const takeCharacters = project.characters.filter((c) =>
             take.characterIds?.includes(c.id)
           );
           const takeSetting = project.settings.find((s) => s.id === take.settingId);
+
+          const charactersContext = takeCharacters.length > 0 
+            ? ` Personagens: ${takeCharacters.map(c => `${c.name} (${c.description})`).join(", ")}.` 
+            : "";
+          const settingContext = takeSetting 
+            ? ` Cenário: ${takeSetting.name} (${takeSetting.description}).` 
+            : "";
+
+          const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}${charactersContext}${settingContext}`;
+          
+          // Collect reference images for consistency
           const referenceImages: string[] = [];
           for (const c of takeCharacters) {
             if (c.imageUrl) {
@@ -850,10 +858,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             referenceImages.push(base64);
           }
 
+          const startFrameBase64 = take.startFrameUrl ? await getBase64FromUrl(take.startFrameUrl) : undefined;
+          const endFrameBase64 = take.endFrameUrl ? await getBase64FromUrl(take.endFrameUrl) : undefined;
+
           const operation = await generateVideo(
             prompt,
-            take.startFrameUrl,
-            take.endFrameUrl,
+            startFrameBase64,
+            endFrameBase64,
             take.videoModel || project.videoModel || 'flow',
             project.aspectRatio,
             referenceImages
@@ -1037,10 +1048,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
               }
 
               try {
+                const startFrameBase64 = startFrame ? await getBase64FromUrl(startFrame) : undefined;
+                const endFrameBase64 = endFrame ? await getBase64FromUrl(endFrame) : undefined;
+
                 const operation = await generateVideo(
                   prompt,
-                  startFrame,
-                  endFrame,
+                  startFrameBase64,
+                  endFrameBase64,
                   take.videoModel || project.videoModel || 'flow',
                   project.aspectRatio,
                   referenceImages
@@ -1113,7 +1127,19 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       
       const narrationContext = take.narration && take.narration !== "Nenhum" ? ` Narração${narratorType}: ${take.narration}.` : "";
 
-      const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
+      const takeCharacters = project.characters.filter((c) =>
+        take.characterIds?.includes(c.id)
+      );
+      const takeSetting = project.settings.find((s) => s.id === take.settingId);
+
+      const charactersContext = takeCharacters.length > 0 
+        ? ` Personagens: ${takeCharacters.map(c => `${c.name} (${c.description})`).join(", ")}.` 
+        : "";
+      const settingContext = takeSetting 
+        ? ` Cenário: ${takeSetting.name} (${takeSetting.description}).` 
+        : "";
+
+      const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}${charactersContext}${settingContext}`;
       
       setEditingVideoPrompt({ sceneId, takeId, prompt });
     } catch (error) {
@@ -1163,10 +1189,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         referenceImages.push(base64);
       }
 
+      const startFrameBase64 = take.startFrameUrl ? await getBase64FromUrl(take.startFrameUrl) : undefined;
+      const endFrameBase64 = take.endFrameUrl ? await getBase64FromUrl(take.endFrameUrl) : undefined;
+
       const operation = await generateVideo(
         editedPrompt,
-        take.startFrameUrl,
-        take.endFrameUrl,
+        startFrameBase64,
+        endFrameBase64,
         take.videoModel || project.videoModel || 'flow',
         project.aspectRatio,
         referenceImages
