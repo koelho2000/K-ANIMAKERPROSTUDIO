@@ -31,6 +31,7 @@ interface PreviewProps {
 }
 
 const TRANSITION_TYPES: { id: TransitionType; name: string }[] = [
+  { id: 'none', name: 'Sem Transição' },
   { id: 'cut', name: 'Corte Seco' },
   { id: 'fade', name: 'Dissolver (Fade)' },
   { id: 'fade-black', name: 'Fade para Preto' },
@@ -88,6 +89,11 @@ export default function Preview({ project, setProject }: PreviewProps) {
   };
 
   const transitionVariants = {
+    none: {
+      initial: { opacity: 1 },
+      animate: { opacity: 1 },
+      exit: { opacity: 1 },
+    },
     cut: {
       initial: { opacity: 1 },
       animate: { opacity: 1 },
@@ -388,7 +394,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
           }
 
           // Handle "IN" Transitions
-          if (timePassed < 0.5 && prevTransition !== 'cut') {
+          if (timePassed < 0.5 && prevTransition !== 'cut' && prevTransition !== 'none') {
             const p = 1 - (timePassed / 0.5);
             if (prevTransition === 'fade' || prevTransition === 'fade-black') {
               ctx.fillStyle = `rgba(0, 0, 0, ${p})`;
@@ -406,7 +412,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
           }
 
           // Handle "OUT" Transitions
-          if (timeLeft < 0.5 && transition !== 'cut') {
+          if (timeLeft < 0.5 && transition !== 'cut' && transition !== 'none') {
             const p = 1 - (timeLeft / 0.5);
             if (transition === 'fade' || transition === 'fade-black') {
               ctx.fillStyle = `rgba(0, 0, 0, ${p})`;
@@ -615,11 +621,11 @@ export default function Preview({ project, setProject }: PreviewProps) {
                     <motion.div
                       key={currentClipIndex}
                       variants={transitionVariants}
-                      initial={currentTransition === 'cut' ? false : "initial"}
+                      initial={(currentTransition === 'cut' || currentTransition === 'none') ? false : "initial"}
                       animate="animate"
                       exit="exit"
                       transition={{ 
-                        duration: currentTransition === 'cut' ? 0 : 0.5,
+                        duration: (currentTransition === 'cut' || currentTransition === 'none') ? 0 : 0.5,
                         ease: "easeInOut"
                       }}
                       className="absolute inset-0 w-full h-full flex items-center justify-center"

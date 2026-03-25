@@ -33,6 +33,7 @@ import {
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
+import { VideoPromptModal } from "./VideoPromptModal";
 import IntelligentEditor from "./IntelligentEditor";
 
 interface ProductionProps {
@@ -71,6 +72,7 @@ export default function Production({
     sceneId: string;
     takeId: string;
     prompt: string;
+    suggestedImages: { id: string; url: string; name: string }[];
   } | null>(null);
   const [confirmingSceneBulk, setConfirmingSceneBulk] = useState<{ sceneId: string; type: 'start' | 'end' | 'video' } | null>(null);
   const [bulkProgress, setBulkProgress] = useState(0);
@@ -1141,14 +1143,24 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
 
       const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}${charactersContext}${settingContext}`;
       
-      setEditingVideoPrompt({ sceneId, takeId, prompt });
+      const suggestedImages: { id: string; url: string; name: string }[] = [];
+      for (const c of takeCharacters) {
+        if (c.imageUrl) {
+          suggestedImages.push({ id: c.id, url: c.imageUrl, name: c.name });
+        }
+      }
+      if (takeSetting?.imageUrl) {
+        suggestedImages.push({ id: takeSetting.id, url: takeSetting.imageUrl, name: takeSetting.name });
+      }
+
+      setEditingVideoPrompt({ sceneId, takeId, prompt, suggestedImages });
     } catch (error) {
       console.error(error);
       alert("Erro ao preparar prompt do vídeo.");
     }
   };
 
-  const confirmGenerateVideo = async (sceneId: string, takeId: string, editedPrompt: string) => {
+  const confirmGenerateVideo = async (sceneId: string, takeId: string, editedPrompt: string, selectedImages: string[]) => {
     setEditingVideoPrompt(null);
     setGeneratingVideoId(takeId);
     setVideoStatus("A preparar pedido...");
@@ -1172,21 +1184,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         }
       }
 
-      // Collect reference images for consistency
-      const takeCharacters = project.characters.filter((c) =>
-        take.characterIds?.includes(c.id)
-      );
-      const takeSetting = project.settings.find((s) => s.id === take.settingId);
+      // Convert selected reference images to base64
       const referenceImages: string[] = [];
-      for (const c of takeCharacters) {
-        if (c.imageUrl) {
-          const base64 = await getBase64FromUrl(c.imageUrl);
+      for (const url of selectedImages) {
+        try {
+          const base64 = await getBase64FromUrl(url);
           referenceImages.push(base64);
+        } catch (e) {
+          console.warn("Failed to convert reference image to base64", url, e);
         }
-      }
-      if (takeSetting?.imageUrl) {
-        const base64 = await getBase64FromUrl(takeSetting.imageUrl);
-        referenceImages.push(base64);
       }
 
       const startFrameBase64 = take.startFrameUrl ? await getBase64FromUrl(take.startFrameUrl) : undefined;
@@ -2588,13 +2594,12 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         imageUrl={selectedImage?.url || null}
         title={selectedImage?.title}
       />
-      <PromptEditorModal
+      <VideoPromptModal
         isOpen={!!editingVideoPrompt}
         onClose={() => setEditingVideoPrompt(null)}
-        onConfirm={(editedPrompt) => confirmGenerateVideo(editingVideoPrompt!.sceneId, editingVideoPrompt!.takeId, editedPrompt)}
+        onConfirm={(editedPrompt, selectedImages) => confirmGenerateVideo(editingVideoPrompt!.sceneId, editingVideoPrompt!.takeId, editedPrompt, selectedImages)}
         initialPrompt={editingVideoPrompt?.prompt || ""}
-        title="Validar Prompt de Vídeo"
-        description="Edita o prompt para garantir que a animação do vídeo corresponde à tua visão."
+        suggestedImages={editingVideoPrompt?.suggestedImages || []}
       />
 
       {editingItem && (
