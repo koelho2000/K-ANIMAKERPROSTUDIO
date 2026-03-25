@@ -281,10 +281,13 @@ export const generateVideo = async (
   return withRetry(async () => {
     const ai = getGenAI();
 
+    // Veo 3.1 only supports 16:9 and 9:16. Fallback to 16:9 if unsupported.
+    const finalAspectRatio = (aspectRatio === '16:9' || aspectRatio === '9:16') ? aspectRatio : '16:9';
+
     const config: any = {
       numberOfVideos: 1,
       resolution: "720p",
-      aspectRatio: aspectRatio,
+      aspectRatio: finalAspectRatio,
     };
 
     let modelName = 'veo-3.1-fast-generate-preview'; // Default to flow/fast
@@ -297,6 +300,8 @@ export const generateVideo = async (
       modelName = 'veo-3.1-fast-generate-preview';
     }
 
+    const useReferenceImages = model === 'veo-3.1' && finalAspectRatio === '16:9' && referenceImagesBase64 && referenceImagesBase64.length > 0;
+
     const finalPrompt = `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the video frames.`;
 
     const request: any = {
@@ -305,6 +310,7 @@ export const generateVideo = async (
       config,
     };
 
+    // Always use startImageBase64 if provided
     if (startImageBase64 && startImageBase64.startsWith('data:')) {
       const parts_split = startImageBase64.split(";base64,");
       if (parts_split.length === 2) {
@@ -319,6 +325,7 @@ export const generateVideo = async (
       console.warn("A ignorar imagem inicial do vídeo que não é data URL:", startImageBase64.substring(0, 50));
     }
 
+    // Always use endImageBase64 if provided
     if (endImageBase64 && endImageBase64.startsWith('data:')) {
       const parts_split = endImageBase64.split(";base64,");
       if (parts_split.length === 2) {
@@ -333,8 +340,7 @@ export const generateVideo = async (
       console.warn("A ignorar imagem final do vídeo que não é data URL:", endImageBase64.substring(0, 50));
     }
 
-    // Add reference images for consistency (VEO 3.1 only)
-    if (model === 'veo-3.1' && referenceImagesBase64 && referenceImagesBase64.length > 0) {
+    if (useReferenceImages) {
       const referenceImagesPayload: any[] = [];
       // Veo 3.1 supports up to 3 reference images
       referenceImagesBase64.slice(0, 3).forEach(img => {
@@ -355,7 +361,12 @@ export const generateVideo = async (
       });
       if (referenceImagesPayload.length > 0) {
         request.config.referenceImages = referenceImagesPayload;
+        request.config.resolution = "720p"; // Force 720p for reference images
       }
+    } else {
+      // If we are passing image or lastFrame, and model is veo-3.1, and NO reference images are used,
+      // we can optionally force it to fast. But since the user wants VEO3.1 to use the initial frame,
+      // we will leave the model as veo-3.1-generate-preview if they selected it.
     }
 
     const operation = await ai.models.generateVideos(request);
@@ -596,10 +607,13 @@ export const extendVideo = async (
   return withRetry(async () => {
     const ai = getGenAI();
 
+    // Veo 3.1 only supports 16:9 and 9:16. Fallback to 16:9 if unsupported.
+    const finalAspectRatio = (aspectRatio === '16:9' || aspectRatio === '9:16') ? aspectRatio : '16:9';
+
     const config: any = {
       numberOfVideos: 1,
       resolution: "720p",
-      aspectRatio: aspectRatio,
+      aspectRatio: finalAspectRatio,
     };
 
     let modelName = 'veo-3.1-fast-generate-preview';

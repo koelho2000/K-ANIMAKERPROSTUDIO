@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Project, Scene, Take, Character, Setting, VideoModel } from "../types";
+import { Project, Scene, Take, Character, Setting, VideoModel, CustomMedia } from "../types";
 import {
   generateImage,
   generateVideo,
@@ -29,7 +29,9 @@ import {
   Square,
   ArrowRightLeft,
   Copy,
+  Library,
 } from "lucide-react";
+import { v4 as uuidv4 } from 'uuid';
 import ProgressBar from "./ProgressBar";
 import { ImageModal } from "./ImageModal";
 import { PromptEditorModal } from "./PromptEditorModal";
@@ -73,6 +75,7 @@ export default function Production({
     takeId: string;
     prompt: string;
     suggestedImages: { id: string; url: string; name: string }[];
+    startFrameUrl?: string;
   } | null>(null);
   const [confirmingSceneBulk, setConfirmingSceneBulk] = useState<{ sceneId: string; type: 'start' | 'end' | 'video' } | null>(null);
   const [bulkProgress, setBulkProgress] = useState(0);
@@ -96,6 +99,24 @@ export default function Production({
     initialMode?: 'edit' | 'extend';
     nextMediaUrl?: string;
   } | null>(null);
+
+  const handleSaveToMediaLibrary = (url: string, type: 'image' | 'video', title: string) => {
+    const newMedia: CustomMedia = {
+      id: uuidv4(),
+      url,
+      type,
+      title,
+      source: 'Produção',
+      createdAt: Date.now()
+    };
+
+    setProject(prev => ({
+      ...prev,
+      customMedia: [...(prev.customMedia || []), newMedia]
+    }));
+    
+    alert(`${type === 'image' ? 'Imagem guardada' : 'Vídeo guardado'} na biblioteca de media com sucesso!`);
+  };
 
   useEffect(() => {
     if (navigationContext?.sceneId) {
@@ -1144,6 +1165,11 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       const prompt = `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}${charactersContext}${settingContext}`;
       
       const suggestedImages: { id: string; url: string; name: string }[] = [];
+      
+      // Do not add startFrameUrl to suggestedImages, it will be passed separately
+      const startFrameUrl = take.startFrameUrl || undefined;
+
+      // Do not add endFrameUrl to suggestedImages, it is used as lastFrame automatically
       for (const c of takeCharacters) {
         if (c.imageUrl) {
           suggestedImages.push({ id: c.id, url: c.imageUrl, name: c.name });
@@ -1153,14 +1179,14 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         suggestedImages.push({ id: takeSetting.id, url: takeSetting.imageUrl, name: takeSetting.name });
       }
 
-      setEditingVideoPrompt({ sceneId, takeId, prompt, suggestedImages });
+      setEditingVideoPrompt({ sceneId, takeId, prompt, suggestedImages, startFrameUrl });
     } catch (error) {
       console.error(error);
       alert("Erro ao preparar prompt do vídeo.");
     }
   };
 
-  const confirmGenerateVideo = async (sceneId: string, takeId: string, editedPrompt: string, selectedImages: string[]) => {
+  const confirmGenerateVideo = async (sceneId: string, takeId: string, editedPrompt: string, selectedImages: string[], adjustSettings: boolean) => {
     setEditingVideoPrompt(null);
     setGeneratingVideoId(takeId);
     setVideoStatus("A preparar pedido...");
@@ -1198,12 +1224,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       const startFrameBase64 = take.startFrameUrl ? await getBase64FromUrl(take.startFrameUrl) : undefined;
       const endFrameBase64 = take.endFrameUrl ? await getBase64FromUrl(take.endFrameUrl) : undefined;
 
+      const finalVideoModel = adjustSettings ? 'veo-3.1' : (take.videoModel || project.videoModel || 'flow');
+      const finalAspectRatio = adjustSettings ? '16:9' : project.aspectRatio;
+
       const operation = await generateVideo(
         editedPrompt,
         startFrameBase64,
         endFrameBase64,
-        take.videoModel || project.videoModel || 'flow',
-        project.aspectRatio,
+        finalVideoModel,
+        finalAspectRatio,
         referenceImages
       );
       setVideoStatus("A aguardar renderização (2-5 min)...");
@@ -1214,13 +1243,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           return {
             ...s,
             takes: s.takes.map((t) =>
-              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: editedPrompt } : t,
+              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: editedPrompt, videoModel: finalVideoModel } : t,
             ),
           };
         }
         return s;
       });
-      setProject({ ...project, scenes: updatedScenes });
+      setProject({ ...project, scenes: updatedScenes, aspectRatio: finalAspectRatio });
 
       // Start polling
       try {
@@ -2121,6 +2150,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           >
                             <Download className="w-4 h-4" />
                           </a>
+                          <button
+                            onClick={() => handleSaveToMediaLibrary(take.startFrameUrl!, 'image', `Take ${index + 1} - Frame Inicial`)}
+                            className="absolute top-2 left-10 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-emerald-600 shadow-sm transition-all z-20"
+                            title="Guardar na Biblioteca de Media"
+                          >
+                            <Library className="w-4 h-4" />
+                          </button>
                         </>
                       ) : (
                         <ImageIcon className="w-8 h-8 text-zinc-300" />
@@ -2236,6 +2272,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           >
                             <Download className="w-4 h-4" />
                           </a>
+                          <button
+                            onClick={() => handleSaveToMediaLibrary(take.endFrameUrl!, 'image', `Take ${index + 1} - Frame Final`)}
+                            className="absolute top-2 left-10 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-emerald-600 shadow-sm transition-all z-20"
+                            title="Guardar na Biblioteca de Media"
+                          >
+                            <Library className="w-4 h-4" />
+                          </button>
                         </>
                       ) : (
                         <ImageIcon className="w-8 h-8 text-zinc-300" />
@@ -2255,29 +2298,35 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
 
                   {/* Video */}
                   <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-center gap-1 w-full mb-1">
+                      {project.filmType && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded border border-purple-200 flex items-center gap-1" title="Tipo de Filme">
+                          <Film className="w-2.5 h-2.5" />
+                          Tipo de Filme: {project.filmType}
+                        </span>
+                      )}
+                      {take.settingId && (() => {
+                        const setting = project.settings.find(s => s.id === take.settingId);
+                        if (!setting) return null;
+                        return (
+                          <span key={setting.id} className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded border border-emerald-200 flex items-center gap-1" title="Cenário">
+                            <MapPin className="w-2.5 h-2.5" />
+                            {setting.name}
+                          </span>
+                        );
+                      })()}
+                      {project.characters.filter(char => take.characterIds?.includes(char.id)).map(char => (
+                        <span key={char.id} className="text-[9px] px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded border border-indigo-200 flex items-center gap-1" title="Personagem">
+                          <Users className="w-2.5 h-2.5" />
+                          {char.name}
+                        </span>
+                      ))}
+                    </div>
                     <div className="flex items-start justify-between">
                       <span className="text-xs font-semibold text-zinc-500 uppercase mt-1">
                         Vídeo Final
                       </span>
                       <div className="flex flex-col items-end gap-2">
-                        <div className="flex flex-wrap items-center gap-1 justify-end">
-                          {take.settingId && (() => {
-                            const setting = project.settings.find(s => s.id === take.settingId);
-                            if (!setting) return null;
-                            return (
-                              <span key={setting.id} className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded border border-emerald-200 flex items-center gap-1" title="Cenário">
-                                <MapPin className="w-2.5 h-2.5" />
-                                {setting.name}
-                              </span>
-                            );
-                          })()}
-                          {project.characters.filter(char => take.characterIds?.includes(char.id)).map(char => (
-                            <span key={char.id} className="text-[9px] px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded border border-indigo-200 flex items-center gap-1" title="Personagem">
-                              <Users className="w-2.5 h-2.5" />
-                              {char.name}
-                            </span>
-                          ))}
-                        </div>
                         <div className="flex items-center gap-2">
                           <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
                           <button
@@ -2426,6 +2475,13 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           >
                             <Download className="w-4 h-4" />
                           </a>
+                          <button
+                            onClick={() => handleSaveToMediaLibrary(take.videoUrl!, 'video', `Take ${index + 1} - Vídeo`)}
+                            className="absolute top-2 left-2 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-emerald-600 shadow-sm transition-all z-20 flex items-center justify-center"
+                            title="Guardar na Biblioteca de Media"
+                          >
+                            <Library className="w-4 h-4" />
+                          </button>
                         </>
                       ) : (take.videoOperationId || generatingVideoId === take.id) ? (
                         <div className="absolute inset-0 bg-zinc-900/90 flex flex-col items-center justify-center p-6 text-center">
@@ -2597,9 +2653,16 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       <VideoPromptModal
         isOpen={!!editingVideoPrompt}
         onClose={() => setEditingVideoPrompt(null)}
-        onConfirm={(editedPrompt, selectedImages) => confirmGenerateVideo(editingVideoPrompt!.sceneId, editingVideoPrompt!.takeId, editedPrompt, selectedImages)}
+        onConfirm={(editedPrompt, selectedImages, adjustSettings) => confirmGenerateVideo(editingVideoPrompt!.sceneId, editingVideoPrompt!.takeId, editedPrompt, selectedImages, adjustSettings)}
         initialPrompt={editingVideoPrompt?.prompt || ""}
         suggestedImages={editingVideoPrompt?.suggestedImages || []}
+        startFrameUrl={editingVideoPrompt?.startFrameUrl}
+        currentModel={
+          editingVideoPrompt
+            ? project.scenes.find(s => s.id === editingVideoPrompt.sceneId)?.takes.find(t => t.id === editingVideoPrompt.takeId)?.videoModel || project.videoModel || 'flow'
+            : project.videoModel || 'flow'
+        }
+        currentAspectRatio={project.aspectRatio}
       />
 
       {editingItem && (

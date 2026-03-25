@@ -457,6 +457,14 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
               <option value="4:3">4:3 (Clássico)</option>
               <option value="1:1">1:1 (Quadrado / Instagram)</option>
             </select>
+            {(project.aspectRatio === '4:3' || project.aspectRatio === '1:1') && (
+              <div className="mt-3 flex items-start gap-2 bg-amber-50 p-3 rounded-xl border border-amber-100">
+                <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  <strong>Atenção:</strong> Os modelos de vídeo Veo 3.1 apenas suportam as proporções <strong>16:9</strong> e <strong>9:16</strong>. Se manter esta proporção, a geração de vídeo poderá falhar ou o formato será ajustado automaticamente.
+                </p>
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-2">
