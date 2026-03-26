@@ -53,7 +53,7 @@ const OUTRO_TYPES = [
 ];
 
 export default function IntroOutro({ project, setProject }: IntroOutroProps) {
-  const [activeTab, setActiveTab] = useState<"intro" | "outro">("intro");
+  const [activeTab, setActiveTab] = useState<"intro" | "credits" | "outro">("intro");
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
@@ -103,20 +103,18 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
     try {
       const typeInfo = (activeTab === "intro" ? INTRO_TYPES : OUTRO_TYPES).find(t => t.id === currentData.type);
       
-      let extraInfo = "";
-      if (activeTab === "outro") {
-        const creditsText = `
-          Empresa: ${project.outro?.company || "N/A"}
-          Realização: ${project.outro?.director || "N/A"}
-          Produção: ${project.outro?.producer || "N/A"}
-          ${currentData.type === 'thankyou' ? `Mensagem de Agradecimento: ${project.outro?.thankYouMessage || "N/A"}` : ""}
-        `;
-        
-        extraInfo = `
-        Dados Adicionais para Créditos (Estes dados DEVEM aparecer visualmente no vídeo):
-        ${creditsText}
-        `;
-      }
+      const creditsText = `
+        Empresa: ${project.company || "N/A"}
+        Realização: ${project.director || "N/A"}
+        Produção: ${project.producer || "N/A"}
+        Autor/Argumentista: ${project.author || "N/A"}
+        ${currentData.type === 'thankyou' ? `Mensagem de Agradecimento: ${project.thankYouMessage || "N/A"}` : ""}
+      `;
+      
+      const extraInfo = `
+      Dados Adicionais para Créditos (Estes dados DEVEM aparecer visualmente no vídeo, se aplicável ao tipo de cena):
+      ${creditsText}
+      `;
 
       const prompt = `Cria um prompt detalhado para a geração de um ${activeTab === "intro" ? "Início (Intro)" : "Fim (Créditos)"} de um filme de animação.
         Título do Filme: ${project.title}
@@ -125,7 +123,7 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
         Tipo de ${activeTab === "intro" ? "Intro" : "Outro"}: ${typeInfo?.name} (${typeInfo?.description})
         ${extraInfo}
         
-        O prompt deve descrever visualmente a cena, a tipografia do texto "${activeTab === "intro" ? project.title : (currentData.type === 'thankyou' ? project.outro?.thankYouMessage || "OBRIGADO" : "FIM / CRÉDITOS")}", a iluminação, o movimento de câmara e a atmosfera.
+        O prompt deve descrever visualmente a cena, a tipografia do texto "${activeTab === "intro" ? project.title : (currentData.type === 'thankyou' ? project.thankYouMessage || "OBRIGADO" : "FIM / CRÉDITOS")}", a iluminação, o movimento de câmara e a atmosfera.
         Para os créditos, certifica-te que o prompt inclui a exibição dos nomes da Empresa, Realizador e Produtor de forma legível e estilizada de acordo com o tipo selecionado.
         Responde apenas com o prompt em Inglês para ser usado numa ferramenta de geração de imagem/vídeo.`;
       
@@ -303,6 +301,14 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
           Início (Intro)
         </button>
         <button
+          onClick={() => setActiveTab("credits")}
+          className={`px-8 py-2.5 rounded-xl font-bold transition-all ${
+            activeTab === "credits" ? "bg-white text-indigo-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          Dados dos Créditos
+        </button>
+        <button
           onClick={() => setActiveTab("outro")}
           className={`px-8 py-2.5 rounded-xl font-bold transition-all ${
             activeTab === "outro" ? "bg-white text-indigo-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
@@ -313,9 +319,81 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Configuration Panel */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
+        {activeTab === "credits" ? (
+          <div className="lg:col-span-3">
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-zinc-200 space-y-8 max-w-2xl mx-auto">
+              <div>
+                <h3 className="text-xl font-bold text-zinc-900 mb-2">Dados dos Créditos</h3>
+                <p className="text-sm text-zinc-500">
+                  Estes dados serão utilizados para gerar os textos visuais tanto no Início (Intro) como no Fim (Créditos).
+                </p>
+              </div>
+              
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-2">Empresa/Produtora</label>
+                    <input
+                      type="text"
+                      value={project.company || ""}
+                      onChange={(e) => setProject(prev => ({ ...prev, company: e.target.value }))}
+                      placeholder="Nome da Produtora/Empresa"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-2">Produtor</label>
+                    <input
+                      type="text"
+                      value={project.producer || ""}
+                      onChange={(e) => setProject(prev => ({ ...prev, producer: e.target.value }))}
+                      placeholder="Nome do Produtor"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-2">Realização</label>
+                    <input
+                      type="text"
+                      value={project.director || ""}
+                      onChange={(e) => setProject(prev => ({ ...prev, director: e.target.value }))}
+                      placeholder="Nome do Realizador"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-2">Autor / Argumentista</label>
+                    <input
+                      type="text"
+                      value={project.author || ""}
+                      onChange={(e) => setProject(prev => ({ ...prev, author: e.target.value }))}
+                      placeholder="Nome do Autor"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-2">Mensagem de Agradecimento (Opcional)</label>
+                  <input
+                    type="text"
+                    value={project.thankYouMessage || ""}
+                    onChange={(e) => setProject(prev => ({ ...prev, thankYouMessage: e.target.value }))}
+                    placeholder="Ex: Obrigado por assistir!"
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Configuration Panel */}
+            <div className="lg:col-span-1 space-y-6">
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
             <div className="space-y-4">
               <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
                 <Clapperboard className="w-4 h-4" />
@@ -459,82 +537,6 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                 Estes parâmetros serão usados para sugerir o estilo sonoro na renderização final.
               </p>
             </div>
-
-            {activeTab === "outro" && (
-              <div className="space-y-4 pt-4 border-t border-zinc-100">
-                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Dados dos Créditos
-                </label>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Empresa</label>
-                    <input
-                      type="text"
-                      value={project.outro?.company || ""}
-                      onChange={(e) => updateData({ company: e.target.value })}
-                      placeholder="Nome da Produtora/Empresa"
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Realização</label>
-                    <input
-                      type="text"
-                      value={project.director || project.outro?.director || ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setProject(prev => ({
-                          ...prev,
-                          director: val,
-                          outro: { ...prev.outro!, director: val }
-                        }));
-                      }}
-                      placeholder="Nome do Realizador"
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Autor / Argumentista</label>
-                    <input
-                      type="text"
-                      value={project.author || project.outro?.author || ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setProject(prev => ({
-                          ...prev,
-                          author: val,
-                          outro: { ...prev.outro!, author: val }
-                        }));
-                      }}
-                      placeholder="Nome do Autor"
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Produção</label>
-                    <input
-                      type="text"
-                      value={project.outro?.producer || ""}
-                      onChange={(e) => updateData({ producer: e.target.value })}
-                      placeholder="Nome do Produtor"
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
-                    />
-                  </div>
-                  {currentData.type === 'thankyou' && (
-                    <div>
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Mensagem de Agradecimento</label>
-                      <textarea
-                        value={project.outro?.thankYouMessage || ""}
-                        onChange={(e) => updateData({ thankYouMessage: e.target.value })}
-                        placeholder="Escreve aqui a tua nota pessoal de agradecimento..."
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none h-24 resize-none"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -737,6 +739,8 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
             </div>
           </div>
         </div>
+      </>
+      )}
       </div>
 
       {/* Reference Selector Modal */}
@@ -847,6 +851,19 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                   placeholder="Descreve a cena detalhadamente..."
                 />
               </div>
+
+              {currentData.referenceImages && currentData.referenceImages.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Referências Visuais Selecionadas</label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentData.referenceImages.map((url, idx) => (
+                      <div key={idx} className="w-16 h-16 rounded-xl overflow-hidden border border-zinc-200">
+                        <img src={url} alt={`Referência ${idx + 1}`} className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
@@ -906,6 +923,15 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
                   placeholder="Descreve o movimento e atmosfera do vídeo..."
                 />
               </div>
+
+              {currentData.imageUrl && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Imagem Base (Keyframe)</label>
+                  <div className="w-24 h-24 rounded-xl overflow-hidden border border-zinc-200">
+                    <img src={currentData.imageUrl} alt="Keyframe" className="w-full h-full object-cover" />
+                  </div>
+                </div>
+              )}
               
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />

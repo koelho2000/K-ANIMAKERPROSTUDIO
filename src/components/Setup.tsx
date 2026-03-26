@@ -286,6 +286,49 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Empresa/Produtora
+            </label>
+            <input
+              type="text"
+              name="company"
+              value={project.company || ""}
+              onChange={handleChange}
+              placeholder="Nome da Empresa"
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
+              Produtor
+            </label>
+            <input
+              type="text"
+              name="producer"
+              value={project.producer || ""}
+              onChange={handleChange}
+              placeholder="Nome do Produtor"
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-2">
+            Mensagem de Agradecimento (Opcional)
+          </label>
+          <input
+            type="text"
+            name="thankYouMessage"
+            value={project.thankYouMessage || ""}
+            onChange={handleChange}
+            placeholder="Ex: Obrigado por assistir!"
+            className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+          />
+        </div>
+
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-zinc-700">

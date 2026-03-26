@@ -67,6 +67,7 @@ export default function IntelligentEditor({
   const [trimStart, setTrimStart] = useState<number>(mediaItem?.trimStart || 0);
   const [trimEnd, setTrimEnd] = useState<number>(mediaItem?.trimEnd || 5);
   const [videoDuration, setVideoDuration] = useState<number>(5);
+  const [customTitle, setCustomTitle] = useState(mediaItem?.title || "Nova Media");
   const trimVideoRef = useRef<HTMLVideoElement>(null);
   
   useEffect(() => {

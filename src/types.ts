@@ -51,6 +51,9 @@ export interface Project {
   };
   director?: string;
   author?: string;
+  company?: string;
+  producer?: string;
+  thankYouMessage?: string;
   sceneDetailLevel: 'low' | 'medium' | 'high';
   takeDetailLevel: 'low' | 'medium' | 'high';
   characterDetailLevel: 'low' | 'medium' | 'high';

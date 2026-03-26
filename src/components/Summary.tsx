@@ -256,10 +256,10 @@ export default function Summary({ project, setProject }: SummaryProps) {
                     <td>FIM</td>
                     <td>
                       <strong>Créditos Finais</strong><br>
-                      ${project.outro.company ? `Empresa: ${project.outro.company}<br>` : ''}
-                      ${project.outro.director ? `Realização: ${project.outro.director}<br>` : ''}
-                      ${project.outro.producer ? `Produção: ${project.outro.producer}<br>` : ''}
-                      ${project.outro.thankYouMessage ? `Mensagem: ${project.outro.thankYouMessage}<br>` : ''}
+                      ${project.company ? `Empresa: ${project.company}<br>` : ''}
+                      ${project.director ? `Realização: ${project.director}<br>` : ''}
+                      ${project.producer ? `Produção: ${project.producer}<br>` : ''}
+                      ${project.thankYouMessage ? `Mensagem: ${project.thankYouMessage}<br>` : ''}
                     </td>
                     <td>
                       ${project.outro.prompt ? `
@@ -534,11 +534,11 @@ export default function Summary({ project, setProject }: SummaryProps) {
                 <td className="px-6 py-4">
                   <div className="font-bold text-zinc-900">Créditos Finais</div>
                   <div className="text-xs text-zinc-500 mt-0.5">{project.outro.type}</div>
-                  {(project.outro.company || project.outro.director || project.outro.producer) && (
+                  {(project.company || project.director || project.producer) && (
                     <div className="mt-2 space-y-0.5">
-                      {project.outro.company && <div className="text-[10px] text-zinc-400"><span className="font-bold uppercase">Empresa:</span> {project.outro.company}</div>}
-                      {project.outro.director && <div className="text-[10px] text-zinc-400"><span className="font-bold uppercase">Realização:</span> {project.outro.director}</div>}
-                      {project.outro.producer && <div className="text-[10px] text-zinc-400"><span className="font-bold uppercase">Produção:</span> {project.outro.producer}</div>}
+                      {project.company && <div className="text-[10px] text-zinc-400"><span className="font-bold uppercase">Empresa:</span> {project.company}</div>}
+                      {project.director && <div className="text-[10px] text-zinc-400"><span className="font-bold uppercase">Realização:</span> {project.director}</div>}
+                      {project.producer && <div className="text-[10px] text-zinc-400"><span className="font-bold uppercase">Produção:</span> {project.producer}</div>}
                     </div>
                   )}
                 </td>
