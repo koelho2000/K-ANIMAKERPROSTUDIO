@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { Sparkles, Zap, Film } from "lucide-react";
 
@@ -7,9 +7,45 @@ interface ProgressBarProps {
   label: string;
   modelName?: "Nanobana" | "Flow" | "Gemini" | "Veo" | "Veo 3.1" | "Veo Fast";
   tasks?: { name: string; status: 'pending' | 'active' | 'completed' }[];
+  estimatedTime?: string;
+  startTime?: number;
+  totalEstimatedSeconds?: number;
 }
 
-export default function ProgressBar({ progress, label, modelName, tasks }: ProgressBarProps) {
+export default function ProgressBar({ progress, label, modelName, tasks, estimatedTime, startTime, totalEstimatedSeconds }: ProgressBarProps) {
+  const [timeLeft, setTimeLeft] = useState<string>("");
+  const [internalProgress, setInternalProgress] = useState<number>(progress);
+
+  useEffect(() => {
+    if (!startTime || !totalEstimatedSeconds) {
+      setTimeLeft("");
+      setInternalProgress(progress);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = Math.max(0, totalEstimatedSeconds - elapsed);
+      
+      // Calculate progress based on time (max 98% until actually done)
+      const calculatedProgress = Math.min(98, (elapsed / totalEstimatedSeconds) * 100);
+      setInternalProgress(calculatedProgress);
+      
+      if (remaining === 0) {
+        setTimeLeft("Quase pronto...");
+      } else {
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        setTimeLeft(`${m}m ${s}s`);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [startTime, totalEstimatedSeconds, progress]);
+
+  const displayTime = progress === 100 ? "Concluído" : (timeLeft || estimatedTime);
+  const displayProgress = progress === 100 ? 100 : ((startTime && totalEstimatedSeconds) ? internalProgress : progress);
+
   const getIcon = () => {
     switch (modelName) {
       case "Nanobana":
@@ -40,13 +76,16 @@ export default function ProgressBar({ progress, label, modelName, tasks }: Progr
               </span>
             )}
           </div>
-          <span className="text-zinc-400">{Math.round(progress)}%</span>
+          <span className="text-zinc-400">
+            {displayTime && <span className="mr-2 text-[10px] bg-zinc-100 px-1.5 py-0.5 rounded">{progress === 100 ? '' : '~'}{displayTime}</span>}
+            {Math.round(displayProgress)}%
+          </span>
         </div>
         <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
           <motion.div
             className="h-full bg-indigo-600"
             initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
+            animate={{ width: `${displayProgress}%` }}
             transition={{ duration: 0.5, ease: "easeOut" }}
           />
         </div>

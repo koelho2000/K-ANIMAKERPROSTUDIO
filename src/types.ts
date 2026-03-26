@@ -232,6 +232,7 @@ export interface Take {
   storyboardGenerationTime?: number;
   videoUrl?: string;
   videoOperationId?: string;
+  videoStartTime?: number;
   videoObject?: any;
   videoModel?: VideoModel;
   lastStartFramePrompt?: string;

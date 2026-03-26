@@ -49,7 +49,7 @@ export default function IntelligentEditor({
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasMask, setHasMask] = useState(false);
   const [drawMode, setDrawMode] = useState<'brush' | 'eraser'>('brush');
-  const [mode, setMode] = useState<'edit' | 'extend' | 'create'>(mediaItem ? initialMode : 'create');
+  const [mode, setMode] = useState<'edit' | 'extend' | 'create'>(mediaItem ? (mediaItem.type === 'video' ? 'extend' : 'edit') : 'create');
   const [createType, setCreateType] = useState<'image' | 'video'>('image');
   const [videoModel, setVideoModel] = useState<VideoModel>(defaultVideoModel);
   const [progress, setProgress] = useState(0);
@@ -793,18 +793,20 @@ export default function IntelligentEditor({
                   <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-100 rounded-xl">
                     <button
                       onClick={() => setMode('edit')}
+                      disabled={mediaItem.type === 'video'}
                       className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
                         mode === 'edit' ? 'bg-white text-indigo-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
-                      }`}
+                      } ${mediaItem.type === 'video' ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <Pen className="w-3 h-3" />
                       Editar
                     </button>
                     <button
                       onClick={() => setMode('extend')}
+                      disabled={mediaItem.type === 'image'}
                       className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
                         mode === 'extend' ? 'bg-white text-emerald-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
-                      }`}
+                      } ${mediaItem.type === 'image' ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <PlusCircle className="w-3 h-3" />
                       Extender
@@ -812,7 +814,7 @@ export default function IntelligentEditor({
                   </div>
                   <p className="text-[10px] text-zinc-400 italic px-1">
                     {mode === 'edit' 
-                      ? `Re-gera ${mediaItem.type === 'image' ? 'a imagem' : 'o vídeo'} com base no prompt.` 
+                      ? `Re-gera a imagem com base no prompt.` 
                       : `Continua ${mediaItem.type === 'image' ? 'a imagem' : 'o vídeo'} a partir do último frame.`}
                   </p>
                 </div>

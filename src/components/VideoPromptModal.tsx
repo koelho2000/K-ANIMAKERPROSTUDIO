@@ -11,10 +11,11 @@ interface ReferenceImage {
 interface VideoPromptModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (editedPrompt: string, selectedImages: string[], adjustSettings: boolean) => void;
+  onConfirm: (editedPrompt: string, selectedImages: string[], adjustSettings: boolean, endFrameUrl?: string) => void;
   initialPrompt: string;
   suggestedImages: { id: string; url: string; name: string }[];
   startFrameUrl?: string;
+  initialEndFrameUrl?: string;
   currentModel: string;
   currentAspectRatio: string;
 }
@@ -26,13 +27,16 @@ export function VideoPromptModal({
   initialPrompt,
   suggestedImages,
   startFrameUrl,
+  initialEndFrameUrl,
   currentModel,
   currentAspectRatio,
 }: VideoPromptModalProps) {
   const [prompt, setPrompt] = useState(initialPrompt);
   const [images, setImages] = useState<ReferenceImage[]>([]);
   const [adjustSettings, setAdjustSettings] = useState(false);
+  const [endFrameUrl, setEndFrameUrl] = useState<string | undefined>(initialEndFrameUrl);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const endFrameInputRef = useRef<HTMLInputElement>(null);
 
   const needsAdjustment = currentModel !== 'veo-3.1' || currentAspectRatio !== '16:9';
 
@@ -40,6 +44,7 @@ export function VideoPromptModal({
     if (isOpen) {
       setPrompt(initialPrompt);
       setAdjustSettings(false);
+      setEndFrameUrl(initialEndFrameUrl);
       setImages(
         suggestedImages.map((img) => ({
           ...img,
@@ -47,7 +52,7 @@ export function VideoPromptModal({
         }))
       );
     }
-  }, [isOpen, initialPrompt, suggestedImages]);
+  }, [isOpen, initialPrompt, suggestedImages, initialEndFrameUrl]);
 
   const toggleImage = (id: string) => {
     setImages((prev) =>
@@ -115,24 +120,78 @@ export function VideoPromptModal({
           </div>
 
           <div className="space-y-4">
-            {startFrameUrl && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4" />
-                  Frame Inicial (Obrigatório)
-                </label>
-                <div className="relative w-48 aspect-video rounded-xl overflow-hidden border-2 border-indigo-500 shadow-md">
-                  <img src={startFrameUrl} alt="Frame Inicial" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                  <p className="absolute bottom-2 left-2 right-2 text-[10px] font-medium text-white truncate text-shadow-sm">
-                    Frame Inicial
-                  </p>
-                  <div className="absolute top-2 right-2 w-5 h-5 bg-indigo-500 rounded-full flex items-center justify-center shadow-sm">
-                    <Check className="w-3 h-3 text-white" />
+            <div className="flex flex-wrap gap-6">
+              {startFrameUrl && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4" />
+                    Frame Inicial (Obrigatório)
+                  </label>
+                  <div className="relative w-48 aspect-video rounded-xl overflow-hidden border-2 border-indigo-500 shadow-md">
+                    <img src={startFrameUrl} alt="Frame Inicial" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    <p className="absolute bottom-2 left-2 right-2 text-[10px] font-medium text-white truncate text-shadow-sm">
+                      Frame Inicial
+                    </p>
+                    <div className="absolute top-2 right-2 w-5 h-5 bg-indigo-500 rounded-full flex items-center justify-center shadow-sm">
+                      <Check className="w-3 h-3 text-white" />
+                    </div>
                   </div>
                 </div>
+              )}
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4" />
+                    Frame Final (Opcional)
+                  </label>
+                </div>
+                {endFrameUrl ? (
+                  <div className="relative w-48 aspect-video rounded-xl overflow-hidden border-2 border-indigo-500 shadow-md group">
+                    <img src={endFrameUrl} alt="Frame Final" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    <p className="absolute bottom-2 left-2 right-2 text-[10px] font-medium text-white truncate text-shadow-sm">
+                      Frame Final
+                    </p>
+                    <div className="absolute top-2 right-2 w-5 h-5 bg-indigo-500 rounded-full flex items-center justify-center shadow-sm">
+                      <Check className="w-3 h-3 text-white" />
+                    </div>
+                    <button
+                      onClick={() => setEndFrameUrl(undefined)}
+                      className="absolute top-2 left-2 w-6 h-6 bg-red-500/80 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Remover Frame Final"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => endFrameInputRef.current?.click()}
+                    className="w-48 aspect-video rounded-xl border-2 border-dashed border-zinc-200 hover:border-indigo-400 hover:bg-indigo-50/50 flex flex-col items-center justify-center gap-2 transition-colors text-zinc-400 hover:text-indigo-500"
+                  >
+                    <Upload className="w-5 h-5" />
+                    <span className="text-xs font-medium">Adicionar Imagem</span>
+                  </button>
+                )}
+                <input
+                  type="file"
+                  ref={endFrameInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      setEndFrameUrl(event.target?.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  }}
+                  accept="image/*"
+                  className="hidden"
+                />
               </div>
-            )}
+            </div>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -219,7 +278,7 @@ export function VideoPromptModal({
             Cancelar
           </button>
           <button
-            onClick={() => onConfirm(prompt, images.filter(i => i.selected).map(i => i.url), adjustSettings)}
+            onClick={() => onConfirm(prompt, images.filter(i => i.selected).map(i => i.url), adjustSettings, endFrameUrl)}
             className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
           >
             <Sparkles className="w-5 h-5" />

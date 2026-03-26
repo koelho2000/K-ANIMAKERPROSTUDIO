@@ -48,6 +48,12 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
   const [generationLogs, setGenerationLogs] = useState<{ task: string; status: 'waiting' | 'running' | 'completed' }[]>([]);
   const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   const allProjectImages = [
     ...(project.intro?.imageUrl ? [{ url: project.intro.imageUrl, source: 'Intro' }] : []),
@@ -426,7 +432,7 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
       ...prev,
       ebook: prev.ebook ? { ...prev.ebook, pages: newPages } : undefined
     }));
-    alert("Paginação concluída!");
+    showToast("Paginação concluída!");
   };
 
   const exportToHTML = () => {
@@ -1602,6 +1608,16 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-zinc-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

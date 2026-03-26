@@ -63,6 +63,12 @@ export default function Characters({ project, setProject }: CharactersProps) {
   const [globalProgress, setGlobalProgress] = useState(0);
   const [currentOperationLabel, setCurrentOperationLabel] = useState("");
   const [cameraModalCharacterId, setCameraModalCharacterId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -362,7 +368,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
       ...prev,
       customMedia: [...(prev.customMedia || []), newMedia]
     }));
-    alert('Imagem guardada no Media com sucesso!');
+    showToast('Imagem guardada no Media com sucesso!');
   };
 
   const handleGenerateViews = async (character: Character) => {
@@ -1306,6 +1312,16 @@ export default function Characters({ project, setProject }: CharactersProps) {
           onClose={() => setShowUpdateModal(false)}
           triggerType="characters"
         />
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-zinc-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>
+        </div>
       )}
 
       <CameraViewModal

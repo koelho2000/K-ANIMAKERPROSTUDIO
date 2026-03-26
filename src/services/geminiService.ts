@@ -51,8 +51,8 @@ const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> =>
         throw new Error("Chave API inválida. Por favor, verifica se a chave foi copiada corretamente.");
       }
 
-      if (errorMsg.includes("permission_denied") || error.status === 403) {
-        throw new Error("Acesso negado. A tua chave API pode não ter permissões para este modelo ou região.");
+      if (errorMsg.includes("permission_denied") || error.status === 403 || errorMsg.includes("403")) {
+        throw new Error("Acesso negado (403). Verifica se a 'Generative Language API' está ativada no Google Cloud Console e se a chave não tem restrições de domínio (HTTP referrers) ou de API que bloqueiem o acesso.");
       }
       
       // If it's a quota error and we're out of retries, throw a better message
@@ -211,24 +211,26 @@ export const generateTakeStoryboardImage = async (
 export const generateImage = async (prompt: string, aspectRatio: string = "16:9", referenceImagesBase64?: string[], allowText: boolean = false) => {
   return withRetry(async () => {
     const ai = getGenAI();
-    const parts: any[] = [{ text: prompt }];
+    const finalPrompt = allowText 
+      ? prompt 
+      : `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the image.`;
+    
+    const finalParts: any[] = [];
 
     if (referenceImagesBase64 && referenceImagesBase64.length > 0) {
-      referenceImagesBase64.forEach((img, index) => {
+      referenceImagesBase64.forEach((img) => {
         if (img && img.startsWith('data:')) {
           const parts_split = img.split(";base64,");
           if (parts_split.length === 2) {
-            // Extract clean mime type (everything between 'data:' and the first ';')
             const mimeTypeMatch = parts_split[0].match(/data:([^;]+)/);
             const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
             const base64Data = parts_split[1];
-            parts.unshift({
+            finalParts.push({
               inlineData: {
                 data: base64Data,
                 mimeType: mimeType,
               },
             });
-            parts.unshift({ text: `[Reference Image ${index + 1}]:` });
           }
         } else {
           console.warn("A ignorar imagem de referência que não é data URL ou está malformada:", img?.substring(0, 50));
@@ -236,13 +238,7 @@ export const generateImage = async (prompt: string, aspectRatio: string = "16:9"
       });
     }
 
-    const finalPrompt = allowText 
-      ? prompt 
-      : `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the image.`;
-    
-    // Replace only the last text part (which is the original prompt)
-    const finalParts = [...parts];
-    finalParts[finalParts.length - 1] = { text: finalPrompt };
+    finalParts.push({ text: finalPrompt });
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",
@@ -300,7 +296,9 @@ export const generateVideo = async (
       modelName = 'veo-3.1-fast-generate-preview';
     }
 
-    const useReferenceImages = model === 'veo-3.1' && finalAspectRatio === '16:9' && referenceImagesBase64 && referenceImagesBase64.length > 0;
+    const hasStartOrEndImage = !!(startImageBase64 || endImageBase64);
+    
+    const useReferenceImages = referenceImagesBase64 && referenceImagesBase64.length > 0;
 
     const finalPrompt = `${prompt} | CRITICAL: NO TEXT, NO SUBTITLES, NO CAPTIONS, NO WATERMARKS, NO OVERLAYS. The output must be PURE VISUAL CONTENT ONLY. Do not include any written characters, letters, or numbers in the video frames.`;
 
@@ -310,7 +308,6 @@ export const generateVideo = async (
       config,
     };
 
-    // Always use startImageBase64 if provided
     if (startImageBase64 && startImageBase64.startsWith('data:')) {
       const parts_split = startImageBase64.split(";base64,");
       if (parts_split.length === 2) {
@@ -321,23 +318,22 @@ export const generateVideo = async (
           mimeType: mimeType,
         };
       }
-    } else if (startImageBase64) {
-      console.warn("A ignorar imagem inicial do vídeo que não é data URL:", startImageBase64.substring(0, 50));
     }
 
-    // Always use endImageBase64 if provided
     if (endImageBase64 && endImageBase64.startsWith('data:')) {
-      const parts_split = endImageBase64.split(";base64,");
-      if (parts_split.length === 2) {
-        const mimeTypeMatch = parts_split[0].match(/data:([^;]+)/);
-        const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
-        request.config.lastFrame = {
-          imageBytes: parts_split[1],
-          mimeType: mimeType,
-        };
+      if (!request.image) {
+        console.warn("Ignoring end image because start image is not provided. Veo requires a start image to use an end image.");
+      } else {
+        const parts_split = endImageBase64.split(";base64,");
+        if (parts_split.length === 2) {
+          const mimeTypeMatch = parts_split[0].match(/data:([^;]+)/);
+          const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
+          request.config.lastFrame = {
+            imageBytes: parts_split[1],
+            mimeType: mimeType,
+          };
+        }
       }
-    } else if (endImageBase64) {
-      console.warn("A ignorar imagem final do vídeo que não é data URL:", endImageBase64.substring(0, 50));
     }
 
     if (useReferenceImages) {
@@ -363,10 +359,6 @@ export const generateVideo = async (
         request.config.referenceImages = referenceImagesPayload;
         request.config.resolution = "720p"; // Force 720p for reference images
       }
-    } else {
-      // If we are passing image or lastFrame, and model is veo-3.1, and NO reference images are used,
-      // we can optionally force it to fast. But since the user wants VEO3.1 to use the initial frame,
-      // we will leave the model as veo-3.1-generate-preview if they selected it.
     }
 
     const operation = await ai.models.generateVideos(request);
@@ -613,18 +605,11 @@ export const extendVideo = async (
     const config: any = {
       numberOfVideos: 1,
       resolution: "720p",
-      aspectRatio: finalAspectRatio,
+      aspectRatio: previousVideo?.aspectRatio || finalAspectRatio,
     };
 
-    let modelName = 'veo-3.1-fast-generate-preview';
-    
-    if (model === 'veo-3.1') {
-      modelName = 'veo-3.1-generate-preview';
-    } else if (model === 'veo-fast') {
-      modelName = 'veo-3.1-fast-generate-preview';
-    } else if (model === 'flow') {
-      modelName = 'veo-3.1-fast-generate-preview';
-    }
+    // Extending videos is only supported by veo-3.1-generate-preview
+    const modelName = 'veo-3.1-generate-preview';
 
     const request: any = {
       model: modelName,
@@ -770,8 +755,8 @@ export const validateApiKey = async (key: string) => {
       message = "Chave API inválida ou expirada.";
     } else if (error.message?.includes("billing")) {
       message = "Chave válida, mas sem conta de faturação associada.";
-    } else if (error.status === 403) {
-      message = "Acesso negado. Verifica as permissões da chave.";
+    } else if (error.status === 403 || error.message?.includes("403") || error.message?.includes("permission_denied")) {
+      message = "Acesso negado (403). Verifica se a 'Generative Language API' está ativada no Google Cloud Console e se a chave não tem restrições de domínio (HTTP referrers) ou de API que bloqueiem o acesso.";
     }
     return { valid: false, message };
   }

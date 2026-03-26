@@ -62,13 +62,22 @@ export default function Production({
   );
   const [isAnalyzingTakeId, setIsAnalyzingTakeId] = useState<string | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
+  const [videoStartTime, setVideoStartTime] = useState<number | null>(null);
   const [videoStatus, setVideoStatus] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
+  const [importingTakeId, setImportingTakeId] = useState<string | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<{
     sceneId: string;
     takeId: string;
     type: "start" | "end";
     prompt: string;
+    useStartFrameAsReference?: boolean;
   } | null>(null);
   const [editingVideoPrompt, setEditingVideoPrompt] = useState<{
     sceneId: string;
@@ -76,6 +85,7 @@ export default function Production({
     prompt: string;
     suggestedImages: { id: string; url: string; name: string }[];
     startFrameUrl?: string;
+    endFrameUrl?: string;
   } | null>(null);
   const [confirmingSceneBulk, setConfirmingSceneBulk] = useState<{ sceneId: string; type: 'start' | 'end' | 'video' } | null>(null);
   const [bulkProgress, setBulkProgress] = useState(0);
@@ -99,6 +109,12 @@ export default function Production({
     initialMode?: 'edit' | 'extend';
     nextMediaUrl?: string;
   } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   const handleSaveToMediaLibrary = (url: string, type: 'image' | 'video', title: string) => {
     const newMedia: CustomMedia = {
@@ -115,7 +131,7 @@ export default function Production({
       customMedia: [...(prev.customMedia || []), newMedia]
     }));
     
-    alert(`${type === 'image' ? 'Imagem guardada' : 'Vídeo guardado'} na biblioteca de media com sucesso!`);
+    showToast(`${type === 'image' ? 'Imagem guardada' : 'Vídeo guardado'} na biblioteca de media com sucesso!`);
   };
 
   useEffect(() => {
@@ -208,6 +224,7 @@ export default function Production({
     silent = false,
     customPrompt?: string,
     startFrameOverride?: string,
+    useStartFrameAsReference: boolean = true
   ): Promise<{ imageUrl: string; prompt: string } | null> => {
     if (!silent) setGeneratingImageId(`${takeId}-${type}`);
     try {
@@ -235,50 +252,17 @@ export default function Production({
 
       // Add start frame as reference for end frame
       const startFrame = startFrameOverride || take.startFrameUrl;
-      if (type === "end" && startFrame) {
+      if (type === "end" && startFrame && useStartFrameAsReference) {
         const base64 = await getBase64FromUrl(startFrame);
         referenceImages.push(base64);
       }
 
-      const prompt = customPrompt || `
-        Cria um frame de animação cinematográfica de alta qualidade.
-        Tipo de Filme: ${project.filmType}. 
-        Estilo Visual: ${project.filmStyle}. 
-        Cena: ${scene.title}. 
-        Ação do Take: ${take.action}. 
-        Câmara: ${take.camera}. 
-        
-        ${type === "end" ? "ESTE É O FRAME FINAL DO TAKE. Deve ser uma continuação direta e coerente do Frame Inicial fornecido." : ""}
-
-        DIÁLOGO NESTE TAKE${project.language ? ` [Língua: ${project.language}]` : ""}:
-        ${take.dialogueLines && take.dialogueLines.length > 0
-          ? take.dialogueLines.map(line => {
-              const char = project.characters.find(c => c.id === line.characterId);
-              const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
-              return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
-            }).join("\n")
-          : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico."}
-
-        PERSONAGENS PRESENTES NESTE TAKE:
-        ${takeCharacters.map((c) => `${c.name}: ${c.description}`).join("\n") || "Nenhuma personagem específica."}
-        
-        CENÁRIO DESTE TAKE:
-        ${takeSetting ? `${takeSetting.name}: ${takeSetting.description}` : "Nenhum cenário específico definido."}
-        
-        INSTRUÇÕES DE CONSISTÊNCIA:
-        1. Usa as imagens de referência fornecidas para manter a aparência exata das personagens e do cenário.
-        ${type === "end" ? "2. Usa o Frame Inicial fornecido como referência obrigatória para garantir que a posição das personagens, a iluminação e o cenário são idênticos, mudando apenas o necessário para refletir o fim da ação descrita." : ""}
-        ${type === "end" ? "3." : "2."} As personagens devem ser instantaneamente reconhecíveis e consistentes com os seus designs originais.
-        ${type === "end" ? "4." : "3."} O cenário deve manter a mesma arquitetura, iluminação e atmosfera definida no concept art.
-        ${type === "end" ? "5." : "4."} Integra as personagens de forma natural no cenário de acordo com a ação descrita.
-        
-        Altamente detalhado, iluminação dramática, composição profissional.
-      `;
+      const prompt = customPrompt || getDefaultFramePrompt(sceneId, takeId, type, useStartFrameAsReference);
       const imageUrl = await generateImage(prompt, project.aspectRatio, referenceImages);
       return { imageUrl, prompt };
     } catch (error) {
       console.error(error);
-      if (!silent) alert("Erro ao gerar frame.");
+      if (!silent) setError("Erro ao gerar frame.");
       return null;
     } finally {
       if (!silent) setGeneratingImageId(null);
@@ -311,24 +295,6 @@ export default function Production({
     };
   };
 
-  const checkConsistencyRequirements = (take: Take) => {
-    const status = getTakeConsistencyStatus(take);
-
-    if (!status.isReady) {
-      let message = "Aviso de Consistência:\n\n";
-      if (status.missingImages.length > 0) {
-        message += "Faltam imagens de referência para:\n- " + status.missingImages.join("\n- ") + "\n\n";
-      }
-      if (status.missingDescriptions.length > 0) {
-        message += "Faltam descrições detalhadas para:\n- " + status.missingDescriptions.join("\n- ") + "\n\n";
-      }
-      message += "Deseja continuar a geração sem estas referências? A consistência visual poderá ser afetada.";
-      return window.confirm(message);
-    }
-
-    return true;
-  };
-
   const handleImportFromPreviousTake = async (sceneId: string, takeId: string, index: number) => {
     const sceneIndex = project.scenes.findIndex(s => s.id === sceneId);
     if (sceneIndex === -1) return;
@@ -344,21 +310,23 @@ export default function Production({
     }
 
     if (!previousTake || !previousTake.videoUrl) {
-      alert("Não existe vídeo gerado no take anterior para importar o frame.");
+      setError("Não existe vídeo gerado no take anterior para importar o frame.");
       return;
     }
 
+    setImportingTakeId(takeId);
     try {
       // Create a hidden video element to extract the last frame
       const video = document.createElement('video');
       video.src = previousTake.videoUrl;
       video.muted = true;
       video.playsInline = true;
+      video.crossOrigin = "anonymous";
 
       await new Promise((resolve, reject) => {
         video.onloadedmetadata = () => {
-          // Seek to near the end (subtract 0.1s to ensure we don't hit the very end where it might be blank)
-          video.currentTime = Math.max(0, video.duration - 0.1);
+          // Seek to near the end (subtract 0.05s to ensure we don't hit the very end where it might be blank)
+          video.currentTime = Math.max(0, video.duration - 0.05);
         };
         video.onseeked = () => resolve(true);
         video.onerror = (e) => reject(new Error("Erro ao carregar o vídeo."));
@@ -392,9 +360,12 @@ export default function Production({
         return s;
       });
       setProject({ ...project, scenes: updatedScenes });
+      showToast("Importação do Take Anterior concluída!");
     } catch (error) {
       console.error("Erro ao extrair frame do vídeo:", error);
-      alert("Ocorreu um erro ao extrair o último frame do vídeo anterior.");
+      setError("Ocorreu um erro ao extrair o último frame do vídeo anterior.");
+    } finally {
+      setImportingTakeId(null);
     }
   };
 
@@ -459,7 +430,7 @@ export default function Production({
     reader.readAsDataURL(file);
   };
 
-  const getDefaultFramePrompt = (sceneId: string, takeId: string) => {
+  const getDefaultFramePrompt = (sceneId: string, takeId: string, type: "start" | "end", useStartFrameAsReference: boolean = true) => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     const take = scene?.takes.find((t) => t.id === takeId);
     if (!scene || !take) return "";
@@ -476,7 +447,7 @@ Cena: ${scene.title}.
 Ação do Take: ${take.action}. 
 Câmara: ${take.camera}. 
 
-DIÁLOGO NESTE TAKE${project.language ? ` [Língua: ${project.language}]` : ""}:
+${type === "end" && useStartFrameAsReference ? "ESTE É O FRAME FINAL DO TAKE. Deve ser uma continuação direta e coerente do Frame Inicial fornecido.\n\n" : ""}DIÁLOGO NESTE TAKE${project.language ? ` [Língua: ${project.language}]` : ""}:
 ${take.dialogueLines && take.dialogueLines.length > 0
   ? take.dialogueLines.map(line => {
       const char = project.characters.find(c => c.id === line.characterId);
@@ -493,9 +464,7 @@ ${takeSetting ? `${takeSetting.name}: ${takeSetting.description}` : "Nenhum cen�
 
 INSTRUÇÕES DE CONSISTÊNCIA:
 1. Usa as imagens de referência fornecidas para manter a aparência exata das personagens e do cenário.
-2. As personagens devem ser instantaneamente reconhecíveis e consistentes com os seus designs originais.
-3. O cenário deve manter a mesma arquitetura, iluminação e atmosfera definida no concept art.
-4. Integra as personagens de forma natural no cenário de acordo com a ação descrita.
+${type === "end" && useStartFrameAsReference ? "2. Usa o Frame Inicial fornecido como referência obrigatória para garantir que a posição das personagens, a iluminação e o cenário são idênticos, mudando apenas o necessário para refletir o fim da ação descrita.\n3. As personagens devem ser instantaneamente reconhecíveis e consistentes com os seus designs originais.\n4. O cenário deve manter a mesma arquitetura, iluminação e atmosfera definida no concept art.\n5. Integra as personagens de forma natural no cenário de acordo com a ação descrita." : "2. As personagens devem ser instantaneamente reconhecíveis e consistentes com os seus designs originais.\n3. O cenário deve manter a mesma arquitetura, iluminação e atmosfera definida no concept art.\n4. Integra as personagens de forma natural no cenário de acordo com a ação descrita."}
 
 Altamente detalhado, iluminação dramática, composição profissional.`.trim();
   };
@@ -528,20 +497,12 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     return `Tipo de Filme: ${project.filmType}. Estilo Visual: ${project.filmStyle}. Action: ${take.action}. Camera: ${take.camera}.${soundContext}${dialogueContext}${narrationContext}`;
   };
 
-  const onGenerateFrame = async (sceneId: string, takeId: string, type: "start" | "end") => {
+  const proceedWithGenerateFrame = async (sceneId: string, takeId: string, type: "start" | "end") => {
     const scene = project.scenes.find((s) => s.id === sceneId);
     const take = scene?.takes.find((t) => t.id === takeId);
     
-    if (take && !checkConsistencyRequirements(take)) {
-      return;
-    }
-
-    if (type === "end" && take && !take.startFrameUrl) {
-      alert("Aviso: O Frame Final deve ser baseado no Frame Inicial para garantir coerência visual. Por favor, gera primeiro o Frame Inicial.");
-      return;
-    }
-
-    const result = await handleGenerateFrame(sceneId, takeId, type);
+    const useStartFrame = type === "end" ? !!take?.startFrameUrl : false;
+    const result = await handleGenerateFrame(sceneId, takeId, type, false, undefined, undefined, useStartFrame);
     if (result) {
       const { imageUrl, prompt } = result;
       const updatedScenes = project.scenes.map((s) => {
@@ -567,27 +528,59 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     }
   };
 
-  const handleDeleteFrame = (sceneId: string, takeId: string, type: "start" | "end") => {
-    if (!window.confirm(`Tens a certeza que desejas apagar o ${type === 'start' ? 'Frame Inicial' : 'Frame Final'}?`)) return;
+  const onGenerateFrame = async (sceneId: string, takeId: string, type: "start" | "end") => {
+    const scene = project.scenes.find((s) => s.id === sceneId);
+    const take = scene?.takes.find((t) => t.id === takeId);
+    
+    if (!take) return;
 
-    const updatedScenes = project.scenes.map((s) => {
-      if (s.id === sceneId) {
-        return {
-          ...s,
-          takes: s.takes.map((t) =>
-            t.id === takeId
-              ? {
-                  ...t,
-                  [type === "start" ? "startFrameUrl" : "endFrameUrl"]: undefined,
-                  updatedAt: Date.now(),
-                }
-              : t,
-          ),
-        };
+    const status = getTakeConsistencyStatus(take);
+    if (!status.isReady) {
+      let message = "Aviso de Consistência:\n\n";
+      if (status.missingImages.length > 0) {
+        message += "Faltam imagens de referência para:\n- " + status.missingImages.join("\n- ") + "\n\n";
       }
-      return s;
+      if (status.missingDescriptions.length > 0) {
+        message += "Faltam descrições detalhadas para:\n- " + status.missingDescriptions.join("\n- ") + "\n\n";
+      }
+      message += "Deseja continuar a geração sem estas referências? A consistência visual poderá ser afetada.";
+      
+      setConfirmModal({
+        title: "Aviso de Consistência",
+        message,
+        onConfirm: () => proceedWithGenerateFrame(sceneId, takeId, type)
+      });
+      return;
+    }
+
+    proceedWithGenerateFrame(sceneId, takeId, type);
+  };
+
+  const handleDeleteFrame = (sceneId: string, takeId: string, type: "start" | "end") => {
+    setConfirmModal({
+      title: "Apagar Frame",
+      message: `Tens a certeza que desejas apagar o ${type === 'start' ? 'Frame Inicial' : 'Frame Final'}?`,
+      onConfirm: () => {
+        const updatedScenes = project.scenes.map((s) => {
+          if (s.id === sceneId) {
+            return {
+              ...s,
+              takes: s.takes.map((t) =>
+                t.id === takeId
+                  ? {
+                      ...t,
+                      [type === "start" ? "startFrameUrl" : "endFrameUrl"]: undefined,
+                      updatedAt: Date.now(),
+                    }
+                  : t,
+              ),
+            };
+          }
+          return s;
+        });
+        setProject({ ...project, scenes: updatedScenes });
+      }
     });
-    setProject({ ...project, scenes: updatedScenes });
   };
 
   const handleGenerateAllStartFramesForScene = async (sceneId: string, confirmed = false) => {
@@ -620,10 +613,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         s.id === sceneId ? { ...s, takes: updatedTakes } : s,
       );
       setProject({ ...project, scenes: updatedScenes });
-      alert(`Todos os frames iniciais da cena "${scene.title}" foram gerados!`);
+      showToast(`Todos os frames iniciais da cena "${scene.title}" foram gerados!`);
     } catch (error) {
       console.error(error);
-      alert("Erro na geração em massa.");
+      setError("Erro na geração em massa.");
     } finally {
       setIsGeneratingBulk(false);
     }
@@ -647,7 +640,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         setBulkProgress((i / updatedTakes.length) * 100);
         const take = updatedTakes[i];
         if (!take.endFrameUrl) {
-          const result = await handleGenerateFrame(sceneId, take.id, "end", true, undefined, take.startFrameUrl);
+          const result = await handleGenerateFrame(sceneId, take.id, "end", true, undefined, take.startFrameUrl, !!take.startFrameUrl);
           if (result) {
             updatedTakes[i].endFrameUrl = result.imageUrl;
             updatedTakes[i].lastEndFramePrompt = result.prompt;
@@ -659,74 +652,94 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         s.id === sceneId ? { ...s, takes: updatedTakes } : s,
       );
       setProject({ ...project, scenes: updatedScenes });
-      alert(`Todos os frames finais da cena "${scene.title}" foram gerados!`);
+      showToast(`Todos os frames finais da cena "${scene.title}" foram gerados!`);
     } catch (error) {
       console.error(error);
-      alert("Erro na geração em massa.");
+      setError("Erro na geração em massa.");
     } finally {
       setIsGeneratingBulk(false);
     }
   };
 
   const handleDeleteAllStartFramesForScene = (sceneId: string) => {
-    if (!window.confirm("Tens a certeza que desejas apagar TODOS os Frames Iniciais desta cena?")) return;
-    const updatedScenes = project.scenes.map((s) => {
-      if (s.id === sceneId) {
-        return {
-          ...s,
-          takes: s.takes.map((t) => ({ ...t, startFrameUrl: undefined, updatedAt: Date.now() })),
-        };
+    setConfirmModal({
+      title: "Apagar Todos os Frames Iniciais",
+      message: "Tens a certeza que desejas apagar TODOS os Frames Iniciais desta cena?",
+      onConfirm: () => {
+        const updatedScenes = project.scenes.map((s) => {
+          if (s.id === sceneId) {
+            return {
+              ...s,
+              takes: s.takes.map((t) => ({ ...t, startFrameUrl: undefined, updatedAt: Date.now() })),
+            };
+          }
+          return s;
+        });
+        setProject({ ...project, scenes: updatedScenes });
       }
-      return s;
     });
-    setProject({ ...project, scenes: updatedScenes });
   };
 
   const handleDeleteAllEndFramesForScene = (sceneId: string) => {
-    if (!window.confirm("Tens a certeza que desejas apagar TODOS os Frames Finais desta cena?")) return;
-    const updatedScenes = project.scenes.map((s) => {
-      if (s.id === sceneId) {
-        return {
-          ...s,
-          takes: s.takes.map((t) => ({ ...t, endFrameUrl: undefined, updatedAt: Date.now() })),
-        };
+    setConfirmModal({
+      title: "Apagar Todos os Frames Finais",
+      message: "Tens a certeza que desejas apagar TODOS os Frames Finais desta cena?",
+      onConfirm: () => {
+        const updatedScenes = project.scenes.map((s) => {
+          if (s.id === sceneId) {
+            return {
+              ...s,
+              takes: s.takes.map((t) => ({ ...t, endFrameUrl: undefined, updatedAt: Date.now() })),
+            };
+          }
+          return s;
+        });
+        setProject({ ...project, scenes: updatedScenes });
       }
-      return s;
     });
-    setProject({ ...project, scenes: updatedScenes });
   };
 
   const handleDeleteVideo = (sceneId: string, takeId: string) => {
-    if (!window.confirm("Tens a certeza que desejas apagar este Vídeo?")) return;
-    const updatedScenes = project.scenes.map((s) => {
-      if (s.id === sceneId) {
-        return {
-          ...s,
-          takes: s.takes.map((t) => {
-            if (t.id === takeId) {
-              return { ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, updatedAt: Date.now() };
-            }
-            return t;
-          }),
-        };
+    setConfirmModal({
+      title: "Apagar Vídeo",
+      message: "Tens a certeza que desejas apagar este Vídeo?",
+      onConfirm: () => {
+        const updatedScenes = project.scenes.map((s) => {
+          if (s.id === sceneId) {
+            return {
+              ...s,
+              takes: s.takes.map((t) => {
+                if (t.id === takeId) {
+                  return { ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, updatedAt: Date.now() };
+                }
+                return t;
+              }),
+            };
+          }
+          return s;
+        });
+        setProject({ ...project, scenes: updatedScenes });
       }
-      return s;
     });
-    setProject({ ...project, scenes: updatedScenes });
   };
 
   const handleDeleteAllVideosForScene = (sceneId: string) => {
-    if (!window.confirm("Tens a certeza que desejas apagar TODOS os Vídeos desta cena?")) return;
-    const updatedScenes = project.scenes.map((s) => {
-      if (s.id === sceneId) {
-        return {
-          ...s,
-          takes: s.takes.map((t) => ({ ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, updatedAt: Date.now() })),
-        };
+    setConfirmModal({
+      title: "Apagar Todos os Vídeos",
+      message: "Tens a certeza que desejas apagar TODOS os Vídeos desta cena?",
+      onConfirm: () => {
+        const updatedScenes = project.scenes.map((s) => {
+          if (s.id === sceneId) {
+            return {
+              ...s,
+              takes: s.takes.map((t) => ({ ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, updatedAt: Date.now() })),
+            };
+          }
+          return s;
+        });
+        setProject({ ...project, scenes: updatedScenes });
       }
-      return s;
     });
-    setProject({ ...project, scenes: updatedScenes });
   };
 
   const handleUpdateTakeModel = (sceneId: string, takeId: string, model: VideoModel) => {
@@ -802,7 +815,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     // Check if all takes have start frames
     const incompleteTakes = scene.takes.filter(t => !t.startFrameUrl);
     if (incompleteTakes.length > 0) {
-      alert(`Faltam frames iniciais em ${incompleteTakes.length} takes desta cena. Gere todos os frames iniciais primeiro.`);
+      setError(`Faltam frames iniciais em ${incompleteTakes.length} takes desta cena. Gere todos os frames iniciais primeiro.`);
       return;
     }
 
@@ -819,7 +832,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         await (window as any).aistudio.openSelectKey();
         localStorage.removeItem('GEMINI_API_KEY_MANUAL');
       } else {
-        alert("Por favor, configura a tua Chave API Gemini primeiro.");
+        setError("Por favor, configura a tua Chave API Gemini primeiro.");
         return;
       }
     }
@@ -901,7 +914,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 return {
                   ...s,
                   takes: s.takes.map((t) =>
-                    t.id === take.id ? { ...t, videoOperationId: operation.name, lastVideoPrompt: prompt } : t,
+                    t.id === take.id ? { ...t, videoOperationId: operation.name, lastVideoPrompt: prompt, videoStartTime: Date.now() } : t,
                   ),
                 };
               }
@@ -910,7 +923,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           }));
 
           // Start polling in background (don't await)
-          pollVideoOperation(operation.name).then((videoUrl) => {
+          pollVideoOperation(operation.name).then(({ videoUrl, videoObject }) => {
             setProject(prev => ({
               ...prev,
               scenes: prev.scenes.map((s) => {
@@ -919,7 +932,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                     ...s,
                     takes: s.takes.map((t) =>
                       t.id === take.id
-                        ? { ...t, videoUrl, videoOperationId: undefined }
+                        ? { ...t, videoUrl, videoObject, videoOperationId: undefined }
                         : t,
                     ),
                   };
@@ -927,6 +940,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 return s;
               })
             }));
+            setTimeout(() => showToast(`Vídeo do Take ${i + 1} renderizado com sucesso!`), 100);
           }).catch(err => {
             console.error(`Error rendering video for take ${take.id}:`, err);
             // Clear the loading state
@@ -955,7 +969,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     } catch (error) {
       console.error(error);
       setIsGeneratingBulk(false);
-      alert("Erro ao iniciar renderização em massa.");
+      setError("Erro ao iniciar renderização em massa.");
     }
   };
 
@@ -965,27 +979,31 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setShowBulkActionModal(null);
 
     if (type === 'delete') {
-      if (!window.confirm("Tens a certeza que desejas apagar os elementos selecionados nas cenas escolhidas?")) return;
-      
-      const updatedScenes = project.scenes.map((s) => {
-        if (selectedSceneIds.includes(s.id)) {
-          return {
-            ...s,
-            takes: s.takes.map((t) => ({
-              ...t,
-              startFrameUrl: options.startFrame ? undefined : t.startFrameUrl,
-              endFrameUrl: options.endFrame ? undefined : t.endFrameUrl,
-              videoUrl: options.video ? undefined : t.videoUrl,
-              videoObject: options.video ? undefined : t.videoObject,
-              videoOperationId: options.video ? undefined : t.videoOperationId,
-              updatedAt: Date.now(),
-            })),
-          };
+      setConfirmModal({
+        title: "Apagar Elementos",
+        message: "Tens a certeza que desejas apagar os elementos selecionados nas cenas escolhidas?",
+        onConfirm: () => {
+          const updatedScenes = project.scenes.map((s) => {
+            if (selectedSceneIds.includes(s.id)) {
+              return {
+                ...s,
+                takes: s.takes.map((t) => ({
+                  ...t,
+                  startFrameUrl: options.startFrame ? undefined : t.startFrameUrl,
+                  endFrameUrl: options.endFrame ? undefined : t.endFrameUrl,
+                  videoUrl: options.video ? undefined : t.videoUrl,
+                  videoObject: options.video ? undefined : t.videoObject,
+                  videoOperationId: options.video ? undefined : t.videoOperationId,
+                  updatedAt: Date.now(),
+                })),
+              };
+            }
+            return s;
+          });
+          setProject({ ...project, scenes: updatedScenes });
+          showToast("Elementos apagados com sucesso!");
         }
-        return s;
       });
-      setProject({ ...project, scenes: updatedScenes });
-      alert("Elementos apagados com sucesso!");
       return;
     }
 
@@ -1018,7 +1036,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           }
 
           if (options.endFrame && !take.endFrameUrl) {
-            const result = await handleGenerateFrame(scene.id, take.id, "end", true, undefined, updatedTakes[j].startFrameUrl || take.startFrameUrl);
+            const startFrameUrl = updatedTakes[j].startFrameUrl || take.startFrameUrl;
+            const result = await handleGenerateFrame(scene.id, take.id, "end", true, undefined, startFrameUrl, !!startFrameUrl);
             if (result) {
               updatedTakes[j].endFrameUrl = result.imageUrl;
               updatedTakes[j].lastEndFramePrompt = result.prompt;
@@ -1086,7 +1105,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 updatedTakes[j].lastVideoPrompt = prompt;
 
                 // Start polling in background
-                pollVideoOperation(operation.name).then((videoUrl) => {
+                pollVideoOperation(operation.name).then(({ videoUrl, videoObject }) => {
                   setProject(prev => ({
                     ...prev,
                     scenes: prev.scenes.map((s) => {
@@ -1094,7 +1113,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                         return {
                           ...s,
                           takes: s.takes.map((t) =>
-                            t.id === take.id ? { ...t, videoUrl, videoOperationId: undefined } : t
+                            t.id === take.id ? { ...t, videoUrl, videoObject, videoOperationId: undefined } : t
                           ),
                         };
                       }
@@ -1115,10 +1134,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       }
 
       setProject({ ...project, scenes: updatedScenes });
-      alert("Operação em massa concluída!");
+      showToast("Operação em massa concluída!");
     } catch (error) {
       console.error(error);
-      alert("Erro na operação em massa.");
+      setError("Erro na operação em massa.");
     } finally {
       setIsGeneratingBulk(false);
     }
@@ -1168,6 +1187,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       
       // Do not add startFrameUrl to suggestedImages, it will be passed separately
       const startFrameUrl = take.startFrameUrl || undefined;
+      const endFrameUrl = take.endFrameUrl || undefined;
 
       // Do not add endFrameUrl to suggestedImages, it is used as lastFrame automatically
       for (const c of takeCharacters) {
@@ -1179,16 +1199,17 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
         suggestedImages.push({ id: takeSetting.id, url: takeSetting.imageUrl, name: takeSetting.name });
       }
 
-      setEditingVideoPrompt({ sceneId, takeId, prompt, suggestedImages, startFrameUrl });
+      setEditingVideoPrompt({ sceneId, takeId, prompt, suggestedImages, startFrameUrl, endFrameUrl });
     } catch (error) {
       console.error(error);
-      alert("Erro ao preparar prompt do vídeo.");
+      setError("Erro ao preparar prompt do vídeo.");
     }
   };
 
-  const confirmGenerateVideo = async (sceneId: string, takeId: string, editedPrompt: string, selectedImages: string[], adjustSettings: boolean) => {
+  const confirmGenerateVideo = async (sceneId: string, takeId: string, editedPrompt: string, selectedImages: string[], adjustSettings: boolean, customEndFrameUrl?: string) => {
     setEditingVideoPrompt(null);
     setGeneratingVideoId(takeId);
+    setVideoStartTime(Date.now());
     setVideoStatus("A preparar pedido...");
     try {
       const scene = project.scenes.find((s) => s.id === sceneId);
@@ -1204,7 +1225,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           await (window as any).aistudio.openSelectKey();
           localStorage.removeItem('GEMINI_API_KEY_MANUAL');
         } else {
-          alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
+          setError("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
           setGeneratingVideoId(null);
           return;
         }
@@ -1222,7 +1243,26 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       }
 
       const startFrameBase64 = take.startFrameUrl ? await getBase64FromUrl(take.startFrameUrl) : undefined;
-      const endFrameBase64 = take.endFrameUrl ? await getBase64FromUrl(take.endFrameUrl) : undefined;
+      const endFrameBase64 = customEndFrameUrl ? await getBase64FromUrl(customEndFrameUrl) : undefined;
+
+      // Save the customEndFrameUrl to the take (or remove it if undefined)
+      if (customEndFrameUrl !== take.endFrameUrl) {
+        const updatedScenes = project.scenes.map(s => {
+          if (s.id === sceneId) {
+            return {
+              ...s,
+              takes: s.takes.map(t => {
+                if (t.id === takeId) {
+                  return { ...t, endFrameUrl: customEndFrameUrl };
+                }
+                return t;
+              })
+            };
+          }
+          return s;
+        });
+        setProject({ ...project, scenes: updatedScenes });
+      }
 
       const finalVideoModel = adjustSettings ? 'veo-3.1' : (take.videoModel || project.videoModel || 'flow');
       const finalAspectRatio = adjustSettings ? '16:9' : project.aspectRatio;
@@ -1243,7 +1283,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           return {
             ...s,
             takes: s.takes.map((t) =>
-              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: editedPrompt, videoModel: finalVideoModel } : t,
+              t.id === takeId ? { ...t, videoOperationId: operation.name, lastVideoPrompt: editedPrompt, videoModel: finalVideoModel, videoStartTime: Date.now() } : t,
             ),
           };
         }
@@ -1273,9 +1313,12 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             return s;
           })
         }));
+        
+        // Small delay to ensure UI updates before alert
+        setTimeout(() => showToast("Vídeo renderizado com sucesso!"), 100);
       } catch (err: any) {
         console.error("Erro ao processar vídeo:", err);
-        alert(`Erro ao renderizar vídeo: ${err.message || 'Verifica se a tua chave API é válida e tem saldo.'}`);
+        setError(`Erro ao renderizar vídeo: ${err.message || 'Verifica se a tua chave API é válida e tem saldo.'}`);
         setProject(prev => ({
           ...prev,
           scenes: prev.scenes.map((s) => {
@@ -1293,7 +1336,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       }
     } catch (error: any) {
       console.error(error);
-      alert(`Erro ao gerar vídeo: ${error.message || 'Verifica a consola.'}`);
+      setError(`Erro ao gerar vídeo: ${error.message || 'Verifica a consola.'}`);
 
       // Clear operation id on error
       const errorScenes = project.scenes.map((s) => {
@@ -1310,6 +1353,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       setProject({ ...project, scenes: errorScenes });
     } finally {
       setGeneratingVideoId(null);
+      setVideoStartTime(null);
     }
   };
 
@@ -1317,7 +1361,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     const scene = project.scenes.find((s) => s.id === sceneId);
     const take = scene?.takes.find((t) => t.id === takeId);
     if (!scene || !take || !take.videoObject) {
-      alert("É necessário ter um vídeo gerado para o poder extender.");
+      setError("É necessário ter um vídeo gerado para o poder extender.");
       return;
     }
 
@@ -1349,7 +1393,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     if (!scene || !take) return;
 
     if (!take.startFrameUrl && !take.endFrameUrl) {
-      alert("Gere pelo menos um frame para analisar a coerência.");
+      setError("Gere pelo menos um frame para analisar a coerência.");
       return;
     }
 
@@ -1404,7 +1448,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       setProject({ ...project, scenes: updatedScenes });
     } catch (error) {
       console.error(error);
-      alert("Erro ao analisar o take.");
+      setError("Erro ao analisar o take.");
     } finally {
       setIsAnalyzingTakeId(null);
     }
@@ -1415,113 +1459,117 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     const take = scene?.takes.find((t) => t.id === takeId);
     if (!scene || !take || !take.analysis) return;
 
-    if (!window.confirm("Deseja aplicar as sugestões da IA e regenerar os frames deste take?")) return;
+    setConfirmModal({
+      title: "Aplicar Correções",
+      message: "Deseja aplicar as sugestões da IA e regenerar os frames deste take?",
+      onConfirm: async () => {
+        setGeneratingImageId(`${takeId}-fix`);
+        try {
+          const takeCharacters = project.characters.filter((c) =>
+            take.characterIds?.includes(c.id)
+          );
+          const takeSetting = project.settings.find((s) => s.id === take.settingId);
 
-    setGeneratingImageId(`${takeId}-fix`);
-    try {
-      const takeCharacters = project.characters.filter((c) =>
-        take.characterIds?.includes(c.id)
-      );
-      const takeSetting = project.settings.find((s) => s.id === take.settingId);
+          // Collect reference images
+          const referenceImages: string[] = [];
+          takeCharacters.forEach((c) => {
+            if (c.imageUrl) referenceImages.push(c.imageUrl);
+          });
+          if (takeSetting?.imageUrl) referenceImages.push(takeSetting.imageUrl);
 
-      // Collect reference images
-      const referenceImages: string[] = [];
-      takeCharacters.forEach((c) => {
-        if (c.imageUrl) referenceImages.push(c.imageUrl);
-      });
-      if (takeSetting?.imageUrl) referenceImages.push(takeSetting.imageUrl);
+          const charactersContext = takeCharacters
+            .map((c) => `${c.name}: ${c.description}`)
+            .join("\n");
+          const settingContext = takeSetting 
+            ? `${takeSetting.name}: ${takeSetting.description}`
+            : "Nenhum cenário específico definido.";
 
-      const charactersContext = takeCharacters
-        .map((c) => `${c.name}: ${c.description}`)
-        .join("\n");
-      const settingContext = takeSetting 
-        ? `${takeSetting.name}: ${takeSetting.description}`
-        : "Nenhum cenário específico definido.";
+          const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
+          const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
+            ? take.dialogueLines.map(line => {
+                const char = project.characters.find(c => c.id === line.characterId);
+                const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
+                return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
+              }).join("\n")
+            : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico.";
 
-      const languageInfo = project.language ? ` [Língua: ${project.language}]` : "";
-      const dialogueContext = take.dialogueLines && take.dialogueLines.length > 0
-        ? take.dialogueLines.map(line => {
-            const char = project.characters.find(c => c.id === line.characterId);
-            const nationality = char?.voice?.country ? ` (${char.voice.country})` : "";
-            return `${char?.name || "Personagem"}${nationality}: ${line.text}`;
-          }).join("\n")
-        : take.dialogue && take.dialogue !== "Nenhum" ? take.dialogue : "Nenhum diálogo específico.";
+          // Incorporate suggestions into the prompt
+          const suggestionsContext = take.analysis.suggestions.join(". ");
+          
+          const basePrompt = `
+            Cria um frame de animação cinematográfica de alta qualidade.
+            Tipo de Filme: ${project.filmType}. 
+            Estilo Visual: ${project.filmStyle}. 
+            Cena: ${scene.title}. 
+            Ação do Take: ${take.action}. 
+            Câmara: ${take.camera}. 
+            
+            DIÁLOGO NESTE TAKE:
+            ${dialogueContext}
 
-      // Incorporate suggestions into the prompt
-      const suggestionsContext = take.analysis.suggestions.join(". ");
-      
-      const basePrompt = `
-        Cria um frame de animação cinematográfica de alta qualidade.
-        Tipo de Filme: ${project.filmType}. 
-        Estilo Visual: ${project.filmStyle}. 
-        Cena: ${scene.title}. 
-        Ação do Take: ${take.action}. 
-        Câmara: ${take.camera}. 
-        
-        DIÁLOGO NESTE TAKE:
-        ${dialogueContext}
+            PERSONAGENS PRESENTES NESTE TAKE:
+            ${charactersContext || "Nenhuma personagem específica."}
+            
+            CENÁRIO DESTE TAKE:
+            ${settingContext}
+            
+            CORREÇÕES E SUGESTÕES DE COERÊNCIA A APLICAR:
+            ${suggestionsContext}
+            
+            INSTRUÇÕES DE CONSISTÊNCIA:
+            1. Usa as imagens de referência fornecidas para manter a aparência exata das personagens e do cenário.
+            2. Aplica rigorosamente as sugestões de correção listadas acima para garantir a coerência com o projeto.
+            
+            Altamente detalhado, iluminação dramática, composição profissional.
+          `;
 
-        PERSONAGENS PRESENTES NESTE TAKE:
-        ${charactersContext || "Nenhuma personagem específica."}
-        
-        CENÁRIO DESTE TAKE:
-        ${settingContext}
-        
-        CORREÇÕES E SUGESTÕES DE COERÊNCIA A APLICAR:
-        ${suggestionsContext}
-        
-        INSTRUÇÕES DE CONSISTÊNCIA:
-        1. Usa as imagens de referência fornecidas para manter a aparência exata das personagens e do cenário.
-        2. Aplica rigorosamente as sugestões de correção listadas acima para garantir a coerência com o projeto.
-        
-        Altamente detalhado, iluminação dramática, composição profissional.
-      `;
+          // Regenerate start frame if it exists
+          let newStartFrameUrl = take.startFrameUrl;
+          let newStartFramePrompt = take.lastStartFramePrompt;
+          if (take.startFrameUrl) {
+            newStartFramePrompt = basePrompt;
+            newStartFrameUrl = await generateImage(newStartFramePrompt, project.aspectRatio, referenceImages);
+          }
 
-      // Regenerate start frame if it exists
-      let newStartFrameUrl = take.startFrameUrl;
-      let newStartFramePrompt = take.lastStartFramePrompt;
-      if (take.startFrameUrl) {
-        newStartFramePrompt = basePrompt;
-        newStartFrameUrl = await generateImage(newStartFramePrompt, project.aspectRatio, referenceImages);
-      }
+          // Regenerate end frame if it exists
+          let newEndFrameUrl = take.endFrameUrl;
+          let newEndFramePrompt = take.lastEndFramePrompt;
+          if (take.endFrameUrl) {
+            newEndFramePrompt = basePrompt + " (End of action)";
+            newEndFrameUrl = await generateImage(newEndFramePrompt, project.aspectRatio, referenceImages);
+          }
 
-      // Regenerate end frame if it exists
-      let newEndFrameUrl = take.endFrameUrl;
-      let newEndFramePrompt = take.lastEndFramePrompt;
-      if (take.endFrameUrl) {
-        newEndFramePrompt = basePrompt + " (End of action)";
-        newEndFrameUrl = await generateImage(newEndFramePrompt, project.aspectRatio, referenceImages);
-      }
-
-      const updatedScenes = project.scenes.map((s) => {
-        if (s.id === sceneId) {
-          return {
-            ...s,
-            takes: s.takes.map((t) =>
-              t.id === takeId
-                ? {
-                    ...t,
-                    startFrameUrl: newStartFrameUrl,
-                    endFrameUrl: newEndFrameUrl,
-                    lastStartFramePrompt: newStartFramePrompt,
-                    lastEndFramePrompt: newEndFramePrompt,
-                    analysis: undefined, // Clear analysis after fix
-                    updatedAt: Date.now(),
-                  }
-                : t,
-            ),
-          };
+          const updatedScenes = project.scenes.map((s) => {
+            if (s.id === sceneId) {
+              return {
+                ...s,
+                takes: s.takes.map((t) =>
+                  t.id === takeId
+                    ? {
+                        ...t,
+                        startFrameUrl: newStartFrameUrl,
+                        endFrameUrl: newEndFrameUrl,
+                        lastStartFramePrompt: newStartFramePrompt,
+                        lastEndFramePrompt: newEndFramePrompt,
+                        analysis: undefined, // Clear analysis after fix
+                        updatedAt: Date.now(),
+                      }
+                    : t,
+                ),
+              };
+            }
+            return s;
+          });
+          setProject({ ...project, scenes: updatedScenes });
+          showToast("Frames regenerados com sucesso com base nas sugestões!");
+        } catch (error) {
+          console.error(error);
+          setError("Erro ao aplicar correções automáticas.");
+        } finally {
+          setGeneratingImageId(null);
         }
-        return s;
-      });
-      setProject({ ...project, scenes: updatedScenes });
-      alert("Frames regenerados com sucesso com base nas sugestões!");
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao aplicar correções automáticas.");
-    } finally {
-      setGeneratingImageId(null);
-    }
+      }
+    });
   };
 
   return (
@@ -1572,6 +1620,16 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
             label="A gerar frames em massa..."
             modelName="Nanobana"
           />
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-zinc-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>
         </div>
       )}
 
@@ -1964,7 +2022,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 )}
 
                 <div className="px-6 pt-4">
-                  <div className="flex flex-wrap gap-4 items-end">
+                  <div className="flex flex-wrap gap-6 items-start">
                     <div className="space-y-2">
                       <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Referências de Consistência</span>
                       <div className="flex flex-wrap gap-2">
@@ -2022,12 +2080,40 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                         })()}
                       </div>
                     </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Elementos do Vídeo</span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {project.filmType && (
+                          <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded border border-purple-200 flex items-center gap-1" title="Tipo de Filme">
+                            <Film className="w-2.5 h-2.5" />
+                            Tipo de Filme: {project.filmType}
+                          </span>
+                        )}
+                        {take.settingId && (() => {
+                          const setting = project.settings.find(s => s.id === take.settingId);
+                          if (!setting) return null;
+                          return (
+                            <span key={setting.id} className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded border border-emerald-200 flex items-center gap-1" title="Cenário">
+                              <MapPin className="w-2.5 h-2.5" />
+                              {setting.name}
+                            </span>
+                          );
+                        })()}
+                        {project.characters.filter(char => take.characterIds?.includes(char.id)).map(char => (
+                          <span key={char.id} className="text-[9px] px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded border border-indigo-200 flex items-center gap-1" title="Personagem">
+                            <Users className="w-2.5 h-2.5" />
+                            {char.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Start Frame */}
-                  <div className="space-y-3">
+                  <div className="flex flex-col gap-3 h-full">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-zinc-500 uppercase">
                         Frame Inicial
@@ -2049,10 +2135,15 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             return (
                               <button
                                 onClick={() => handleImportFromPreviousTake(expandedSceneId!, take.id, index)}
-                                className="text-[10px] flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1 rounded transition-colors"
+                                disabled={importingTakeId === take.id}
+                                className="text-[10px] flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1 rounded transition-colors disabled:opacity-50"
                                 title="Importar último frame do vídeo do take anterior"
                               >
-                                <Copy className="w-3 h-3" />
+                                {importingTakeId === take.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
                                 Do Take Anterior
                               </button>
                             );
@@ -2075,7 +2166,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                               sceneId: expandedSceneId!,
                               takeId: take.id,
                               type: "start",
-                              prompt: getDefaultFramePrompt(expandedSceneId!, take.id)
+                              prompt: getDefaultFramePrompt(expandedSceneId!, take.id, "start")
                             })
                           }
                           disabled={generatingImageId === `${take.id}-start`}
@@ -2091,7 +2182,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                       </div>
                     </div>
                     <div 
-                      className="w-full bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group"
+                      className="w-full bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group mt-auto"
                       style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
                     >
                       {take.startFrameUrl ? (
@@ -2175,7 +2266,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                   </div>
 
                   {/* End Frame */}
-                  <div className="space-y-3">
+                  <div className="flex flex-col gap-3 h-full">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-zinc-500 uppercase">
                         Frame Final (Opcional)
@@ -2192,14 +2283,16 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           />
                         </label>
                         <button
-                          onClick={() =>
+                          onClick={() => {
+                            const hasStartFrame = !!take.startFrameUrl;
                             setEditingPrompt({
                               sceneId: expandedSceneId!,
                               takeId: take.id,
                               type: "end",
-                              prompt: getDefaultFramePrompt(expandedSceneId!, take.id)
-                            })
-                          }
+                              prompt: getDefaultFramePrompt(expandedSceneId!, take.id, "end", hasStartFrame),
+                              useStartFrameAsReference: hasStartFrame
+                            });
+                          }}
                           disabled={generatingImageId === `${take.id}-end`}
                           className="text-[10px] flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-1 rounded transition-colors disabled:opacity-50"
                         >
@@ -2213,7 +2306,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                       </div>
                     </div>
                     <div 
-                      className="w-full bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group"
+                      className="w-full bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 flex items-center justify-center relative group mt-auto"
                       style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
                     >
                       {take.endFrameUrl ? (
@@ -2297,122 +2390,40 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                   </div>
 
                   {/* Video */}
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center justify-center gap-1 w-full mb-1">
-                      {project.filmType && (
-                        <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded border border-purple-200 flex items-center gap-1" title="Tipo de Filme">
-                          <Film className="w-2.5 h-2.5" />
-                          Tipo de Filme: {project.filmType}
-                        </span>
-                      )}
-                      {take.settingId && (() => {
-                        const setting = project.settings.find(s => s.id === take.settingId);
-                        if (!setting) return null;
-                        return (
-                          <span key={setting.id} className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded border border-emerald-200 flex items-center gap-1" title="Cenário">
-                            <MapPin className="w-2.5 h-2.5" />
-                            {setting.name}
-                          </span>
-                        );
-                      })()}
-                      {project.characters.filter(char => take.characterIds?.includes(char.id)).map(char => (
-                        <span key={char.id} className="text-[9px] px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded border border-indigo-200 flex items-center gap-1" title="Personagem">
-                          <Users className="w-2.5 h-2.5" />
-                          {char.name}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="flex items-start justify-between">
-                      <span className="text-xs font-semibold text-zinc-500 uppercase mt-1">
-                        Vídeo Final
-                      </span>
-                      <div className="flex flex-col items-end gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
-                          <button
-                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo-3.1')}
-                            className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
-                              (take.videoModel || project.videoModel) === 'veo-3.1'
-                                ? "bg-white text-indigo-600 shadow-sm"
-                                : "text-zinc-400 hover:text-zinc-600"
-                            }`}
-                          >
-                            VEO 3.1
-                          </button>
-                          <button
-                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo-fast')}
-                            className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
-                              (take.videoModel || project.videoModel) === 'veo-fast'
-                                ? "bg-white text-amber-600 shadow-sm"
-                                : "text-zinc-400 hover:text-zinc-600"
-                            }`}
-                          >
-                            FAST
-                          </button>
-                          <button
-                            onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'flow')}
-                            className={`px-2 py-0.5 text-[9px] font-bold rounded-md transition-all ${
-                              (take.videoModel || project.videoModel) === 'flow'
-                                ? "bg-white text-emerald-600 shadow-sm"
-                                : "text-zinc-400 hover:text-zinc-600"
-                            }`}
-                          >
-                            FLOW
-                          </button>
-                        </div>
+                  <div className="flex flex-col gap-3 h-full">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setInfoModalTake(take)}
-                          className="text-xs flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-2 py-1 rounded transition-colors"
-                          title="Info de Produção"
+                          onClick={() => handleGenerateVideo(expandedSceneId!, take.id)}
+                          disabled={generatingVideoId === take.id || !!take.videoOperationId}
+                          className="flex-1 text-[10px] flex items-center justify-center gap-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded font-medium transition-colors disabled:opacity-50"
                         >
-                          <Info className="w-3 h-3" />
-                          Info
+                          {generatingVideoId === take.id || take.videoOperationId ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Film className="w-3 h-3" />
+                          )}
+                          Renderizar
                         </button>
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() =>
-                              handleGenerateVideo(expandedSceneId!, take.id)
-                            }
-                            disabled={
-                              generatingVideoId === take.id ||
-                              !!take.videoOperationId
-                            }
-                            className="text-xs flex items-center justify-center gap-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded font-medium transition-colors disabled:opacity-50 w-full"
-                          >
-                            {generatingVideoId === take.id ||
-                            take.videoOperationId ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Film className="w-3 h-3" />
-                            )}
-                            Renderizar Vídeo
-                          </button>
-                          <button
-                            onClick={() => {
-                              const prompt = take.lastVideoPrompt || getDefaultVideoPrompt(expandedSceneId!, take.id);
-                              setImportingVideo({ sceneId: expandedSceneId!, takeId: take.id, prompt });
-                            }}
-                            className="text-xs flex items-center justify-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-2 py-1 rounded transition-colors w-full"
-                            title="Importar vídeo manualmente"
-                          >
-                            <Upload className="w-3 h-3" />
-                            Importar
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => {
+                            const prompt = take.lastVideoPrompt || getDefaultVideoPrompt(expandedSceneId!, take.id);
+                            setImportingVideo({ sceneId: expandedSceneId!, takeId: take.id, prompt });
+                          }}
+                          className="flex-1 text-[10px] flex items-center justify-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-2 py-1 rounded transition-colors"
+                          title="Importar vídeo manualmente"
+                        >
+                          <Upload className="w-3 h-3" />
+                          Importar
+                        </button>
                         {take.videoUrl && take.videoObject && (
                           <button
-                            onClick={() =>
-                              handleExtendTake(expandedSceneId!, take.id)
-                            }
-                            disabled={
-                              generatingVideoId === take.id ||
-                              !!take.videoOperationId
-                            }
-                            className="text-xs flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2 py-1 rounded font-medium transition-colors disabled:opacity-50"
+                            onClick={() => handleExtendTake(expandedSceneId!, take.id)}
+                            disabled={generatingVideoId === take.id || !!take.videoOperationId}
+                            className="flex-1 text-[10px] flex items-center justify-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2 py-1 rounded font-medium transition-colors disabled:opacity-50"
                             title="Extender vídeo em +7 segundos (Apenas VEO)"
                           >
-                            {generatingVideoId === take.id ||
-                            take.videoOperationId ? (
+                            {generatingVideoId === take.id || take.videoOperationId ? (
                               <Loader2 className="w-3 h-3 animate-spin" />
                             ) : (
                               <PlusCircle className="w-3 h-3" />
@@ -2421,10 +2432,55 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                           </button>
                         )}
                       </div>
-                    </div>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-xs font-semibold text-zinc-500 uppercase">
+                          Vídeo Final
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <div className="flex bg-zinc-100 p-0.5 rounded border border-zinc-200">
+                            <button
+                              onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo-3.1')}
+                              className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
+                                (take.videoModel || project.videoModel) === 'veo-3.1'
+                                  ? "bg-white text-indigo-600 shadow-sm"
+                                  : "text-zinc-400 hover:text-zinc-600"
+                              }`}
+                            >
+                              VEO 3.1
+                            </button>
+                            <button
+                              onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'veo-fast')}
+                              className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
+                                (take.videoModel || project.videoModel) === 'veo-fast'
+                                  ? "bg-white text-amber-600 shadow-sm"
+                                  : "text-zinc-400 hover:text-zinc-600"
+                              }`}
+                            >
+                              FAST
+                            </button>
+                            <button
+                              onClick={() => handleUpdateTakeModel(expandedSceneId!, take.id, 'flow')}
+                              className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
+                                (take.videoModel || project.videoModel) === 'flow'
+                                  ? "bg-white text-emerald-600 shadow-sm"
+                                  : "text-zinc-400 hover:text-zinc-600"
+                              }`}
+                            >
+                              FLOW
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => setInfoModalTake(take)}
+                            className="text-[10px] flex items-center gap-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-1.5 py-1 rounded transition-colors"
+                            title="Info de Produção"
+                          >
+                            <Info className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     <div 
-                      className="w-full bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative group"
+                      className="w-full bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative group mt-auto"
                       style={{ aspectRatio: (project.aspectRatio || '16:9').replace(':', '/') }}
                     >
                       {take.videoUrl ? (
@@ -2483,19 +2539,23 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                             <Library className="w-4 h-4" />
                           </button>
                         </>
-                      ) : (take.videoOperationId || generatingVideoId === take.id) ? (
-                        <div className="absolute inset-0 bg-zinc-900/90 flex flex-col items-center justify-center p-6 text-center">
+                      ) : (
+                        <PlayCircle className="w-8 h-8 text-zinc-700" />
+                      )}
+
+                      {(take.videoOperationId || generatingVideoId === take.id) && (
+                        <div className="absolute inset-0 bg-zinc-900/90 flex flex-col items-center justify-center p-6 text-center z-30">
                           <ProgressBar
                             progress={videoProgress}
                             label={videoStatus || "A renderizar vídeo..."}
                             modelName={(take.videoModel || project.videoModel) === 'veo-3.1' ? 'Veo 3.1' : (take.videoModel || project.videoModel) === 'veo-fast' ? 'Veo Fast' : 'Flow'}
+                            startTime={take.videoStartTime}
+                            totalEstimatedSeconds={180}
                           />
                           <p className="mt-2 text-[8px] text-zinc-500 italic">
                             Isto pode demorar 2-5 min. Podes continuar a trabalhar.
                           </p>
                         </div>
-                      ) : (
-                        <PlayCircle className="w-8 h-8 text-zinc-700" />
                       )}
                     </div>
                   </div>
@@ -2591,6 +2651,45 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                   placeholder="Descreve o frame em detalhe..."
                 />
               </div>
+              {editingPrompt.type === 'end' && (
+                <div className="flex flex-col gap-2">
+                  <div className={`flex items-center justify-between p-3 bg-zinc-50 border border-zinc-200 rounded-xl ${!project.scenes.find(s => s.id === editingPrompt.sceneId)?.takes.find(t => t.id === editingPrompt.takeId)?.startFrameUrl ? 'opacity-50' : ''}`}>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="useStartFrameAsReference"
+                        checked={editingPrompt.useStartFrameAsReference || false}
+                        disabled={!project.scenes.find(s => s.id === editingPrompt.sceneId)?.takes.find(t => t.id === editingPrompt.takeId)?.startFrameUrl}
+                        onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          setEditingPrompt({
+                            ...editingPrompt,
+                            useStartFrameAsReference: isChecked,
+                            prompt: getDefaultFramePrompt(editingPrompt.sceneId, editingPrompt.takeId, "end", isChecked)
+                          });
+                        }}
+                        className="w-4 h-4 text-indigo-600 rounded border-zinc-300 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                      />
+                      <label htmlFor="useStartFrameAsReference" className={`text-sm text-zinc-700 font-medium select-none ${!project.scenes.find(s => s.id === editingPrompt.sceneId)?.takes.find(t => t.id === editingPrompt.takeId)?.startFrameUrl ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                        Utilizar Frame Inicial como referência
+                      </label>
+                    </div>
+                    {project.scenes.find(s => s.id === editingPrompt.sceneId)?.takes.find(t => t.id === editingPrompt.takeId)?.startFrameUrl && (
+                      <img 
+                        src={project.scenes.find(s => s.id === editingPrompt.sceneId)?.takes.find(t => t.id === editingPrompt.takeId)?.startFrameUrl} 
+                        alt="Frame Inicial" 
+                        className="w-16 h-9 object-cover rounded shadow-sm border border-zinc-200"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                  </div>
+                  {!project.scenes.find(s => s.id === editingPrompt.sceneId)?.takes.find(t => t.id === editingPrompt.takeId)?.startFrameUrl && (
+                    <p className="text-[10px] text-amber-600 ml-1">
+                      Gera primeiro o Frame Inicial para poderes utilizá-lo como referência.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
                 <Info className="w-5 h-5 text-amber-600 shrink-0" />
                 <p className="text-[10px] text-amber-800 leading-relaxed">
@@ -2608,10 +2707,10 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
               </button>
               <button
                 onClick={async () => {
-                  const { sceneId, takeId, type, prompt } = editingPrompt;
+                  const { sceneId, takeId, type, prompt, useStartFrameAsReference } = editingPrompt;
                   setEditingPrompt(null);
                   setGeneratingImageId(`${takeId}-${type}`);
-                  const result = await handleGenerateFrame(sceneId, takeId, type, false, prompt);
+                  const result = await handleGenerateFrame(sceneId, takeId, type, false, prompt, undefined, useStartFrameAsReference);
                   if (result) {
                     const updatedScenes = project.scenes.map((s) => {
                       if (s.id === sceneId) {
@@ -2653,10 +2752,11 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       <VideoPromptModal
         isOpen={!!editingVideoPrompt}
         onClose={() => setEditingVideoPrompt(null)}
-        onConfirm={(editedPrompt, selectedImages, adjustSettings) => confirmGenerateVideo(editingVideoPrompt!.sceneId, editingVideoPrompt!.takeId, editedPrompt, selectedImages, adjustSettings)}
+        onConfirm={(editedPrompt, selectedImages, adjustSettings, endFrameUrl) => confirmGenerateVideo(editingVideoPrompt!.sceneId, editingVideoPrompt!.takeId, editedPrompt, selectedImages, adjustSettings, endFrameUrl)}
         initialPrompt={editingVideoPrompt?.prompt || ""}
         suggestedImages={editingVideoPrompt?.suggestedImages || []}
         startFrameUrl={editingVideoPrompt?.startFrameUrl}
+        initialEndFrameUrl={editingVideoPrompt?.endFrameUrl}
         currentModel={
           editingVideoPrompt
             ? project.scenes.find(s => s.id === editingVideoPrompt.sceneId)?.takes.find(t => t.id === editingVideoPrompt.takeId)?.videoModel || project.videoModel || 'flow'
@@ -2820,6 +2920,95 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           </motion.div>
         </div>
       )}
+      {/* Error Modal */}
+      {error && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl"
+          >
+            <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-500/20">
+                  <AlertTriangle className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Ocorreu um Erro</h3>
+                  <p className="text-xs text-zinc-400">Ação não concluída</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setError(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-8">
+              <p className="text-zinc-300 leading-relaxed">{error}</p>
+            </div>
+            <div className="p-6 border-t border-zinc-800 bg-zinc-900/50 flex gap-3">
+              <button
+                onClick={() => setError(null)}
+                className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Confirm Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl"
+          >
+            <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-500/20">
+                  <Info className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">{confirmModal.title}</h3>
+                  <p className="text-xs text-zinc-400">Confirmação necessária</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setConfirmModal(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-8">
+              <p className="text-zinc-300 leading-relaxed whitespace-pre-line">{confirmModal.message}</p>
+            </div>
+            <div className="p-6 border-t border-zinc-800 bg-zinc-900/50 flex gap-3">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal(null);
+                }}
+                className="flex-1 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-500/20 transition-all"
+              >
+                Confirmar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {confirmingSceneBulk && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <motion.div
