@@ -106,8 +106,10 @@ export default function Production({
     title: string; 
     source: string; 
     videoObject?: any; 
-    initialMode?: 'edit' | 'extend';
+    initialMode?: 'edit' | 'extend' | 'trim';
     nextMediaUrl?: string;
+    trimStart?: number;
+    trimEnd?: number;
   } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -416,6 +418,8 @@ export default function Production({
                     videoUrl: base64,
                     videoOperationId: undefined,
                     videoObject: undefined,
+                    trimStart: undefined,
+                    trimEnd: undefined,
                     updatedAt: Date.now(),
                   }
                 : t,
@@ -710,7 +714,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
               ...s,
               takes: s.takes.map((t) => {
                 if (t.id === takeId) {
-                  return { ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, updatedAt: Date.now() };
+                  return { ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, trimStart: undefined, trimEnd: undefined, updatedAt: Date.now() };
                 }
                 return t;
               }),
@@ -732,7 +736,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
           if (s.id === sceneId) {
             return {
               ...s,
-              takes: s.takes.map((t) => ({ ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, updatedAt: Date.now() })),
+              takes: s.takes.map((t) => ({ ...t, videoUrl: undefined, videoObject: undefined, videoOperationId: undefined, trimStart: undefined, trimEnd: undefined, updatedAt: Date.now() })),
             };
           }
           return s;
@@ -757,7 +761,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setProject({ ...project, scenes: updatedScenes });
   };
 
-  const handleSaveEdit = (newUrl: string, newVideoObject?: any) => {
+  const handleSaveEdit = (newUrl: string, newVideoObject?: any, title?: string, trimData?: { start?: number, end?: number }) => {
     if (!editingItem) return;
 
     const id = editingItem.id;
@@ -790,6 +794,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 videoObject: undefined, 
                 startFrameUrl: newUrl, 
                 videoOperationId: undefined, 
+                trimStart: undefined,
+                trimEnd: undefined,
                 updatedAt: Date.now() 
               };
             }
@@ -798,6 +804,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
               videoUrl: newUrl, 
               videoObject: newVideoObject, 
               videoOperationId: undefined, 
+              trimStart: trimData ? trimData.start : t.trimStart,
+              trimEnd: trimData ? trimData.end : t.trimEnd,
               updatedAt: Date.now() 
             };
           }
@@ -932,7 +940,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                     ...s,
                     takes: s.takes.map((t) =>
                       t.id === take.id
-                        ? { ...t, videoUrl, videoObject, videoOperationId: undefined }
+                        ? { ...t, videoUrl, videoObject, videoOperationId: undefined, trimStart: undefined, trimEnd: undefined }
                         : t,
                     ),
                   };
@@ -994,6 +1002,8 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                   videoUrl: options.video ? undefined : t.videoUrl,
                   videoObject: options.video ? undefined : t.videoObject,
                   videoOperationId: options.video ? undefined : t.videoOperationId,
+                  trimStart: options.video ? undefined : t.trimStart,
+                  trimEnd: options.video ? undefined : t.trimEnd,
                   updatedAt: Date.now(),
                 })),
               };
@@ -1305,7 +1315,7 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                 ...s,
                 takes: s.takes.map((t) =>
                   t.id === takeId
-                    ? { ...t, videoUrl, videoObject, videoOperationId: undefined }
+                    ? { ...t, videoUrl, videoObject, videoOperationId: undefined, trimStart: undefined, trimEnd: undefined }
                     : t,
                 ),
               };
@@ -1383,7 +1393,9 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
       source: 'Produção',
       videoObject: take.videoObject,
       initialMode: 'extend',
-      nextMediaUrl
+      nextMediaUrl,
+      trimStart: take.trimStart,
+      trimEnd: take.trimEnd
     });
   };
 
@@ -2513,7 +2525,9 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
                                 title: `Take ${index + 1} - Vídeo`,
                                 source: 'Produção',
                                 videoObject: take.videoObject,
-                                nextMediaUrl
+                                nextMediaUrl,
+                                trimStart: take.trimStart,
+                                trimEnd: take.trimEnd
                               });
                             }}
                             className="absolute top-2 right-10 bg-white/90 text-zinc-700 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white hover:text-indigo-600 shadow-sm transition-all z-20 flex items-center justify-center"

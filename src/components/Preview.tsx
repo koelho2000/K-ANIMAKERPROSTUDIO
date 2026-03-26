@@ -313,6 +313,11 @@ export default function Preview({ project, setProject }: PreviewProps) {
         video.onerror = (e) => reject(e);
       });
 
+      const anyClip = clip as any;
+      if (anyClip.trimStart) {
+        video.currentTime = anyClip.trimStart;
+      }
+
       if (narrationAudio) {
         await narrationAudio.play();
       }
@@ -324,7 +329,7 @@ export default function Preview({ project, setProject }: PreviewProps) {
       return new Promise<void>((resolve) => {
         let frameId: number;
         const drawFrame = () => {
-          if (video.paused || video.ended) {
+          if (video.paused || video.ended || (anyClip.trimEnd && video.currentTime >= anyClip.trimEnd)) {
             cancelAnimationFrame(frameId);
             video.pause();
             video.src = "";
@@ -349,8 +354,9 @@ export default function Preview({ project, setProject }: PreviewProps) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           
           // Apply Transformations for Zoom transitions
-          const timePassed = video.currentTime;
-          const timeLeft = video.duration - video.currentTime;
+          const timePassed = video.currentTime - (anyClip.trimStart || 0);
+          const duration = anyClip.trimEnd ? anyClip.trimEnd : video.duration;
+          const timeLeft = duration - video.currentTime;
           let scale = 1;
           let offsetX = 0;
           let offsetY = 0;
@@ -662,9 +668,33 @@ export default function Preview({ project, setProject }: PreviewProps) {
                           }}
                           onSeeked={() => {
                             if (isNarrationEnabled && narrationAudioRef.current && videoRef.current) {
-                              // Only sync if within bounds
-                              if (videoRef.current.currentTime < narrationAudioRef.current.duration) {
-                                narrationAudioRef.current.currentTime = videoRef.current.currentTime;
+                              const clip = currentClip as any;
+                              const clipTime = videoRef.current.currentTime - (clip.trimStart || 0);
+                              // Only sync if within bounds and positive
+                              if (clipTime >= 0 && clipTime < narrationAudioRef.current.duration) {
+                                narrationAudioRef.current.currentTime = clipTime;
+                              }
+                            }
+                          }}
+                          onLoadedMetadata={(e) => {
+                            const clip = currentClip as any;
+                            if (clip.trimStart) {
+                              e.currentTarget.currentTime = clip.trimStart;
+                            }
+                          }}
+                          onTimeUpdate={(e) => {
+                            const clip = currentClip as any;
+                            if (clip.trimStart && e.currentTarget.currentTime < clip.trimStart) {
+                              e.currentTarget.currentTime = clip.trimStart;
+                            }
+                            if (clip.trimEnd && e.currentTarget.currentTime >= clip.trimEnd) {
+                              if (isPlayingFullMovie) {
+                                if (clip.trimEnd < e.currentTarget.duration - 0.1) {
+                                  handleNextClip();
+                                }
+                              } else {
+                                e.currentTarget.pause();
+                                e.currentTarget.currentTime = clip.trimStart || 0;
                               }
                             }
                           }}

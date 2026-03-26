@@ -235,6 +235,8 @@ export interface Take {
   videoStartTime?: number;
   videoObject?: any;
   videoModel?: VideoModel;
+  trimStart?: number;
+  trimEnd?: number;
   lastStartFramePrompt?: string;
   lastEndFramePrompt?: string;
   lastVideoPrompt?: string;

@@ -71,8 +71,10 @@ export default function Timelapse({
     title: string; 
     source: string; 
     videoObject?: any; 
-    initialMode?: 'edit' | 'extend';
+    initialMode?: 'edit' | 'extend' | 'trim';
     nextMediaUrl?: string;
+    trimStart?: number;
+    trimEnd?: number;
   } | null>(null);
 
   const timelineEvents = useMemo(() => {
@@ -623,7 +625,9 @@ export default function Timelapse({
                       title: `Cena ${selectedEvent.sceneIndex + 1} Take ${selectedEvent.takeIndex + 1} - ${selectedEvent.take.videoUrl ? 'Vídeo' : 'Imagem'}`,
                       source: 'Timelapse',
                       videoObject: selectedEvent.take.videoObject,
-                      nextMediaUrl
+                      nextMediaUrl,
+                      trimStart: selectedEvent.take.trimStart,
+                      trimEnd: selectedEvent.take.trimEnd
                     });
                   }}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full border border-indigo-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
@@ -956,7 +960,7 @@ export default function Timelapse({
           initialMode={editingItem.initialMode}
           defaultVideoModel={project.videoModel}
           onClose={() => setEditingItem(null)}
-          onSave={(url, videoObject) => {
+          onSave={(url, videoObject, title, trimData) => {
             const updatedScenes = [...project.scenes];
             const isResultImage = !videoObject;
             
@@ -965,6 +969,8 @@ export default function Timelapse({
               videoUrl: isResultImage ? undefined : url,
               videoObject: isResultImage ? undefined : videoObject,
               startFrameUrl: isResultImage ? url : selectedEvent.take.startFrameUrl,
+              trimStart: isResultImage ? undefined : (trimData ? trimData.start : selectedEvent.take.trimStart),
+              trimEnd: isResultImage ? undefined : (trimData ? trimData.end : selectedEvent.take.trimEnd),
               updatedAt: Date.now()
             };
             setProject({ ...project, scenes: updatedScenes });

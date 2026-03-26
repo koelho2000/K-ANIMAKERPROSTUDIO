@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Eraser, Pen, Sparkles, Check, Loader2, RotateCcw, Undo, PlusCircle, Film, HelpCircle, Info, Upload, Library, Image as ImageIcon, Maximize2 } from "lucide-react";
+import { X, Eraser, Pen, Sparkles, Check, Loader2, RotateCcw, Undo, PlusCircle, Film, HelpCircle, Info, Upload, Library, Image as ImageIcon, Maximize2, Scissors } from "lucide-react";
 import { generateImage, generateVideo, pollVideoOperation, extendVideo } from "../services/geminiService";
 import ProgressBar from "./ProgressBar";
 import { VideoModel, Project } from "../types";
@@ -12,6 +12,8 @@ interface ReferenceImage {
   category: ReferenceCategory;
 }
 
+import { captureFrameAtTime } from '../utils/videoUtils';
+
 interface IntelligentEditorProps {
   mediaItem?: {
     id: string;
@@ -20,13 +22,15 @@ interface IntelligentEditorProps {
     title: string;
     source: string;
     videoObject?: any;
+    trimStart?: number;
+    trimEnd?: number;
   };
   project?: Project;
   aspectRatio: string;
   initialMode?: 'edit' | 'extend' | 'create';
   defaultVideoModel?: VideoModel;
   nextMediaUrl?: string;
-  onSave: (newUrl: string, newVideoObject?: any, title?: string) => void;
+  onSave: (newUrl: string, newVideoObject?: any, title?: string, trimData?: { start?: number, end?: number }) => void;
   onClose: () => void;
 }
 
@@ -49,7 +53,7 @@ export default function IntelligentEditor({
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasMask, setHasMask] = useState(false);
   const [drawMode, setDrawMode] = useState<'brush' | 'eraser'>('brush');
-  const [mode, setMode] = useState<'edit' | 'extend' | 'create'>(mediaItem ? (mediaItem.type === 'video' ? 'extend' : 'edit') : 'create');
+  const [mode, setMode] = useState<'edit' | 'extend' | 'create' | 'trim'>(mediaItem ? (mediaItem.type === 'video' ? 'extend' : 'edit') : 'create');
   const [createType, setCreateType] = useState<'image' | 'video'>('image');
   const [videoModel, setVideoModel] = useState<VideoModel>(defaultVideoModel);
   const [progress, setProgress] = useState(0);
@@ -60,7 +64,10 @@ export default function IntelligentEditor({
   );
   const [showLibrarySelector, setShowLibrarySelector] = useState(false);
   const [previewLibraryItem, setPreviewLibraryItem] = useState<{ url: string, type: 'image' | 'video', videoObject?: any, title?: string } | null>(null);
-  const [customTitle, setCustomTitle] = useState(mediaItem?.title || "Nova Imagem Gerada");
+  const [trimStart, setTrimStart] = useState<number>(mediaItem?.trimStart || 0);
+  const [trimEnd, setTrimEnd] = useState<number>(mediaItem?.trimEnd || 5);
+  const [videoDuration, setVideoDuration] = useState<number>(5);
+  const trimVideoRef = useRef<HTMLVideoElement>(null);
   
   useEffect(() => {
     if (mode === 'create') {
@@ -297,7 +304,18 @@ export default function IntelligentEditor({
           if (!mediaItem.videoObject) {
             throw new Error("Objeto de vídeo não encontrado para extensão.");
           }
-          const operation = await extendVideo(prompt, mediaItem.videoObject, videoModel, aspectRatio);
+          
+          let operation;
+          if (mediaItem.trimEnd && mediaItem.trimEnd < videoDuration - 0.5) {
+            // Se o vídeo foi cortado, capturamos o frame no trimEnd e geramos um novo vídeo a partir daí
+            setStatus("A capturar frame para extensão...");
+            const frameBase64 = await captureFrameAtTime(mediaItem.url, mediaItem.trimEnd);
+            setStatus("A gerar vídeo estendido...");
+            operation = await generateVideo(prompt, frameBase64, undefined, videoModel, aspectRatio, referenceImages.map(r => r.url));
+          } else {
+            operation = await extendVideo(prompt, mediaItem.videoObject, videoModel, aspectRatio);
+          }
+          
           const result = await pollVideoOperation(operation);
           setEditedUrl(result.videoUrl);
           setEditedVideoObject(result.videoObject);
@@ -314,7 +332,7 @@ export default function IntelligentEditor({
 
   const handleConfirm = () => {
     if (editedUrl) {
-      onSave(editedUrl, editedVideoObject, customTitle);
+      onSave(editedUrl, editedVideoObject, customTitle, { start: 0, end: undefined });
       onClose();
     }
   };
@@ -598,9 +616,28 @@ export default function IntelligentEditor({
               <div className="w-full h-full flex flex-col items-center justify-center gap-4">
                 <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl">
                   <video 
+                    ref={trimVideoRef}
                     src={mediaItem?.url} 
                     controls 
                     className="w-full h-full object-contain"
+                    onLoadedMetadata={(e) => {
+                      const duration = e.currentTarget.duration;
+                      setVideoDuration(duration);
+                      if (!mediaItem?.trimEnd) {
+                        setTrimEnd(duration);
+                      }
+                    }}
+                    onTimeUpdate={(e) => {
+                      if (mode === 'trim') {
+                        const currentTime = e.currentTarget.currentTime;
+                        if (currentTime < trimStart) {
+                          e.currentTarget.currentTime = trimStart;
+                        } else if (currentTime > trimEnd) {
+                          e.currentTarget.pause();
+                          e.currentTarget.currentTime = trimStart;
+                        }
+                      }
+                    }}
                   />
                   <div className="absolute top-4 left-4 px-3 py-1 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
                     Original
@@ -638,8 +675,55 @@ export default function IntelligentEditor({
                     </div>
                   )}
                 </div>
+
+                {mode === 'trim' && (
+                  <div className="w-full max-w-4xl bg-white p-6 rounded-2xl shadow-xl border border-zinc-200 animate-in slide-in-from-bottom-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold text-zinc-800">Ajustar Duração</h3>
+                      <div className="text-xs font-bold text-zinc-500">
+                        {trimStart.toFixed(1)}s - {trimEnd.toFixed(1)}s ({(trimEnd - trimStart).toFixed(1)}s)
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-6">
+                      <button
+                        onClick={() => {
+                          if (trimVideoRef.current) {
+                            const time = trimVideoRef.current.currentTime;
+                            if (time < trimEnd) setTrimStart(time);
+                          }
+                        }}
+                        className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-all"
+                      >
+                        Definir Início
+                      </button>
+                      
+                      <div className="flex-1 relative h-2 bg-zinc-200 rounded-full">
+                        <div 
+                          className="absolute h-full bg-rose-500 rounded-full"
+                          style={{ 
+                            left: `${(trimStart / videoDuration) * 100}%`,
+                            right: `${100 - (trimEnd / videoDuration) * 100}%`
+                          }}
+                        />
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (trimVideoRef.current) {
+                            const time = trimVideoRef.current.currentTime;
+                            if (time > trimStart) setTrimEnd(time);
+                          }
+                        }}
+                        className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-bold transition-all"
+                      >
+                        Definir Fim
+                      </button>
+                    </div>
+                  </div>
+                )}
                 
-                {editedUrl && (
+                {editedUrl && mode !== 'trim' && (
                   <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4">
                     <video 
                       src={editedUrl} 
@@ -790,7 +874,7 @@ export default function IntelligentEditor({
               {mediaItem && (
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Modo de Operação</label>
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-100 rounded-xl">
+                  <div className="grid grid-cols-3 gap-2 p-1 bg-zinc-100 rounded-xl">
                     <button
                       onClick={() => setMode('edit')}
                       disabled={mediaItem.type === 'video'}
@@ -811,17 +895,29 @@ export default function IntelligentEditor({
                       <PlusCircle className="w-3 h-3" />
                       Extender
                     </button>
+                    <button
+                      onClick={() => setMode('trim')}
+                      disabled={mediaItem.type === 'image'}
+                      className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        mode === 'trim' ? 'bg-white text-rose-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
+                      } ${mediaItem.type === 'image' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <Scissors className="w-3 h-3" />
+                      Cortar
+                    </button>
                   </div>
                   <p className="text-[10px] text-zinc-400 italic px-1">
                     {mode === 'edit' 
                       ? `Re-gera a imagem com base no prompt.` 
+                      : mode === 'trim'
+                      ? `Ajusta a duração do vídeo.`
                       : `Continua ${mediaItem.type === 'image' ? 'a imagem' : 'o vídeo'} a partir do último frame.`}
                   </p>
                 </div>
               )}
 
               {/* Model Selector for Video */}
-              {(mediaItem?.type === 'video' || (mode === 'create' && createType === 'video')) && (
+              {mode !== 'trim' && (mediaItem?.type === 'video' || (mode === 'create' && createType === 'video')) && (
                 <div className="space-y-3">
                   {mode === 'create' && createType === 'video' && (
                     <div className="space-y-3 pb-3 border-b border-zinc-100">
@@ -903,19 +999,21 @@ export default function IntelligentEditor({
                 </div>
               )}
 
-              <div className="space-y-3">
-                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                  Instruções de Geração
-                </label>
-                <textarea 
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder={createType === 'image' 
-                    ? "Ex: Uma personagem num estilo cyberpunk..." 
-                    : "Ex: A personagem caminha pela cidade à noite..."}
-                  className="w-full h-40 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
-                />
-              </div>
+              {mode !== 'trim' && (
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                    Instruções de Geração
+                  </label>
+                  <textarea 
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder={createType === 'image' 
+                      ? "Ex: Uma personagem num estilo cyberpunk..." 
+                      : "Ex: A personagem caminha pela cidade à noite..."}
+                    className="w-full h-40 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
+                  />
+                </div>
+              )}
 
               {isProcessing && (
                 <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
@@ -929,27 +1027,42 @@ export default function IntelligentEditor({
             </div>
 
             <div className="p-6 border-t border-zinc-100 space-y-3 bg-zinc-50/50">
-              <button
-                onClick={handleProcess}
-                disabled={isProcessing || !prompt}
-                className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
-                  mode === 'edit' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
-                }`}
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    A Processar...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5" />
-                    Gerar Conteúdo
-                  </>
-                )}
-              </button>
+              {mode === 'trim' ? (
+                <button
+                  onClick={() => {
+                    if (mediaItem) {
+                      onSave(mediaItem.url, mediaItem.videoObject, mediaItem.title, { start: trimStart, end: trimEnd });
+                      setMode('extend');
+                    }
+                  }}
+                  className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-bold shadow-lg shadow-rose-100 transition-all flex items-center justify-center gap-2"
+                >
+                  <Scissors className="w-5 h-5" />
+                  Aplicar Corte
+                </button>
+              ) : (
+                <button
+                  onClick={handleProcess}
+                  disabled={isProcessing || !prompt}
+                  className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                    mode === 'edit' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
+                  }`}
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      A Processar...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5" />
+                      Gerar Conteúdo
+                    </>
+                  )}
+                </button>
+              )}
 
-              {editedUrl && (
+              {editedUrl && mode !== 'trim' && (
                 <button
                   onClick={handleConfirm}
                   className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold shadow-lg shadow-emerald-100 transition-all flex items-center justify-center gap-2"

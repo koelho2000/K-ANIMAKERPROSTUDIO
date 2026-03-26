@@ -649,7 +649,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
             ...prev,
             scenes: prev.scenes.map(s => s.id === tInfo.sceneId ? {
               ...s,
-              takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, videoUrl, videoObject, videoOperationId: undefined } : t)
+              takes: s.takes.map(t => t.id === tInfo.takeId ? { ...t, videoUrl, videoObject, videoOperationId: undefined, trimStart: undefined, trimEnd: undefined } : t)
             } : s)
           }));
 
