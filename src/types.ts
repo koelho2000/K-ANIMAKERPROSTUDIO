@@ -74,6 +74,9 @@ export interface Project {
     language: string;
     translatedLanguage?: string;
     translations?: Record<string, string>; // takeId -> translatedText
+    fontFamily?: string;
+    fontSize?: string;
+    alignment?: 'top' | 'center' | 'bottom' | 'bottom-low';
   };
   narrationSettings?: {
     gender: 'male' | 'female';

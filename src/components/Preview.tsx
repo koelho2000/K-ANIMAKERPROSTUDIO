@@ -75,9 +75,9 @@ export default function Preview({ project, setProject }: PreviewProps) {
   const completedTakes = allTakes.filter((t) => t.videoUrl);
 
   const movieClips = [
-    ...(project.intro?.videoUrl ? [{ id: 'intro', videoUrl: project.intro.videoUrl, dialogue: '', action: 'Intro' }] : []),
+    ...(project.intro?.videoUrl ? [{ id: 'intro', videoUrl: project.intro.videoUrl, dialogue: '', narration: '', action: 'Intro' }] : []),
     ...completedTakes,
-    ...(project.outro?.videoUrl ? [{ id: 'outro', videoUrl: project.outro.videoUrl, dialogue: '', action: 'Créditos' }] : [])
+    ...(project.outro?.videoUrl ? [{ id: 'outro', videoUrl: project.outro.videoUrl, dialogue: '', narration: '', action: 'Créditos' }] : [])
   ];
 
   const currentClip = movieClips[currentClipIndex];
@@ -153,6 +153,16 @@ export default function Preview({ project, setProject }: PreviewProps) {
         }
       };
     });
+  };
+
+  const handleUpdateSubtitleSettings = (updates: Partial<typeof subtitleSettings>) => {
+    setProject(prev => ({
+      ...prev,
+      subtitleSettings: {
+        ...(prev.subtitleSettings || { language: prev.language || 'pt-PT', enabled: false }),
+        ...updates
+      }
+    }));
   };
 
   const handleUpdateTransition = (takeId: string, transition: TransitionType) => {
@@ -385,16 +395,68 @@ export default function Preview({ project, setProject }: PreviewProps) {
               : (clip.dialogue && clip.dialogue !== "Nenhum" && clip.dialogue !== "" ? clip.dialogue : null);
 
             if (text) {
-              ctx.font = "bold 48px sans-serif";
+              const fontSizeMap: Record<string, number> = {
+                sm: 32,
+                md: 48,
+                lg: 64,
+                xl: 80
+              };
+              const fontSize = fontSizeMap[subtitleSettings.fontSize || 'md'] || 48;
+              const fontFamily = subtitleSettings.fontFamily || 'sans-serif';
+              
+              ctx.font = `bold ${fontSize}px ${fontFamily}`;
               ctx.textAlign = "center";
               ctx.textBaseline = "bottom";
               ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
               ctx.shadowBlur = 12;
-              ctx.lineWidth = 6;
+              ctx.lineWidth = fontSize * 0.125;
               ctx.strokeStyle = "black";
-              ctx.strokeText(text, canvas.width / 2, canvas.height - 60);
               ctx.fillStyle = "white";
-              ctx.fillText(text, canvas.width / 2, canvas.height - 60);
+
+              const maxWidth = canvas.width * 0.85;
+              const lineHeight = fontSize * 1.2;
+              const paragraphs = text.split('\n');
+              const lines: string[] = [];
+
+              for (const paragraph of paragraphs) {
+                const words = paragraph.split(' ');
+                let line = '';
+                for (let n = 0; n < words.length; n++) {
+                  const testLine = line + words[n] + ' ';
+                  const metrics = ctx.measureText(testLine);
+                  const testWidth = metrics.width;
+                  if (testWidth > maxWidth && n > 0) {
+                    lines.push(line.trim());
+                    line = words[n] + ' ';
+                  } else {
+                    line = testLine;
+                  }
+                }
+                lines.push(line.trim());
+              }
+
+              const alignment = subtitleSettings.alignment || 'bottom';
+              let startY = 0;
+              
+              if (alignment === 'top') {
+                ctx.textBaseline = "top";
+                startY = 60;
+              } else if (alignment === 'center') {
+                ctx.textBaseline = "middle";
+                startY = (canvas.height / 2) - (((lines.length - 1) * lineHeight) / 2);
+              } else if (alignment === 'bottom-low') {
+                ctx.textBaseline = "bottom";
+                startY = canvas.height - 20 - ((lines.length - 1) * lineHeight);
+              } else {
+                ctx.textBaseline = "bottom";
+                startY = canvas.height - 60 - ((lines.length - 1) * lineHeight);
+              }
+              
+              for (let i = 0; i < lines.length; i++) {
+                ctx.strokeText(lines[i], canvas.width / 2, startY + (i * lineHeight));
+                ctx.fillText(lines[i], canvas.width / 2, startY + (i * lineHeight));
+              }
+              
               ctx.shadowBlur = 0;
             }
           }
@@ -468,21 +530,42 @@ export default function Preview({ project, setProject }: PreviewProps) {
     }
 
     setIsTranslating(true);
+    setProject(prev => ({
+      ...prev,
+      subtitleSettings: {
+        ...(prev.subtitleSettings || { language: prev.language || 'pt-PT', enabled: true }),
+        enabled: true,
+        translatedLanguage: targetLangCode,
+        translations: prev.subtitleSettings?.translations || {}
+      }
+    }));
+
     try {
       const targetLangName = SUGGESTED_LANGUAGES.find(l => l.code === targetLangCode)?.name || targetLangCode;
       const translations: Record<string, string> = {};
       
-      const takesToTranslate = allTakes.filter(t => t.dialogue && t.dialogue !== "Nenhum");
+      const takesToTranslate = allTakes.filter(t => 
+        (t.dialogue && t.dialogue !== "Nenhum" && t.dialogue !== "") || 
+        (t.narration && t.narration !== "Nenhum" && t.narration !== "")
+      );
       
       for (const take of takesToTranslate) {
         const isPTPT = targetLangName === "Português (Portugal)" || targetLangCode === "pt-PT";
         const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : targetLangName;
         
-        const prompt = `Traduz o seguinte diálogo de filme de ${project.language || 'Português'} para ${langSpec}. 
-        Diálogo: "${take.dialogue}"
+        const dialogue = take.dialogue && take.dialogue !== "Nenhum" && take.dialogue !== "" ? take.dialogue : null;
+        const narration = take.narration && take.narration !== "Nenhum" && take.narration !== "" ? take.narration : null;
+        
+        let textToTranslate = dialogue || narration || "";
+        if (dialogue && narration) {
+          textToTranslate = `${dialogue}\n[Narração]: ${narration}`;
+        }
+        
+        const prompt = `Traduz o seguinte texto de filme de ${project.language || 'Português'} para ${langSpec}. 
+        Texto: "${textToTranslate}"
         Público Alvo: ${project.targetAudience || 'Adultos'}
         ${isPTPT ? "IMPORTANTE: Usa estritamente Português de Portugal (ex: 'ecrã' em vez de 'tela', 'tu estás' em vez de 'você está', etc.)." : ""}
-        Responde apenas com a tradução direta, sem aspas ou explicações.`;
+        Responde apenas com a tradução direta, mantendo a formatação original (ex: se houver [Narração]:, mantenha [Narração]: traduzido). Não adicione aspas ou explicações.`;
         
         const translated = await generateText(prompt);
         translations[take.id] = translated.trim();
@@ -499,7 +582,15 @@ export default function Preview({ project, setProject }: PreviewProps) {
       }));
     } catch (error) {
       console.error(error);
-      alert("Erro ao traduzir legendas.");
+      alert("Erro ao traduzir legendas. Verifique a sua chave de API.");
+      // Revert selection on error
+      setProject(prev => ({
+        ...prev,
+        subtitleSettings: {
+          ...(prev.subtitleSettings || { language: prev.language || 'pt-PT', enabled: true }),
+          translatedLanguage: undefined
+        }
+      }));
     } finally {
       setIsTranslating(false);
     }
@@ -558,7 +649,11 @@ export default function Preview({ project, setProject }: PreviewProps) {
       return subtitleSettings.translations[currentClip.id];
     }
     
-    return currentClip.dialogue && currentClip.dialogue !== "Nenhum" && currentClip.dialogue !== "" ? currentClip.dialogue : null;
+    const dialogue = currentClip.dialogue && currentClip.dialogue !== "Nenhum" && currentClip.dialogue !== "" ? currentClip.dialogue : null;
+    const narration = currentClip.narration && currentClip.narration !== "Nenhum" && currentClip.narration !== "" ? currentClip.narration : null;
+    
+    if (dialogue && narration) return `${dialogue}\n[Narração]: ${narration}`;
+    return dialogue || narration || null;
   };
 
   return (
@@ -729,8 +824,21 @@ export default function Preview({ project, setProject }: PreviewProps) {
                   
                   {/* Subtitle Overlay */}
                   {subtitleSettings.enabled && getSubtitleText() && (
-                    <div className="absolute bottom-12 left-0 right-0 flex justify-center px-8 pointer-events-none z-50">
-                      <div className="text-white px-6 py-3 text-center text-sm md:text-lg font-bold max-w-[85%] drop-shadow-[0_2px_4px_rgba(0,0,0,1)] [text-shadow:_0_1px_8px_rgb(0_0_0_/_100%)] leading-relaxed">
+                    <div className={`absolute left-0 right-0 flex justify-center px-8 pointer-events-none z-50 ${
+                      subtitleSettings.alignment === 'top' ? 'top-12' :
+                      subtitleSettings.alignment === 'center' ? 'top-1/2 -translate-y-1/2' :
+                      subtitleSettings.alignment === 'bottom-low' ? 'bottom-4' :
+                      'bottom-12'
+                    }`}>
+                      <div 
+                        className={`text-white px-6 py-3 text-center font-bold max-w-[85%] drop-shadow-[0_2px_4px_rgba(0,0,0,1)] [text-shadow:_0_1px_8px_rgb(0_0_0_/_100%)] leading-relaxed whitespace-pre-wrap ${
+                          subtitleSettings.fontSize === 'sm' ? 'text-xs md:text-sm' :
+                          subtitleSettings.fontSize === 'lg' ? 'text-lg md:text-2xl' :
+                          subtitleSettings.fontSize === 'xl' ? 'text-xl md:text-4xl' :
+                          'text-sm md:text-lg'
+                        }`}
+                        style={{ fontFamily: subtitleSettings.fontFamily || 'sans-serif' }}
+                      >
                         {getSubtitleText()}
                       </div>
                     </div>
@@ -956,6 +1064,54 @@ export default function Preview({ project, setProject }: PreviewProps) {
                   ))}
                 </div>
               </div>
+
+              {subtitleSettings.enabled && (
+                <div className="space-y-4 pt-4 border-t border-zinc-100">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Tipo de Letra</p>
+                    <select
+                      value={subtitleSettings.fontFamily || 'sans-serif'}
+                      onChange={(e) => handleUpdateSubtitleSettings({ fontFamily: e.target.value })}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="sans-serif">Sans-serif (Padrão)</option>
+                      <option value="serif">Serif</option>
+                      <option value="monospace">Monospace</option>
+                      <option value="Impact, sans-serif">Impact</option>
+                      <option value="'Comic Sans MS', cursive, sans-serif">Comic Sans</option>
+                      <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Tamanho da Letra</p>
+                    <select
+                      value={subtitleSettings.fontSize || 'md'}
+                      onChange={(e) => handleUpdateSubtitleSettings({ fontSize: e.target.value })}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="sm">Pequeno</option>
+                      <option value="md">Médio (Padrão)</option>
+                      <option value="lg">Grande</option>
+                      <option value="xl">Extra Grande</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Alinhamento</p>
+                    <select
+                      value={subtitleSettings.alignment || 'bottom'}
+                      onChange={(e) => handleUpdateSubtitleSettings({ alignment: e.target.value as any })}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="top">Topo</option>
+                      <option value="center">Centro</option>
+                      <option value="bottom">Rodapé (Padrão)</option>
+                      <option value="bottom-low">Rodapé Baixo</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
