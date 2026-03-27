@@ -629,18 +629,29 @@ export default function Preview({ project, setProject }: PreviewProps) {
 
   useEffect(() => {
     if (isPlayingFullMovie && videoRef.current) {
-      videoRef.current.play().catch(e => console.error("Auto-play failed", e));
-      if (isNarrationEnabled && narrationAudioRef.current && (currentClip as Take).narrationAudioUrl) {
-        narrationAudioRef.current.play().catch(e => console.error("Narration auto-play failed", e));
+      const clip = currentClip as any;
+      // Only play if the video src matches the current clip to avoid playing the exiting video
+      if (videoRef.current.src.endsWith(clip.videoUrl) || videoRef.current.src === clip.videoUrl) {
+        videoRef.current.currentTime = clip.trimStart || 0;
+        
+        if (isNarrationEnabled && narrationAudioRef.current && clip.narrationAudioUrl) {
+          narrationAudioRef.current.currentTime = 0;
+        }
+        
+        const scene = project.scenes.find(s => s.id === clip.sceneId);
+        if (isSoundtrackEnabled && soundtrackAudioRef.current && scene?.soundtrack?.audioUrl) {
+          soundtrackAudioRef.current.currentTime = scene.soundtrack.startTime || 0;
+        }
+        
+        videoRef.current.play().catch(e => console.error("Auto-play failed", e));
       }
-      
-      const scene = project.scenes.find(s => s.id === (currentClip as any).sceneId);
-      if (isSoundtrackEnabled && soundtrackAudioRef.current && scene?.soundtrack?.audioUrl) {
-        soundtrackAudioRef.current.currentTime = scene.soundtrack.startTime || 0;
-        soundtrackAudioRef.current.play().catch(e => console.error("Soundtrack auto-play failed", e));
-      }
+    } else if (!isPlayingFullMovie && videoRef.current) {
+      videoRef.current.pause();
+      if (narrationAudioRef.current) narrationAudioRef.current.pause();
+      if (soundtrackAudioRef.current) soundtrackAudioRef.current.pause();
     }
-  }, [currentClipIndex, isPlayingFullMovie]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlayingFullMovie]);
 
   const getSubtitleText = () => {
     if (!subtitleSettings.enabled || !currentClip) return null;
@@ -743,8 +754,21 @@ export default function Preview({ project, setProject }: PreviewProps) {
                         <video
                           ref={videoRef}
                           src={currentClip.videoUrl}
+                          autoPlay={isPlayingFullMovie}
                           className="w-full h-full object-contain"
                           onEnded={isPlayingFullMovie ? handleNextClip : undefined}
+                          onLoadedData={() => {
+                            if (isPlayingFullMovie) {
+                              const clip = currentClip as any;
+                              const scene = project.scenes.find(s => s.id === clip.sceneId);
+                              if (isSoundtrackEnabled && soundtrackAudioRef.current && scene?.soundtrack?.audioUrl) {
+                                soundtrackAudioRef.current.currentTime = scene.soundtrack.startTime || 0;
+                              }
+                              if (isNarrationEnabled && narrationAudioRef.current && clip.narrationAudioUrl) {
+                                narrationAudioRef.current.currentTime = 0;
+                              }
+                            }
+                          }}
                           onPlay={() => {
                             if (isNarrationEnabled && narrationAudioRef.current) {
                               narrationAudioRef.current.play().catch(e => console.error("Narration play failed", e));
@@ -794,7 +818,6 @@ export default function Preview({ project, setProject }: PreviewProps) {
                             }
                           }}
                           controls={!isPlayingFullMovie}
-                          autoPlay={isPlayingFullMovie}
                           muted={false}
                         />
                       )}
