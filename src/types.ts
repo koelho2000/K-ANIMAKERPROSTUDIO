@@ -193,6 +193,12 @@ export interface Setting {
   artisticStyle?: string;
   imageUrl?: string;
   lastImagePrompt?: string;
+  viewsImageUrl?: string;
+  frontViewImageUrl?: string;
+  backViewImageUrl?: string;
+  leftViewImageUrl?: string;
+  rightViewImageUrl?: string;
+  lastViewsPrompt?: string;
   topViewImageUrl?: string;
   sideViewImageUrl?: string;
   viewsGeneratedFromImageUrl?: string;

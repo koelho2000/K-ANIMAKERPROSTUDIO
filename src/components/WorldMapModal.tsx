@@ -173,7 +173,7 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
 
     setIsGeneratingPerspectives(true);
     setPerspectivesProgress(0);
-    setPerspectivesTask("A preparar as 4 perspetivas...");
+    setPerspectivesTask("A preparar as 5 perspetivas...");
     setPerspectivesTime(0);
 
     const timer = setInterval(() => {
@@ -181,62 +181,94 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
     }, 1000);
 
     try {
-      const offsets = [
-        { name: 'Norte', dx: 0, dy: -300 },
-        { name: 'Sul', dx: 0, dy: 300 },
-        { name: 'Este', dx: 300, dy: 0 },
-        { name: 'Oeste', dx: -300, dy: 0 }
-      ];
-
-      const newSettings: Setting[] = offsets.map(offset => ({
-        id: uuidv4(),
-        name: `Vista ${offset.name} de ${sourceNode.name}`,
-        description: `Uma perspetiva diferente de ${sourceNode.name}, olhando a partir da direção ${offset.name}.`,
-        position: { 
-          x: sourceNode.position!.x + offset.dx, 
-          y: sourceNode.position!.y + offset.dy 
-        },
-        connections: [sourceId]
-      }));
-
-      const newSettingIds = newSettings.map(s => s.id);
-
-      const updatedNodes = nodes.map(n => 
-        n.id === sourceId 
-          ? { ...n, connections: [...(n.connections || []), ...newSettingIds] }
-          : n
-      );
-
-      setNodes([...updatedNodes, ...newSettings]);
+      const basePrompt = sourceNode.lastImagePrompt || `Cenário: ${sourceNode.name}. ${sourceNode.description}. Estilo visual: ${sourceNode.artisticStyle || project.filmStyle || 'cinematográfico'}. Altamente detalhado, iluminação dramática, composição profissional.`;
       
-      setProject(prev => ({
-        ...prev,
-        settings: [
-          ...prev.settings.map(s => s.id === sourceId ? { ...s, connections: [...(s.connections || []), ...newSettingIds] } : s),
-          ...newSettings
-        ]
-      }));
-
-      // Generate images for each perspective
-      for (let i = 0; i < newSettings.length; i++) {
-        const setting = newSettings[i];
-        setPerspectivesTask(`A gerar perspetiva ${i + 1} de 4 (${setting.name})...`);
-        setPerspectivesProgress(10 + (i * 20)); // 10% to 90%
-        
+      let referenceBase64: string | undefined;
+      if (sourceNode.imageUrl) {
         try {
-          const prompt = `Cenário: ${setting.name}. ${setting.description}. Estilo visual: ${setting.artisticStyle || project.filmStyle || 'cinematográfico'}. Altamente detalhado, iluminação dramática, composição profissional.`;
-          const imageUrl = await generateImage(prompt, project.aspectRatio);
-          
-          // Update state with the new image
-          setNodes(prev => prev.map(n => n.id === setting.id ? { ...n, imageUrl, lastImagePrompt: prompt } : n));
-          setProject(prev => ({
-            ...prev,
-            settings: prev.settings.map(s => s.id === setting.id ? { ...s, imageUrl, lastImagePrompt: prompt } : s)
-          }));
-        } catch (error) {
-          console.error(`Error generating image for ${setting.name}:`, error);
+          const response = await fetch(sourceNode.imageUrl);
+          const blob = await response.blob();
+          referenceBase64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          console.error("Failed to load reference image", e);
         }
       }
+
+      const viewsToGenerate = [
+        { key: 'frontViewImageUrl', prompt: `${basePrompt} Front view of the environment.`, label: 'Frente' },
+        { key: 'backViewImageUrl', prompt: `${basePrompt} Back view of the environment.`, label: 'Traseira' },
+        { key: 'leftViewImageUrl', prompt: `${basePrompt} Left side view of the environment.`, label: 'Esquerda' },
+        { key: 'rightViewImageUrl', prompt: `${basePrompt} Right side view of the environment.`, label: 'Direita' },
+        { key: 'topViewImageUrl', prompt: `${basePrompt} Top down view (floor plan) of the environment.`, label: 'Topo' }
+      ];
+
+      const generatedViews: Record<string, string> = {};
+      
+      let completed = 0;
+      for (const view of viewsToGenerate) {
+        setPerspectivesTask(`A gerar perspetiva: ${view.label}...`);
+        generatedViews[view.key] = await generateImage(view.prompt, "16:9", referenceBase64 ? [referenceBase64] : undefined);
+        completed++;
+        setPerspectivesProgress((completed / viewsToGenerate.length) * 100);
+      }
+
+      setPerspectivesTask("A compor imagem final...");
+      
+      // Create composite image
+      const canvas = document.createElement('canvas');
+      canvas.width = 1920 * 3;
+      canvas.height = 1080 * 2;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const loadImg = (src: string): Promise<HTMLImageElement> => {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => resolve(img);
+            img.src = src;
+          });
+        };
+
+        const [frontImg, backImg, leftImg, rightImg, topImg] = await Promise.all([
+          loadImg(generatedViews.frontViewImageUrl),
+          loadImg(generatedViews.backViewImageUrl),
+          loadImg(generatedViews.leftViewImageUrl),
+          loadImg(generatedViews.rightViewImageUrl),
+          loadImg(generatedViews.topViewImageUrl)
+        ]);
+
+        ctx.drawImage(frontImg, 0, 0, 1920, 1080);
+        ctx.drawImage(backImg, 1920, 0, 1920, 1080);
+        ctx.drawImage(topImg, 3840, 0, 1920, 1080);
+        ctx.drawImage(leftImg, 0, 1080, 1920, 1080);
+        ctx.drawImage(rightImg, 1920, 1080, 1920, 1080);
+      }
+      
+      const compositeImageUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+      const updateData = {
+        viewsImageUrl: compositeImageUrl,
+        frontViewImageUrl: generatedViews.frontViewImageUrl,
+        backViewImageUrl: generatedViews.backViewImageUrl,
+        leftViewImageUrl: generatedViews.leftViewImageUrl,
+        rightViewImageUrl: generatedViews.rightViewImageUrl,
+        topViewImageUrl: generatedViews.topViewImageUrl,
+        lastViewsPrompt: basePrompt
+      };
+
+      setNodes(prev => prev.map(n => n.id === sourceId ? { ...n, ...updateData } : n));
+      setProject(prev => ({
+        ...prev,
+        settings: prev.settings.map(s => s.id === sourceId ? { ...s, ...updateData } : s)
+      }));
 
       setPerspectivesProgress(100);
       setPerspectivesTask("Perspetivas geradas com sucesso!");
@@ -782,7 +814,7 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                           className="w-full flex items-center justify-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
                         >
                           {isGeneratingPerspectives ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
-                          Gerar 4 Perspetivas
+                          Gerar 5 Perspetivas
                         </button>
                         <button
                           onClick={() => setConnectingFromNodeId(connectingFromNodeId === node.id ? null : node.id)}
@@ -813,6 +845,42 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({ isOpen, onClose, p
                             <Download className="w-4 h-4" />
                             Download
                           </button>
+                        </div>
+                      )}
+
+                      {node.viewsImageUrl && (
+                        <div className="pt-4 border-t border-zinc-100">
+                          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">5 Perspetivas</label>
+                          <div 
+                            className="aspect-video bg-zinc-100 rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity border border-zinc-200 mb-2"
+                            onClick={() => setSelectedImage({ url: node.viewsImageUrl!, title: `${node.name} - Perspetivas` })}
+                          >
+                            <img
+                              src={node.viewsImageUrl}
+                              alt={`${node.name} - Perspetivas`}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <div className="grid grid-cols-5 gap-2">
+                            {[
+                              { url: node.frontViewImageUrl, label: 'Frente' },
+                              { url: node.backViewImageUrl, label: 'Traseira' },
+                              { url: node.leftViewImageUrl, label: 'Esquerda' },
+                              { url: node.rightViewImageUrl, label: 'Direita' },
+                              { url: node.topViewImageUrl, label: 'Topo' }
+                            ].map((view, idx) => view.url && (
+                              <div key={idx} className="group relative aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200">
+                                <img src={view.url} alt={view.label} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                  <button onClick={() => handleSaveToMedia(view.url!, `${node.name} - ${view.label}`)} className="p-1 bg-white/20 hover:bg-white/40 rounded text-white" title="Gravar na Biblioteca"><Save className="w-3 h-3" /></button>
+                                  <button onClick={() => handleDownload(view.url!, `${node.name}-${view.label.toLowerCase()}`)} className="p-1 bg-white/20 hover:bg-white/40 rounded text-white" title="Download"><Download className="w-3 h-3" /></button>
+                                  <button onClick={() => setSelectedImage({ url: view.url!, title: `${node.name} - ${view.label}` })} className="p-1 bg-white/20 hover:bg-white/40 rounded text-white" title="Maximizar"><ZoomIn className="w-3 h-3" /></button>
+                                </div>
+                                <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[8px] p-0.5 text-center">{view.label}</div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

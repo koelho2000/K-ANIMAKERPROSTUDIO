@@ -12,6 +12,7 @@ import {
   ZoomIn,
   Palette,
   Zap,
+  Save,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Type } from "@google/genai";
@@ -39,11 +40,15 @@ export default function Settings({ project, setProject }: SettingsProps) {
   const [generatingImageId, setGeneratingImageId] = useState<string | null>(
     null,
   );
+  const [generatingViewsId, setGeneratingViewsId] = useState<string | null>(
+    null,
+  );
+  const [viewsTaskLabel, setViewsTaskLabel] = useState<string>("");
   const [isImportingId, setIsImportingId] = useState<string | null>(null);
   const [imageProgress, setImageProgress] = useState(0);
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
-  const [editingPrompt, setEditingPrompt] = useState<{ id: string; prompt: string } | null>(null);
+  const [editingPrompt, setEditingPrompt] = useState<{ id: string; prompt: string; type: 'main' | 'views' } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; url: string; type: 'image' | 'video'; title: string; source: string } | null>(null);
   const [isGeneratingAllImages, setIsGeneratingAllImages] = useState(false);
   const [globalProgress, setGlobalProgress] = useState(0);
@@ -70,11 +75,11 @@ export default function Settings({ project, setProject }: SettingsProps) {
       interval = setInterval(() => {
         setImageProgress((prev) => (prev >= 95 ? prev : prev + Math.random() * 15));
       }, 300);
-    } else {
+    } else if (!generatingViewsId) {
       setImageProgress(100);
     }
     return () => clearInterval(interval);
-  }, [generatingImageId, isImportingId]);
+  }, [generatingImageId, isImportingId, generatingViewsId]);
 
   const outdatedTakesCount = project.scenes.reduce((count, scene) => {
     return count + scene.takes.filter(take => {
@@ -186,6 +191,131 @@ export default function Settings({ project, setProject }: SettingsProps) {
     }
   };
 
+  const getBase64FromUrl = async (url: string): Promise<string> => {
+    if (url.startsWith("data:")) return url;
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const handleGenerateViews = async (setting: Setting) => {
+    if (!setting.imageUrl) {
+      alert("Gere primeiro a imagem principal do cenário.");
+      return;
+    }
+
+    const styleToUse = setting.artisticStyle && setting.artisticStyle !== "Nenhum (Usar Descrição)" 
+      ? setting.artisticStyle 
+      : project.filmStyle;
+
+    const prompt = `Environment design based on the provided reference image. 
+      Tipo de Filme: ${project.filmType}.
+      Estilo Visual: ${styleToUse}. 
+      Público Alvo: ${project.targetAudience || 'Adultos'}.
+      CRITICAL: You MUST maintain 100% consistency with the provided reference image. The environment must look exactly like the location in the reference image. NO CHARACTERS.
+      Neutral background, highly detailed.`;
+    
+    setEditingPrompt({ id: setting.id, prompt, type: 'views' });
+  };
+
+  const confirmGenerateViews = async (editedPrompt: string) => {
+    const settingId = editingPrompt?.id;
+    if (!settingId) return;
+
+    const setting = project.settings.find(s => s.id === settingId);
+    if (!setting?.imageUrl) return;
+
+    setEditingPrompt(null);
+    setGeneratingViewsId(settingId);
+    setImageProgress(0);
+    setViewsTaskLabel("A preparar prompt base...");
+    try {
+      setActivePrompt(editedPrompt);
+      const referenceBase64 = await getBase64FromUrl(setting.imageUrl);
+      
+      const viewsToGenerate = [
+        { key: 'frontViewImageUrl', prompt: `${editedPrompt} Front view of the environment.`, label: 'Frente' },
+        { key: 'backViewImageUrl', prompt: `${editedPrompt} Back view of the environment.`, label: 'Traseira' },
+        { key: 'leftViewImageUrl', prompt: `${editedPrompt} Left side view of the environment.`, label: 'Esquerda' },
+        { key: 'rightViewImageUrl', prompt: `${editedPrompt} Right side view of the environment.`, label: 'Direita' },
+        { key: 'topViewImageUrl', prompt: `${editedPrompt} Top down view (floor plan) of the environment.`, label: 'Topo' }
+      ];
+
+      const generatedViews: Record<string, string> = {};
+      
+      let completed = 0;
+      for (const view of viewsToGenerate) {
+        setViewsTaskLabel(`A gerar perspetiva: ${view.label}...`);
+        generatedViews[view.key] = await generateImage(view.prompt, "16:9", [referenceBase64]);
+        completed++;
+        setImageProgress((completed / viewsToGenerate.length) * 100);
+      }
+
+      setViewsTaskLabel("A compor imagem final...");
+      // Create composite image
+      const canvas = document.createElement('canvas');
+      canvas.width = 1920 * 3;
+      canvas.height = 1080 * 2;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const loadImg = (src: string): Promise<HTMLImageElement> => {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => resolve(img);
+            img.src = src;
+          });
+        };
+
+        const [frontImg, backImg, leftImg, rightImg, topImg] = await Promise.all([
+          loadImg(generatedViews.frontViewImageUrl),
+          loadImg(generatedViews.backViewImageUrl),
+          loadImg(generatedViews.leftViewImageUrl),
+          loadImg(generatedViews.rightViewImageUrl),
+          loadImg(generatedViews.topViewImageUrl)
+        ]);
+
+        ctx.drawImage(frontImg, 0, 0, 1920, 1080);
+        ctx.drawImage(backImg, 1920, 0, 1920, 1080);
+        ctx.drawImage(topImg, 3840, 0, 1920, 1080);
+        ctx.drawImage(leftImg, 0, 1080, 1920, 1080);
+        ctx.drawImage(rightImg, 1920, 1080, 1920, 1080);
+      }
+      
+      const compositeImageUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+      const updatedSettings = project.settings.map((s) =>
+        s.id === settingId ? { 
+          ...s, 
+          viewsImageUrl: compositeImageUrl,
+          frontViewImageUrl: generatedViews.frontViewImageUrl,
+          backViewImageUrl: generatedViews.backViewImageUrl,
+          leftViewImageUrl: generatedViews.leftViewImageUrl,
+          rightViewImageUrl: generatedViews.rightViewImageUrl,
+          topViewImageUrl: generatedViews.topViewImageUrl,
+          lastViewsPrompt: editedPrompt 
+        } : s,
+      );
+      setProject({ ...project, settings: updatedSettings });
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar vistas do cenário.");
+    } finally {
+      setGeneratingViewsId(null);
+      setActivePrompt(null);
+      setViewsTaskLabel("");
+    }
+  };
+
   const handleGenerateAllImages = async () => {
     const settingsToGenerate = project.settings.filter(s => !s.imageUrl);
     if (settingsToGenerate.length === 0) {
@@ -260,6 +390,23 @@ export default function Settings({ project, setProject }: SettingsProps) {
       console.error("Erro ao exportar imagem:", error);
       alert("Não foi possível exportar a imagem. Tente novamente.");
     }
+  };
+
+  const handleSaveToMedia = (url: string, title: string) => {
+    setProject(prev => ({
+      ...prev,
+      customMedia: [
+        ...(prev.customMedia || []),
+        {
+          id: uuidv4(),
+          url,
+          type: 'image',
+          title,
+          source: 'Cenários'
+        }
+      ]
+    }));
+    alert(`"${title}" guardado na biblioteca!`);
   };
 
   const handleImportImage = async (setting: Setting, file: File) => {
@@ -412,20 +559,22 @@ export default function Settings({ project, setProject }: SettingsProps) {
         </div>
       </div>
 
-      {(isGenerating || isGeneratingAllImages || generatingImageId || isImportingId) && generatingImageId !== "bulk-settings" && (
+      {(isGenerating || isGeneratingAllImages || generatingImageId || generatingViewsId || isImportingId) && generatingImageId !== "bulk-settings" && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100 mb-6">
           <ProgressBar
-            progress={isGeneratingAllImages ? globalProgress : ((generatingImageId || isImportingId) ? imageProgress : extractProgress)}
+            progress={isGeneratingAllImages ? globalProgress : ((generatingImageId || generatingViewsId || isImportingId) ? imageProgress : extractProgress)}
             label={
               isGeneratingAllImages 
                 ? currentOperationLabel 
                 : isImportingId
                   ? `A analisar imagem importada para "${project.settings.find(s => s.id === isImportingId)?.name || 'cenário'}"...`
-                  : generatingImageId 
-                    ? `A gerar concept art para "${project.settings.find(s => s.id === generatingImageId)?.name || 'cenário'}"...` 
-                    : "A extrair cenários do guião..."
+                  : generatingViewsId
+                    ? `${viewsTaskLabel} ("${project.settings.find(s => s.id === generatingViewsId)?.name || 'cenário'}")`
+                    : generatingImageId 
+                      ? `A gerar concept art para "${project.settings.find(s => s.id === generatingImageId)?.name || 'cenário'}"...` 
+                      : "A extrair cenários do guião..."
             }
-            modelName={isGeneratingAllImages || generatingImageId ? "Nanobana" : "Gemini"}
+            modelName={isGeneratingAllImages || generatingImageId || generatingViewsId ? "Nanobana" : "Gemini"}
           />
         </div>
       )}
@@ -518,14 +667,14 @@ export default function Settings({ project, setProject }: SettingsProps) {
                 </div>
               )}
 
-              {(generatingImageId === setting.id || isImportingId === setting.id) && (
+              {(generatingImageId === setting.id || generatingViewsId === setting.id || isImportingId === setting.id) && (
                 <div className="absolute inset-0 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 z-40 overflow-y-auto">
                   <ProgressBar
                     progress={imageProgress}
-                    label={isImportingId === setting.id ? "A analisar imagem..." : "A gerar concept art..."}
+                    label={isImportingId === setting.id ? "A analisar imagem..." : generatingViewsId === setting.id ? viewsTaskLabel : "A gerar concept art..."}
                     modelName={isImportingId === setting.id ? "Gemini" : "Nanobana"}
                   />
-                  {activePrompt && generatingImageId === setting.id && (
+                  {activePrompt && (generatingImageId === setting.id || generatingViewsId === setting.id) && (
                     <div className="mt-4 w-full">
                       <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prompt Utilizado:</p>
                       <div className="bg-zinc-50 border border-zinc-100 rounded-lg p-3 text-[10px] text-zinc-500 font-mono leading-relaxed max-h-32 overflow-y-auto">
@@ -536,7 +685,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
                 </div>
               )}
 
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 z-10">
                 <button
                   onClick={() => handleGenerateImage(setting)}
                   disabled={generatingImageId === setting.id}
@@ -549,6 +698,20 @@ export default function Settings({ project, setProject }: SettingsProps) {
                   )}
                   {setting.imageUrl ? "Regenerar Concept" : "Gerar Concept Art"}
                 </button>
+                {setting.imageUrl && (
+                  <button
+                    onClick={() => handleGenerateViews(setting)}
+                    disabled={generatingViewsId === setting.id}
+                    className="bg-white text-zinc-900 px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-zinc-100 transition-colors disabled:opacity-50"
+                  >
+                    {generatingViewsId === setting.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Camera className="w-4 h-4" />
+                    )}
+                    Gerar 5 Perspetivas
+                  </button>
+                )}
                 <button
                   onClick={() => setCameraModalSettingId(setting.id)}
                   className="bg-white text-zinc-900 px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-zinc-100 transition-colors"
@@ -606,6 +769,60 @@ export default function Settings({ project, setProject }: SettingsProps) {
                 className="text-sm text-zinc-600 bg-transparent resize-none h-32 outline-none border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded-lg p-2 transition-colors"
                 placeholder="Descrição do cenário..."
               />
+
+              {setting.viewsImageUrl && (
+                <div className="mt-2 border-t border-zinc-100 pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Perspetivas (5 Vistas)</p>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setSelectedImage({ url: setting.viewsImageUrl!, title: `${setting.name} - Perspetivas` })}
+                        className="p-1.5 text-zinc-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        title="Maximizar"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleExportImage(setting.viewsImageUrl!, `${setting.name}-views`)}
+                        className="p-1.5 text-zinc-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        title="Exportar"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div 
+                    className="aspect-video bg-zinc-100 rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity border border-zinc-200 mb-2"
+                    onClick={() => setSelectedImage({ url: setting.viewsImageUrl!, title: `${setting.name} - Perspetivas` })}
+                  >
+                    <img
+                      src={setting.viewsImageUrl}
+                      alt={`${setting.name} - Perspetivas`}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      { url: setting.frontViewImageUrl, label: 'Frente' },
+                      { url: setting.backViewImageUrl, label: 'Traseira' },
+                      { url: setting.leftViewImageUrl, label: 'Esquerda' },
+                      { url: setting.rightViewImageUrl, label: 'Direita' },
+                      { url: setting.topViewImageUrl, label: 'Topo' }
+                    ].map((view, idx) => view.url && (
+                      <div key={idx} className="group relative aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200">
+                        <img src={view.url} alt={view.label} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                          <button onClick={() => handleSaveToMedia(view.url!, `${setting.name} - ${view.label}`)} className="p-1 bg-white/20 hover:bg-white/40 rounded text-white" title="Gravar na Biblioteca"><Save className="w-3 h-3" /></button>
+                          <button onClick={() => handleExportImage(view.url!, `${setting.name}-${view.label.toLowerCase()}`)} className="p-1 bg-white/20 hover:bg-white/40 rounded text-white" title="Download"><Download className="w-3 h-3" /></button>
+                          <button onClick={() => setSelectedImage({ url: view.url!, title: `${setting.name} - ${view.label}` })} className="p-1 bg-white/20 hover:bg-white/40 rounded text-white" title="Maximizar"><ZoomIn className="w-3 h-3" /></button>
+                        </div>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[8px] p-0.5 text-center">{view.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -621,10 +838,16 @@ export default function Settings({ project, setProject }: SettingsProps) {
       <PromptEditorModal
         isOpen={!!editingPrompt}
         onClose={() => setEditingPrompt(null)}
-        onConfirm={confirmGenerateImage}
+        onConfirm={(prompt) => {
+          if (editingPrompt?.type === 'views') {
+            confirmGenerateViews(prompt);
+          } else {
+            confirmGenerateImage(prompt);
+          }
+        }}
         initialPrompt={editingPrompt?.prompt || ""}
-        title="Editar Prompt de Cenário"
-        description="Ajusta o prompt para obteres o melhor resultado visual."
+        title={editingPrompt?.type === 'views' ? "Editar Prompt das Perspetivas" : "Editar Prompt de Cenário"}
+        description={editingPrompt?.type === 'views' ? "Ajusta o prompt base para as 5 perspetivas do cenário." : "Ajusta o prompt para obteres o melhor resultado visual."}
       />
 
       {editingItem && (
