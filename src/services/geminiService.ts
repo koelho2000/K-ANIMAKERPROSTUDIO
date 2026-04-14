@@ -73,7 +73,7 @@ export const generateText = async (
   return withRetry(async () => {
     const ai = getGenAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-1.5-pro",
       contents: prompt,
       config: {
         systemInstruction,
@@ -91,7 +91,7 @@ export const generateJSON = async (
   return withRetry(async () => {
     const ai = getGenAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-1.5-pro",
       contents: prompt,
       config: {
         systemInstruction,
@@ -286,14 +286,14 @@ export const generateVideo = async (
       aspectRatio: finalAspectRatio,
     };
 
-    let modelName = 'veo-3.1-fast-generate-preview'; // Default to flow/fast
+    let modelName = 'veo-3.1-lite-generate-preview'; // Default to flow/fast
     
     if (model === 'veo-3.1') {
       modelName = 'veo-3.1-generate-preview';
     } else if (model === 'veo-fast') {
-      modelName = 'veo-3.1-fast-generate-preview';
+      modelName = 'veo-3.1-lite-generate-preview';
     } else if (model === 'flow') {
-      modelName = 'veo-3.1-fast-generate-preview';
+      modelName = 'veo-3.1-lite-generate-preview';
     }
 
     const hasStartOrEndImage = !!(startImageBase64 || endImageBase64);
@@ -633,7 +633,7 @@ export const describeCharacterFromImage = async (base64Image: string, filmType?:
     const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-1.5-pro",
       contents: {
         parts: [
           {
@@ -663,7 +663,7 @@ export const describeSettingFromImage = async (base64Image: string, filmType?: s
     const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-1.5-pro",
       contents: {
         parts: [
           {
@@ -717,7 +717,7 @@ export const analyzeCoherence = async (
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-1.5-pro",
       contents: { parts },
       config: {
         responseMimeType: "application/json",
@@ -741,7 +741,7 @@ export const validateApiKey = async (key: string) => {
     const ai = new GoogleGenAI({ apiKey: key });
     // Try a very simple request to check if the key is valid
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       contents: "ping",
       config: { maxOutputTokens: 1 }
     });

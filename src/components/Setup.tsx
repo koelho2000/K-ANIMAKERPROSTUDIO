@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Project } from "../types";
 import { Settings, Zap, AlertCircle, CheckCircle2, Loader2, Sparkles, HelpCircle, Info } from "lucide-react";
-import { getGenAI } from "../services/geminiService";
+import { getGenAI, generateJSON } from "../services/geminiService";
+import { Type } from "@google/genai";
 
 interface SetupProps {
   project: Project;
@@ -39,7 +40,7 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
     try {
       const isPTPT = project.language === "Português (Portugal)";
       const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
-      const ai = getGenAI();
+      
       const prompt = `Avalia a consistência e suficiência dos seguintes campos para um projeto de filme de animação:
       
       Título: "${project.title}"
@@ -56,30 +57,42 @@ export default function Setup({ project, setProject, onStartMassProduction }: Se
          - Para durações longas (30-120 min), precisa de uma "quantificação" robusta de conteúdo: sub-tramas, múltiplos atos e profundidade narrativa significativa.
       3. O conceito é claro?
       
-      Responde APENAS em formato JSON com a seguinte estrutura:
-      {
-        "title": { "status": "ok" | "warning" | "error", "message": "string" },
-        "idea": { "status": "ok" | "warning" | "error", "message": "string" },
-        "concept": { "status": "ok" | "warning" | "error", "message": "string" }
-      }
-      
       As mensagens devem ser em ${langSpec}, curtas e construtivas.
       ${isPTPT ? "IMPORTANTE: Utiliza Português de Portugal (PT-PT)." : ""}`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          title: {
+            type: Type.OBJECT,
+            properties: {
+              status: { type: Type.STRING, enum: ["ok", "warning", "error"] },
+              message: { type: Type.STRING }
+            },
+            required: ["status", "message"]
+          },
+          idea: {
+            type: Type.OBJECT,
+            properties: {
+              status: { type: Type.STRING, enum: ["ok", "warning", "error"] },
+              message: { type: Type.STRING }
+            },
+            required: ["status", "message"]
+          },
+          concept: {
+            type: Type.OBJECT,
+            properties: {
+              status: { type: Type.STRING, enum: ["ok", "warning", "error"] },
+              message: { type: Type.STRING }
+            },
+            required: ["status", "message"]
+          }
+        },
+        required: ["title", "idea", "concept"]
+      };
 
-      let text = response.text || "{}";
-      if (text.startsWith("```json")) {
-        text = text.replace(/^```json\n?/, "").replace(/\n?```$/, "");
-      } else if (text.startsWith("```")) {
-        text = text.replace(/^```\n?/, "").replace(/\n?```$/, "");
-      }
-
-      const result = JSON.parse(text);
+      const resultStr = await generateJSON(prompt, schema, "És um assistente especializado em análise de consistência de projetos cinematográficos.");
+      const result = JSON.parse(resultStr);
       setProject(prev => ({ ...prev, validation: result }));
     } catch (error) {
       console.error("Erro na validação:", error);

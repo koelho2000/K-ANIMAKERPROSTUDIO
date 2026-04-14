@@ -31,6 +31,7 @@ import { useRef, useState, useEffect, Dispatch, SetStateAction, ChangeEvent } fr
 import { ApiKeyModal } from "./ApiKeyModal";
 import { UsageModal } from "./UsageModal";
 import { ProjectProgressOverlay } from "./ProjectProgressOverlay";
+import ClaudeExportModal from "./ClaudeExportModal";
 
 interface SidebarProps {
   currentStep: number;
@@ -89,6 +90,7 @@ export default function Sidebar({
   const [overlayTime, setOverlayTime] = useState<number | undefined>(undefined);
   const [overlaySteps, setOverlaySteps] = useState<{label: string, status: 'pending'|'current'|'completed'}[]>([]);
   const [overlaySummary, setOverlaySummary] = useState<{sizeBefore: number, sizeAfter: number, changes: string[]} | undefined>(undefined);
+  const [showClaudeModal, setShowClaudeModal] = useState(false);
 
   useEffect(() => {
     const checkKey = async () => {
@@ -277,6 +279,86 @@ export default function Sidebar({
     setOverlayTime(0);
 
     if (onSave) onSave();
+
+    await new Promise(r => setTimeout(r, 1000));
+    setIsOverlayOpen(false);
+  };
+
+  const handleExportClaudeJSON = async () => {
+    setOverlayType('save');
+    setOverlayProgress(10);
+    setOverlayDescription('A preparar exportação para Claude');
+    setOverlayTime(2);
+    setOverlaySteps([]);
+    setOverlaySummary(undefined);
+    setIsOverlayOpen(true);
+
+    await new Promise(r => setTimeout(r, 500));
+
+    const claudeData = {
+      info: {
+        title: project.title,
+        idea: project.idea,
+        concept: project.concept,
+        filmType: project.filmType,
+        filmStyle: project.filmStyle,
+        language: project.language,
+        duration: project.duration,
+        aspectRatio: project.aspectRatio,
+        targetAudience: project.targetAudience,
+        director: project.director,
+        author: project.author,
+        company: project.company,
+        producer: project.producer,
+      },
+      script: project.script,
+      characters: project.characters.map(c => ({
+        name: c.name,
+        description: c.description,
+        artisticStyle: c.artisticStyle,
+        voice: c.voice,
+        physical: c.physical,
+      })),
+      settings: project.settings.map(s => ({
+        name: s.name,
+        description: s.description,
+        artisticStyle: s.artisticStyle,
+      })),
+      scenes: project.scenes.map(scene => ({
+        title: scene.title,
+        description: scene.description,
+        takes: scene.takes.map(take => ({
+          action: take.action,
+          camera: take.camera,
+          sound: take.sound,
+          dialogue: take.dialogue,
+          dialogueLines: take.dialogueLines,
+          narration: take.narration,
+          characterNames: take.characterIds?.map(id => project.characters.find(c => c.id === id)?.name).filter(Boolean),
+          settingName: project.settings.find(s => s.id === take.settingId)?.name,
+        }))
+      })),
+      storyworld: project.storyworld,
+    };
+
+    setOverlayProgress(70);
+    setOverlayDescription('A gerar ficheiro JSON estruturado');
+    setOverlayTime(1);
+
+    await new Promise(r => setTimeout(r, 500));
+
+    const dataStr = JSON.stringify(claudeData, null, 2);
+    const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
+    const exportFileDefaultName = `${project.title || "projeto"}-claude.json`;
+
+    const linkElement = document.createElement("a");
+    linkElement.setAttribute("href", dataUri);
+    linkElement.setAttribute("download", exportFileDefaultName);
+    linkElement.click();
+
+    setOverlayProgress(100);
+    setOverlayDescription('Exportação concluída com sucesso!');
+    setOverlayTime(0);
 
     await new Promise(r => setTimeout(r, 1000));
     setIsOverlayOpen(false);
@@ -481,6 +563,13 @@ export default function Sidebar({
           </div>
         </button>
         <button
+          onClick={() => setShowClaudeModal(true)}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium text-amber-400"
+        >
+          <FileText className="w-4 h-4" />
+          <span>CLAUDE JSON</span>
+        </button>
+        <button
           onClick={() => {
             if (hasUnsavedChanges) {
               if (window.confirm("Tens alterações não gravadas. Desejas mesmo criar um novo projeto?")) {
@@ -597,6 +686,12 @@ export default function Sidebar({
         onClose={() => setShowKeyModal(false)}
         onSave={handleSaveManualKey}
         currentKey={manualKey}
+      />
+
+      <ClaudeExportModal 
+        isOpen={showClaudeModal}
+        onClose={() => setShowClaudeModal(false)}
+        onConfirmExport={handleExportClaudeJSON}
       />
     </div>
 

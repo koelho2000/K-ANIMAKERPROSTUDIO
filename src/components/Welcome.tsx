@@ -1,9 +1,10 @@
 import React, { useState, useRef } from "react";
 import { motion } from "motion/react";
-import { Film, ArrowRight, Globe, User, Calendar, Tag, Plus, Upload, Loader2, Info } from "lucide-react";
+import { Film, ArrowRight, Globe, User, Calendar, Tag, Plus, Upload, Loader2, Info, BookOpen } from "lucide-react";
 import { Project } from "../types";
 import { v4 as uuidv4 } from "uuid";
 import { ProjectProgressOverlay } from "./ProjectProgressOverlay";
+import MethodologyModal from "./MethodologyModal";
 
 interface WelcomeProps {
   onStart: (project?: Project) => void;
@@ -21,6 +22,7 @@ export default function Welcome({ onStart }: WelcomeProps) {
   const [overlayDescription, setOverlayDescription] = useState('');
   const [overlaySteps, setOverlaySteps] = useState<{label: string, status: 'pending'|'current'|'completed'}[]>([]);
   const [overlayTime, setOverlayTime] = useState<number | undefined>(undefined);
+  const [isMethodologyOpen, setIsMethodologyOpen] = useState(false);
 
   const handleCreateProject = () => {
     onStart(); // Starts with empty project
@@ -176,6 +178,15 @@ export default function Welcome({ onStart }: WelcomeProps) {
             <Upload className="w-6 h-6" />
             <span className="text-lg">Carregar Projeto (JSON)</span>
           </button>
+
+          <button
+            onClick={() => setIsMethodologyOpen(true)}
+            className="w-full flex items-center justify-center gap-3 px-8 py-4 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 rounded-2xl font-medium transition-all hover:text-white border border-zinc-800/50"
+          >
+            <BookOpen className="w-5 h-5" />
+            <span>Metodologia do Sistema</span>
+          </button>
+
           <input
             type="file"
             ref={fileInputRef}
@@ -193,6 +204,11 @@ export default function Welcome({ onStart }: WelcomeProps) {
         description={overlayDescription}
         steps={overlaySteps}
         timeRemaining={overlayTime}
+      />
+
+      <MethodologyModal 
+        isOpen={isMethodologyOpen}
+        onClose={() => setIsMethodologyOpen(false)}
       />
     </div>
   );
