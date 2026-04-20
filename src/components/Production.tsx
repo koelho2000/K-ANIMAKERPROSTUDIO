@@ -835,9 +835,12 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
     setConfirmingSceneBulk(null);
 
     // Check if API key is selected
-    if (!(window as any).aistudio?.hasSelectedApiKey?.()) {
-      if ((window as any).aistudio?.openSelectKey) {
-        await (window as any).aistudio.openSelectKey();
+    const aistudio = (window as any).aistudio || (window.parent as any).aistudio;
+    const hasSystemKey = (await aistudio?.hasSelectedApiKey?.()) || !!process.env.GEMINI_API_KEY;
+    
+    if (!hasSystemKey && !localStorage.getItem('GEMINI_API_KEY_MANUAL')) {
+      if (aistudio?.openSelectKey) {
+        await aistudio.openSelectKey();
         localStorage.removeItem('GEMINI_API_KEY_MANUAL');
       } else {
         setError("Por favor, configura a tua Chave API Gemini primeiro.");
@@ -1228,11 +1231,12 @@ Altamente detalhado, iluminação dramática, composição profissional.`.trim()
 
       // Check if API key is selected (system or manual)
       const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
-      const hasSystemKey = await (window as any).aistudio?.hasSelectedApiKey?.();
+      const aistudio = (window as any).aistudio || (window.parent as any).aistudio;
+      const hasSystemKey = (await aistudio?.hasSelectedApiKey?.()) || !!process.env.GEMINI_API_KEY;
       
       if (!hasManualKey && !hasSystemKey) {
-        if ((window as any).aistudio?.openSelectKey) {
-          await (window as any).aistudio.openSelectKey();
+        if (aistudio?.openSelectKey) {
+          await aistudio.openSelectKey();
           localStorage.removeItem('GEMINI_API_KEY_MANUAL');
         } else {
           setError("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");

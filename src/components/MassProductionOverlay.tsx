@@ -30,7 +30,8 @@ import {
   generateSubtitles,
   getVoiceForSettings,
   detectCharacters,
-  detectSetting
+  detectSetting,
+  safeParseJSON
 } from "../services/geminiService";
 
 interface MassProductionOverlayProps {
@@ -194,7 +195,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         });
         addCost(COST_TEXT);
 
-        const data = JSON.parse(response.text || "{}");
+        const data = safeParseJSON(response.text || "{}");
         
         setProject((prev) => ({
           ...prev,
@@ -363,7 +364,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         });
         addCost(COST_TEXT);
 
-        const data = JSON.parse(response.text || "{}");
+        const data = safeParseJSON(response.text || "{}");
         
         setProject((prev) => ({
           ...prev,
@@ -569,12 +570,13 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         
         // Check if API key is selected before starting video phase (system or manual)
         const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
-        const hasSystemKey = await (window as any).aistudio?.hasSelectedApiKey?.();
+        const aistudio = (window as any).aistudio || (window.parent as any).aistudio;
+        const hasSystemKey = (await aistudio?.hasSelectedApiKey?.()) || !!process.env.GEMINI_API_KEY;
         
         if (!hasManualKey && !hasSystemKey) {
-          if ((window as any).aistudio?.openSelectKey) {
+          if (aistudio?.openSelectKey) {
             addLog("Aguardando configuração de Chave API para vídeos...");
-            await (window as any).aistudio.openSelectKey();
+            await aistudio.openSelectKey();
             localStorage.removeItem('GEMINI_API_KEY_MANUAL');
           } else {
             addLog("ERRO: Chave API não configurada.");
@@ -703,7 +705,7 @@ export default function MassProductionOverlay({ project, setProject, onClose, se
         const allTakes: { sceneId: string, takeId: string, action: string, duration?: number }[] = [];
         project.scenes.forEach(scene => {
           scene.takes.forEach(take => {
-            const hasDialogue = (take.dialogue && take.dialogue !== 'Nenhum' && take.dialogue.trim() !== '') || (take.dialogueLines && take.dialogueLines.length > 0);
+            const hasDialogue = (typeof take.dialogue === 'string' && take.dialogue !== 'Nenhum' && take.dialogue.trim() !== '') || (take.dialogueLines && take.dialogueLines.length > 0);
             if (!take.narrationAudioUrl && !hasDialogue) {
               allTakes.push({ 
                 sceneId: scene.id, 

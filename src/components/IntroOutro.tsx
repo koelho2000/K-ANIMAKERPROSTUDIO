@@ -53,10 +53,11 @@ const OUTRO_TYPES = [
 ];
 
 export default function IntroOutro({ project, setProject }: IntroOutroProps) {
-  const [activeTab, setActiveTab] = useState<"intro" | "credits" | "outro">("intro");
+  const [activeTab, setActiveTab] = useState<"intro" | "epilogue" | "credits" | "outro">("intro");
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [isGeneratingEpilogueText, setIsGeneratingEpilogueText] = useState(false);
   const [progress, setProgress] = useState(0);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<string | null>(null);
@@ -70,12 +71,13 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
 
   const intro = project.intro || { type: "cinematic", prompt: "" };
   const outro = project.outro || { type: "scrolling", prompt: "" };
+  const epilogue = project.epilogue || { text: "", prompt: "" };
 
-  const currentData = activeTab === "intro" ? intro : outro;
+  const currentData = activeTab === "intro" ? intro : activeTab === "epilogue" ? epilogue : outro;
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isGeneratingVideo || isGeneratingImage || isGeneratingPrompt) {
+    if (isGeneratingVideo || isGeneratingImage || isGeneratingPrompt || isGeneratingEpilogueText) {
       interval = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 98) return prev;
@@ -88,47 +90,95 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
       setProgress(100);
     }
     return () => clearInterval(interval);
-  }, [isGeneratingVideo, isGeneratingImage, isGeneratingPrompt]);
+  }, [isGeneratingVideo, isGeneratingImage, isGeneratingPrompt, isGeneratingEpilogueText]);
 
   const updateData = (updates: any) => {
+    if (activeTab === "credits") return;
     setProject(prev => ({
       ...prev,
-      [activeTab]: { ...prev[activeTab as "intro" | "outro"], ...updates }
+      [activeTab]: { ...prev[activeTab as "intro" | "epilogue" | "outro"], ...updates }
     }));
+  };
+
+  const handleGenerateEpilogueText = async () => {
+    setIsGeneratingEpilogueText(true);
+    setProgress(0);
+    try {
+      const isPTPT = project.language === "Português (Portugal)";
+      
+      const prompt = `Cria um Epílogo / Mensagem Final para um filme de animação com base no seguinte guião:
+      Título: ${project.title}
+      Ideia: ${project.idea}
+      Conceito/Tema: ${project.concept}
+      Guião: ${project.script}
+      
+      O texto deve focar-se no tema ou moral do filme e estar dividido logicamente:
+      1. Estatística ou facto (relacionado com a temática) - opcional se não fizer sentido, mas preferencial.
+      2. Moral da história consolidada.
+      3. Texto motivacional para as futuras gerações.
+      4. Frase Final marcante.
+      
+      ${isPTPT ? "Responde exclusivamente em Português de Portugal (PT-PT)." : "Responde na língua do filme."}
+      
+      Formata bem o texto para que possa ser lido por um narrador ou apresentado como texto no ecrã.`;
+
+      const text = await generateText(prompt);
+      updateData({ text });
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar o texto do epílogo.");
+    } finally {
+      setIsGeneratingEpilogueText(false);
+    }
   };
 
   const handleGeneratePrompt = async () => {
     setIsGeneratingPrompt(true);
     setProgress(0);
     try {
-      const typeInfo = (activeTab === "intro" ? INTRO_TYPES : OUTRO_TYPES).find(t => t.id === currentData.type);
-      
-      const creditsText = `
-        Empresa: ${project.company || "N/A"}
-        Realização: ${project.director || "N/A"}
-        Produção: ${project.producer || "N/A"}
-        Autor/Argumentista: ${project.author || "N/A"}
-        ${currentData.type === 'thankyou' ? `Mensagem de Agradecimento: ${project.thankYouMessage || "N/A"}` : ""}
-      `;
-      
-      const extraInfo = `
-      Dados Adicionais para Créditos (Estes dados DEVEM aparecer visualmente no vídeo, se aplicável ao tipo de cena):
-      ${creditsText}
-      `;
-
-      const prompt = `Cria um prompt detalhado para a geração de um ${activeTab === "intro" ? "Início (Intro)" : "Fim (Créditos)"} de um filme de animação.
-        Título do Filme: ${project.title}
-        Tipo de Filme: ${project.filmType}
-        Estilo Visual: ${project.filmStyle}
-        Tipo de ${activeTab === "intro" ? "Intro" : "Outro"}: ${typeInfo?.name} (${typeInfo?.description})
-        ${extraInfo}
+      if (activeTab === "epilogue") {
+        const prompt = `Cria um prompt detalhado para a geração de um fundo visual/cinemático para o "Epílogo" de um filme de animação.
+          Título: ${project.title}
+          Tipo de Filme: ${project.filmType}
+          Estilo Visual: ${project.filmStyle}
+          Mensagem do Epílogo: ${epilogue.text || "Uma mensagem final sobre a temática do filme."}
+          
+          O prompt deve descrever um cenário visual inspirador, melancólico ou reflexivo (dependendo do tema) que sirva como fundo para o texto final. A iluminação deve ser dramática mas permitir a leitura de texto sobreposto (espaço livre ou menos denso).
+          Responde apenas com o prompt em Inglês para ser usado numa ferramenta de geração de imagem/vídeo.`;
         
-        O prompt deve descrever visualmente a cena, a tipografia do texto "${activeTab === "intro" ? project.title : (currentData.type === 'thankyou' ? project.thankYouMessage || "OBRIGADO" : "FIM / CRÉDITOS")}", a iluminação, o movimento de câmara e a atmosfera.
-        Para os créditos, certifica-te que o prompt inclui a exibição dos nomes da Empresa, Realizador e Produtor de forma legível e estilizada de acordo com o tipo selecionado.
-        Responde apenas com o prompt em Inglês para ser usado numa ferramenta de geração de imagem/vídeo.`;
-      
-      const generatedPrompt = await generateText(prompt);
-      updateData({ prompt: generatedPrompt });
+        const generatedPrompt = await generateText(prompt);
+        updateData({ prompt: generatedPrompt });
+      } else {
+        const dataWithType = currentData as any;
+        const typeInfo = (activeTab === "intro" ? INTRO_TYPES : OUTRO_TYPES).find(t => t.id === dataWithType.type);
+        
+        const creditsText = `
+          Empresa: ${project.company || "N/A"}
+          Realização: ${project.director || "N/A"}
+          Produção: ${project.producer || "N/A"}
+          Autor/Argumentista: ${project.author || "N/A"}
+          ${dataWithType.type === 'thankyou' ? `Mensagem de Agradecimento: ${project.thankYouMessage || "N/A"}` : ""}
+        `;
+        
+        const extraInfo = `
+        Dados Adicionais para Créditos (Estes dados DEVEM aparecer visualmente no vídeo, se aplicável ao tipo de cena):
+        ${creditsText}
+        `;
+
+        const prompt = `Cria um prompt detalhado para a generation de um ${activeTab === "intro" ? "Início (Intro)" : "Fim (Créditos)"} de um filme de animação.
+          Título do Filme: ${project.title}
+          Tipo de Filme: ${project.filmType}
+          Estilo Visual: ${project.filmStyle}
+          Tipo de ${activeTab === "intro" ? "Intro" : "Outro"}: ${typeInfo?.name} (${typeInfo?.description})
+          ${extraInfo}
+          
+          O prompt deve descrever visualmente a cena, a tipografia do texto "${activeTab === "intro" ? project.title : (dataWithType.type === 'thankyou' ? project.thankYouMessage || "OBRIGADO" : "FIM / CRÉDITOS")}", a iluminação, o movimento de câmara e a atmosfera.
+          Para os créditos, certifica-te que o prompt inclui a exibição dos nomes da Empresa, Realizador e Produtor de forma legível e estilizada de acordo com o tipo selecionado.
+          Responde apenas com o prompt em Inglês para ser usado numa ferramenta de geração de imagem/vídeo.`;
+        
+        const generatedPrompt = await generateText(prompt);
+        updateData({ prompt: generatedPrompt });
+      }
     } catch (error) {
       console.error(error);
       alert("Erro ao gerar prompt.");
@@ -181,7 +231,10 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
     const music = currentData.musicOptions || { style: "Cinematic", mood: "Epic", intensity: "Medium" };
     const musicPrompt = `Music Style: ${music.style}, Mood: ${music.mood}, Intensity: ${music.intensity}.`;
     
-    const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${activeTab === "intro" ? "epic orchestral music" : "gentle closing music"}, and professional transitions. ${musicPrompt}`;
+    let baseAction = activeTab === "intro" ? "epic orchestral music" : "gentle closing music";
+    if (activeTab === "epilogue") baseAction = "inspirational and reflective music";
+    
+    const videoPrompt = `${currentData.prompt}. Add cinematic movement, sound of ${baseAction}, and professional transitions. ${musicPrompt}`;
     setEditingVideoPrompt(videoPrompt);
   };
 
@@ -192,11 +245,12 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
     try {
       // Check if API key is selected (system or manual)
       const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
-      const hasSystemKey = await (window as any).aistudio?.hasSelectedApiKey?.();
+      const aistudio = (window as any).aistudio || (window.parent as any).aistudio;
+      const hasSystemKey = (await aistudio?.hasSelectedApiKey?.()) || !!process.env.GEMINI_API_KEY;
       
       if (!hasManualKey && !hasSystemKey) {
-        if ((window as any).aistudio?.openSelectKey) {
-          await (window as any).aistudio.openSelectKey();
+        if (aistudio?.openSelectKey) {
+          await aistudio.openSelectKey();
           localStorage.removeItem('GEMINI_API_KEY_MANUAL');
         } else {
           alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
@@ -309,6 +363,14 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
           Dados dos Créditos
         </button>
         <button
+          onClick={() => setActiveTab("epilogue")}
+          className={`px-8 py-2.5 rounded-xl font-bold transition-all ${
+            activeTab === "epilogue" ? "bg-white text-indigo-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          Epílogo (Mensagem)
+        </button>
+        <button
           onClick={() => setActiveTab("outro")}
           className={`px-8 py-2.5 rounded-xl font-bold transition-all ${
             activeTab === "outro" ? "bg-white text-indigo-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
@@ -394,37 +456,63 @@ export default function IntroOutro({ project, setProject }: IntroOutroProps) {
             {/* Configuration Panel */}
             <div className="lg:col-span-1 space-y-6">
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 space-y-6">
-            <div className="space-y-4">
-              <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                <Clapperboard className="w-4 h-4" />
-                Tipo de {activeTab === "intro" ? "Intro" : "Créditos"}
-              </label>
-              <div className="grid grid-cols-1 gap-3">
-                {(activeTab === "intro" ? INTRO_TYPES : OUTRO_TYPES).map((type) => (
+            
+            {activeTab === "epilogue" ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                    <Type className="w-4 h-4" />
+                    Texto do Epílogo
+                  </label>
                   <button
-                    key={type.id}
-                    onClick={() => updateData({ type: type.id })}
-                    className={`text-left p-4 rounded-2xl border transition-all ${
-                      currentData.type === type.id
-                        ? "bg-indigo-50 border-indigo-200 ring-2 ring-indigo-500/10"
-                        : "bg-zinc-50 border-zinc-100 hover:border-zinc-200"
-                    }`}
+                    onClick={handleGenerateEpilogueText}
+                    disabled={isGeneratingEpilogueText || !project.script}
+                    className="text-xs text-indigo-600 font-bold hover:text-indigo-700 flex items-center gap-1 disabled:opacity-50"
                   >
-                    <p className={`font-bold text-sm ${currentData.type === type.id ? "text-indigo-700" : "text-zinc-700"}`}>
-                      {type.name}
-                    </p>
-                    <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
-                      {type.description}
-                    </p>
+                    {isGeneratingEpilogueText ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Gerar Texto
                   </button>
-                ))}
+                </div>
+                <textarea
+                  value={project.epilogue?.text || ""}
+                  onChange={(e) => updateData({ text: e.target.value })}
+                  placeholder="Texto do epílogo com mensagem moral, estatísticas ou agradecimentos..."
+                  className="w-full h-48 bg-zinc-50 border border-zinc-200 rounded-2xl p-4 text-sm text-zinc-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all resize-none"
+                />
               </div>
-            </div>
+            ) : (
+              <div className="space-y-4">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                  <Clapperboard className="w-4 h-4" />
+                  Tipo de {activeTab === "intro" ? "Intro" : "Créditos"}
+                </label>
+                <div className="grid grid-cols-1 gap-3">
+                  {(activeTab === "intro" ? INTRO_TYPES : OUTRO_TYPES).map((type) => (
+                    <button
+                      key={type.id}
+                      onClick={() => updateData({ type: type.id })}
+                      className={`text-left p-4 rounded-2xl border transition-all ${
+                        (currentData as any).type === type.id
+                          ? "bg-indigo-50 border-indigo-200 ring-2 ring-indigo-500/10"
+                          : "bg-zinc-50 border-zinc-100 hover:border-zinc-200"
+                      }`}
+                    >
+                      <p className={`font-bold text-sm ${(currentData as any).type === type.id ? "text-indigo-700" : "text-zinc-700"}`}>
+                        {type.name}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                        {type.description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                  <Type className="w-4 h-4" />
+                  <ImageIcon className="w-4 h-4" />
                   Prompt Visual
                 </label>
                 <button

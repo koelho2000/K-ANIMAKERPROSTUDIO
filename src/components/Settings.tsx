@@ -129,12 +129,11 @@ export default function Settings({ project, setProject }: SettingsProps) {
         },
       };
 
-      const result = await generateJSON(
+      const parsed = await generateJSON(
         prompt,
         schema,
         "És um concept artist de cenários de cinema de animação. Foca-te apenas no ambiente e arquitetura. NÃO incluas personagens nas descrições.",
       );
-      const parsed = JSON.parse(result);
 
       const newSettings: Setting[] = parsed.map((s: any) => ({
         id: uuidv4(),
@@ -442,6 +441,12 @@ export default function Settings({ project, setProject }: SettingsProps) {
     }
   };
 
+  const handleClearSettings = () => {
+    if (window.confirm("Tem a certeza que deseja apagar todos os Cenários? Esta ação não pode ser desfeita.")) {
+      setProject({ ...project, settings: [] });
+    }
+  };
+
   const addSetting = () => {
     setProject({
       ...project,
@@ -509,7 +514,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
             Define os ambientes do teu filme de animação.
           </p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           {outdatedTakesCount > 0 && (
             <button
               onClick={handleUpdateTakes}
@@ -521,9 +526,18 @@ export default function Settings({ project, setProject }: SettingsProps) {
               ) : (
                 <Zap className="w-5 h-5" />
               )}
-              Update Cenas e Takes ({outdatedTakesCount})
+              Update ({outdatedTakesCount})
             </button>
           )}
+
+          <button
+            onClick={handleClearSettings}
+            disabled={project.settings.length === 0}
+            className="flex items-center gap-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 px-3 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
+            title="Apagar todos os cenários"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
 
           <button
             onClick={handleGenerateAllImages}
@@ -533,16 +547,16 @@ export default function Settings({ project, setProject }: SettingsProps) {
             {generatingImageId === "bulk-settings" ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <Sparkles className="w-5 h-5" />
+              <ImageIcon className="w-4 h-4" />
             )}
-            Gerar Todas as Imagens
+            Gerar Imagens
           </button>
           <button
             onClick={addSetting}
             className="flex items-center gap-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 px-4 py-2 rounded-xl font-medium transition-colors"
           >
-            <Plus className="w-5 h-5" />
-            Adicionar Cenário
+            <Plus className="w-4 h-4" />
+            Adicionar
           </button>
           <button
             onClick={handleGenerateSettings}
@@ -727,7 +741,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
               <div className="flex items-center justify-between gap-2">
                 <input
                   type="text"
-                  value={setting.name}
+                  value={setting.name || ""}
                   onChange={(e) =>
                     updateSetting(setting.id, "name", e.target.value)
                   }
@@ -762,7 +776,7 @@ export default function Settings({ project, setProject }: SettingsProps) {
               </div>
 
               <textarea
-                value={setting.description}
+                value={setting.description || ""}
                 onChange={(e) =>
                   updateSetting(setting.id, "description", e.target.value)
                 }

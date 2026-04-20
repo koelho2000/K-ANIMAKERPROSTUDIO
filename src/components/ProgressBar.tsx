@@ -92,9 +92,9 @@ export default function ProgressBar({ progress, label, modelName, tasks, estimat
       </div>
       
       {tasks && tasks.length > 0 && (
-        <div className="bg-zinc-50 rounded-lg p-3 border border-zinc-100 space-y-2">
+        <div className="bg-zinc-50 rounded-lg p-3 border border-zinc-100">
           <h4 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Tarefas</h4>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
             {tasks.map((task, idx) => (
               <div key={idx} className="flex items-center gap-2 text-xs">
                 {task.status === 'completed' ? (

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Project } from '../types';
 import { WorldMapModal } from './WorldMapModal';
 import { Globe, Sparkles, Map, Clock, Navigation, Loader2 } from 'lucide-react';
-import { generateText } from '../services/geminiService';
+import { generateText, safeParseJSON } from '../services/geminiService';
 
 interface StoryworldProps {
   project: Project;
@@ -47,15 +47,7 @@ export default function Storyworld({ project, setProject }: StoryworldProps) {
       ]`;
 
       const result = await generateText(prompt);
-      
-      let jsonStr = result;
-      if (result.includes('```json')) {
-        jsonStr = result.split('```json')[1].split('```')[0].trim();
-      } else if (result.includes('```')) {
-        jsonStr = result.split('```')[1].split('```')[0].trim();
-      }
-
-      const parsed = JSON.parse(jsonStr);
+      const parsed = safeParseJSON(result);
       
       setProject(prev => ({
         ...prev,
@@ -100,16 +92,7 @@ export default function Storyworld({ project, setProject }: StoryworldProps) {
       }`;
 
       const result = await generateText(prompt);
-      
-      // Extract JSON from markdown code block if present
-      let jsonStr = result;
-      if (result.includes('```json')) {
-        jsonStr = result.split('```json')[1].split('```')[0].trim();
-      } else if (result.includes('```')) {
-        jsonStr = result.split('```')[1].split('```')[0].trim();
-      }
-
-      const parsed = JSON.parse(jsonStr);
+      const parsed = safeParseJSON(result);
       
       setProject(prev => ({
         ...prev,

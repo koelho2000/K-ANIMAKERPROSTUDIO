@@ -112,7 +112,7 @@ export function VideoPromptModal({
               Prompt de Geração
             </label>
             <textarea
-              value={prompt}
+              value={prompt || ""}
               onChange={(e) => setPrompt(e.target.value)}
               className="w-full h-32 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm text-zinc-700 font-mono leading-relaxed focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all resize-none"
               placeholder="Escreve o prompt aqui..."

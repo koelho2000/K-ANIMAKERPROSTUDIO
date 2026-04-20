@@ -226,6 +226,22 @@ export default function IntelligentEditor({
     setIsProcessing(true);
     setStatus("A processar...");
     try {
+      // Check if API key is selected (system or manual)
+      const hasManualKey = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
+      const aistudio = (window as any).aistudio || (window.parent as any).aistudio;
+      const hasSystemKey = (await aistudio?.hasSelectedApiKey?.()) || !!process.env.GEMINI_API_KEY;
+      
+      if (!hasManualKey && !hasSystemKey) {
+        if (aistudio?.openSelectKey) {
+          await aistudio.openSelectKey();
+          localStorage.removeItem('GEMINI_API_KEY_MANUAL');
+        } else {
+          alert("Por favor, configura a tua Chave API Gemini primeiro (Sistema ou Manual no Menu Lateral).");
+          setIsProcessing(false);
+          return;
+        }
+      }
+
       if (mode === 'create') {
         if (createType === 'image') {
           const refs = referenceImages.map(r => r.url);
@@ -1006,7 +1022,7 @@ export default function IntelligentEditor({
                     Instruções de Geração
                   </label>
                   <textarea 
-                    value={prompt}
+                    value={prompt || ""}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder={createType === 'image' 
                       ? "Ex: Uma personagem num estilo cyberpunk..." 

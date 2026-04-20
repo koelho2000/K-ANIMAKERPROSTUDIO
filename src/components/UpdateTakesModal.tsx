@@ -151,13 +151,11 @@ export const UpdateTakesModal: React.FC<UpdateTakesModalProps> = ({
           required: ["changeType", "details"],
         };
 
-        const result = await generateJSON(
+        const t = await generateJSON(
           prompt,
           schema,
           "És um realizador de cinema e diretor de arte a analisar alterações num guião."
         );
-        
-        const t = JSON.parse(result);
         
         let changes: UpdateTask['changes'] = undefined;
         

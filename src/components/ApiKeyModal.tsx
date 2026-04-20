@@ -10,7 +10,7 @@ interface ApiKeyModalProps {
 }
 
 export function ApiKeyModal({ isOpen, onClose, onSave, currentKey }: ApiKeyModalProps) {
-  const [key, setKey] = useState(currentKey);
+  const [key, setKey] = useState(currentKey || "");
   const [showKey, setShowKey] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{ valid: boolean; message: string } | null>(null);

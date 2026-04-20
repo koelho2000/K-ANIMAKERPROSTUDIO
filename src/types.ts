@@ -137,6 +137,22 @@ export interface Project {
       intensity: string;
     };
   };
+  epilogue?: {
+    text?: string;
+    prompt?: string;
+    imageUrl?: string;
+    videoUrl?: string;
+    videoOperationId?: string;
+    videoObject?: any;
+    videoModel?: VideoModel;
+    lastVideoPrompt?: string;
+    referenceImages?: string[];
+    musicOptions?: {
+      style: string;
+      mood: string;
+      intensity: string;
+    };
+  };
 }
 
 export interface CustomMedia {

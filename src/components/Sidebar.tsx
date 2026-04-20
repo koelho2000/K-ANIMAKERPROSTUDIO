@@ -45,6 +45,8 @@ interface SidebarProps {
   onOpenIntelligentGenerator?: () => void;
   onOpenUpdateMovie?: () => void;
   onGoHome?: () => void;
+  apiMode: 'api' | 'free';
+  setApiMode: (mode: 'api' | 'free') => void;
 }
 
 const steps = [
@@ -76,6 +78,8 @@ export default function Sidebar({
   onOpenIntelligentGenerator,
   onOpenUpdateMovie,
   onGoHome,
+  apiMode,
+  setApiMode,
 }: SidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showUsageModal, setShowUsageModal] = useState(false);
@@ -95,14 +99,19 @@ export default function Sidebar({
   useEffect(() => {
     const checkKey = async () => {
       const hasManual = !!localStorage.getItem('GEMINI_API_KEY_MANUAL');
+      const hasEnv = !!process.env.GEMINI_API_KEY;
+      
       if (hasManual) {
         setHasApiKey(true);
         return;
       }
 
-      if (window.aistudio?.hasSelectedApiKey) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(hasKey);
+      const aistudio = (window as any).aistudio || (window.parent as any).aistudio;
+      if (aistudio?.hasSelectedApiKey) {
+        const hasSelected = await aistudio.hasSelectedApiKey();
+        setHasApiKey(hasSelected || hasEnv);
+      } else {
+        setHasApiKey(hasEnv);
       }
     };
     checkKey();
@@ -118,18 +127,28 @@ export default function Sidebar({
   };
 
   const handleOpenKeySelector = async () => {
-    if (window.aistudio?.openSelectKey) {
-      await window.aistudio.openSelectKey();
+    const aistudio = (window as any).aistudio || (window.parent as any).aistudio;
+    if (aistudio?.openSelectKey) {
+      await aistudio.openSelectKey();
       // Assume success and update state (as per guidelines)
       setHasApiKey(true);
       localStorage.removeItem('GEMINI_API_KEY_MANUAL');
       setManualKey("");
+    } else {
+      // If not in AI Studio environment, but we have an env key, just clear manual
+      if (process.env.GEMINI_API_KEY) {
+        localStorage.removeItem('GEMINI_API_KEY_MANUAL');
+        setManualKey("");
+        setHasApiKey(true);
+      } else {
+        alert("A Chave de Sistema funciona via backend (Variável de Ambiente GEMINI_API_KEY). Num servidor próprio, esta variável tem de ser injetada no código. Usa a opção Manual!");
+      }
     }
   };
 
-  const isConfigComplete = project.title.trim() !== "" && 
-                          project.idea.trim() !== "" && 
-                          project.concept.trim() !== "";
+  const isConfigComplete = (project.title || "").trim() !== "" && 
+                          (project.idea || "").trim() !== "" && 
+                          (project.concept || "").trim() !== "";
 
   const isValidated = (project.validation?.title?.status === 'ok' || (project.validation?.title?.status === 'warning' && project.validation?.ignoreWarnings)) && 
                       (project.validation?.idea?.status === 'ok' || (project.validation?.idea?.status === 'warning' && project.validation?.ignoreWarnings)) && 
@@ -267,7 +286,12 @@ export default function Sidebar({
     const dataUri =
       "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
 
-    const exportFileDefaultName = `${project.title || "projeto"}-animaker.json`;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-PT').replace(/\//g, '-');
+    const hourStr = now.getHours().toString().padStart(2, '0') + 'h';
+    const safeTitle = (project.title || "projeto").trim().replace(/[^a-z0-9À-ÿ\s]/gi, '').replace(/\s+/g, '_');
+    
+    const exportFileDefaultName = `${safeTitle}_${dateStr}_${hourStr}.json`;
 
     const linkElement = document.createElement("a");
     linkElement.setAttribute("href", dataUri);
@@ -420,38 +444,64 @@ export default function Sidebar({
 
   return (
     <>
-      <div className="w-64 bg-zinc-900 text-zinc-300 flex flex-col h-full border-r border-zinc-800">
-      <div className="p-4">
+      <div className="w-64 bg-zinc-900 text-zinc-300 flex flex-col h-full border-r border-zinc-800 relative z-50">
+      <div className="p-4 border-b border-zinc-800">
         <h1 className="text-xl font-bold text-white flex items-center gap-2">
           <Film className="w-5 h-5 text-indigo-500" />
           K-ANIMAKER PRO
         </h1>
       </div>
-      <nav className="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar">
-        {steps.map((step) => {
-          const Icon = step.icon;
-          const isActive = currentStep === step.id;
-          const isDisabled = step.id !== 1 && step.id !== 10 && !isValidated;
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+        <nav className="space-y-1">
+          {[
+            { id: 1, name: "Configuração", icon: Settings },
+            { id: 2, name: "História", icon: FileText },
+            { id: 3, name: "Personagens", icon: Users },
+            { id: 4, name: "Cenários", icon: ImageIcon },
+            { id: 5, name: "Cenas e Takes", icon: Clapperboard },
+            { id: 14, name: "Storyworld", icon: Globe },
+            { id: 6, name: "Produção", icon: Film },
+            { id: 7, name: "Intro & Créditos", icon: Zap },
+            { id: 8, name: "Pré-visualização", icon: Play },
+            { id: 11, name: "Timelapse", icon: Clock },
+            { id: 13, name: "Soundtrack", icon: Music },
+          ].map((step) => {
+            const Icon = step.icon;
+            const isActive = currentStep === step.id;
+            const isDisabled = step.id !== 1 && step.id !== 10 && !isValidated;
 
-          return (
-            <button
-              key={step.id}
-              onClick={() => !isDisabled && setStep(step.id)}
-              disabled={isDisabled}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm ${
-                isActive
-                  ? "bg-indigo-600 text-white"
-                  : isDisabled
-                  ? "opacity-40 cursor-not-allowed"
-                  : "hover:bg-zinc-800 hover:text-white"
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="font-medium">{step.name}</span>
-            </button>
-          );
-        })}
-      </nav>
+            return (
+              <button
+                key={step.id}
+                onClick={() => !isDisabled && setStep(step.id)}
+                disabled={isDisabled}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm ${
+                  isActive
+                    ? "bg-indigo-600 text-white"
+                    : isDisabled
+                    ? "opacity-40 cursor-not-allowed"
+                    : "hover:bg-zinc-800 hover:text-white text-zinc-400"
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="font-medium">{step.name}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Hidden triggers for TopBar delegates */}
+      <input
+        type="file"
+        id="project-file-input"
+        ref={fileInputRef}
+        onChange={handleLoad}
+        accept=".json"
+        className="hidden"
+      />
+      <button id="trigger-save-json" onClick={handleSave} className="hidden" />
+      <button id="trigger-claude-json" onClick={() => setShowClaudeModal(true)} className="hidden" />
 
       <div className="p-3 space-y-1.5 border-t border-zinc-800 relative bg-zinc-900/50">
         {/* API Key Status & Selector */}
@@ -504,6 +554,95 @@ export default function Sidebar({
           )}
         </div>
 
+        {/* API Mode Slidebox & Tooltip */}
+        <div className="mb-2 p-2.5 bg-zinc-800/50 rounded-lg border border-zinc-700/50 relative">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-medium text-zinc-400">
+              <span>Modo Operação</span>
+              <button onClick={() => {
+                const el = document.getElementById('api-mode-info-modal');
+                if (el) el.classList.toggle('hidden');
+              }} className="text-zinc-500 hover:text-zinc-300 focus:outline-none transition-colors">
+                <Info className="w-3 h-3 cursor-pointer" />
+              </button>
+            </div>
+            
+            {/* Tooltip Content Modal */}
+            <div id="api-mode-info-modal" className="hidden fixed inset-0 z-[999999] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={(e) => {
+                e.currentTarget.parentElement?.classList.add('hidden');
+              }}></div>
+              <div className="bg-zinc-900 border border-zinc-700/50 rounded-2xl shadow-2xl p-6 max-w-sm w-full relative z-10 transform scale-100 transition-all">
+                <button
+                  onClick={(e) => {
+                    const el = document.getElementById('api-mode-info-modal');
+                    if (el) el.classList.add('hidden');
+                  }}
+                  className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-400">
+                    <Info className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white">Configuração das IAs</h3>
+                </div>
+                <div className="space-y-4">
+                  <div className="p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-xl space-y-2">
+                    <p className="text-zinc-100 text-sm">
+                      <span className="text-emerald-400 font-bold">Versão FREE:</span> Sem custos adicionais.
+                    </p>
+                    <ul className="text-xs text-zinc-400 space-y-1 ml-4 list-disc marker:text-emerald-500/50">
+                      <li><strong className="text-zinc-300">Texto:</strong> Gemini 1.5 Flash</li>
+                      <li><strong className="text-zinc-300">Imagem:</strong> Flux / Stable Diffusion</li>
+                      <li><strong className="text-zinc-300">Vídeo:</strong> Veo 3 Lite (Otimizado)</li>
+                    </ul>
+                  </div>
+                  <div className="p-3 bg-indigo-500/5 border border-indigo-500/10 rounded-xl space-y-2">
+                    <p className="text-zinc-100 text-sm">
+                      <span className="text-indigo-400 font-bold">Versão API:</span> Usa a sua Chave e Créditos.
+                    </p>
+                    <ul className="text-xs text-zinc-400 space-y-1 ml-4 list-disc marker:text-indigo-500/50">
+                      <li><strong className="text-zinc-300">Texto:</strong> Gemini 1.5 Pro / Claude 3.5</li>
+                      <li><strong className="text-zinc-300">Imagem:</strong> Imagen 3 / Midjourney</li>
+                      <li><strong className="text-zinc-300">Vídeo:</strong> Veo 3.1 & Flow</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="relative flex items-center bg-zinc-900 rounded-lg p-1 border border-zinc-700/50">
+            <button
+              onClick={() => setApiMode('free')}
+              className={`flex-1 text-[9px] font-bold py-1.5 rounded-md transition-all z-10 ${
+                apiMode === 'free' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              FREE
+            </button>
+            <button
+              onClick={() => setApiMode('api')}
+              className={`flex-1 text-[9px] font-bold py-1.5 rounded-md transition-all z-10 ${
+                apiMode === 'api' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              API
+            </button>
+            
+            {/* Sliding Background */}
+            <div 
+              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md transition-transform duration-300 ease-in-out ${
+                apiMode === 'api' 
+                  ? 'translate-x-[calc(100%+4px)] bg-indigo-600' 
+                  : 'translate-x-0 bg-emerald-600'
+              }`}
+            />
+          </div>
+        </div>
+
         {/* Usage Stats Display */}
         <div className="mb-2 p-2.5 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
           <div className="flex items-center justify-between mb-1.5">
@@ -529,88 +668,9 @@ export default function Sidebar({
           </div>
         </div>
 
-        <UsageModal 
-          isOpen={showUsageModal}
-          onClose={() => setShowUsageModal(false)}
-          usage={usage}
-        />
+      </div>
 
-        <button
-          onClick={onOpenIntelligentGenerator}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium text-indigo-400"
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>Gerador Inteligente</span>
-        </button>
-        <button
-          onClick={onOpenUpdateMovie}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium text-emerald-400"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Update Filme</span>
-        </button>
-        <button
-          onClick={handleSave}
-          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all text-xs font-medium ${
-            hasUnsavedChanges
-              ? "bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600/20 border border-indigo-500/30"
-              : "hover:bg-zinc-800 hover:text-white"
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Save className="w-4 h-4" />
-            <span>Gravar em JSON</span>
-          </div>
-        </button>
-        <button
-          onClick={() => setShowClaudeModal(true)}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium text-amber-400"
-        >
-          <FileText className="w-4 h-4" />
-          <span>CLAUDE JSON</span>
-        </button>
-        <button
-          onClick={() => {
-            if (hasUnsavedChanges) {
-              if (window.confirm("Tens alterações não gravadas. Desejas mesmo criar um novo projeto?")) {
-                onNewProject?.();
-              }
-            } else {
-              onNewProject?.();
-            }
-          }}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium text-emerald-500"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Novo Projeto</span>
-        </button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium"
-        >
-          <Upload className="w-4 h-4" />
-          Abrir Projeto
-        </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleLoad}
-          accept=".json"
-          className="hidden"
-        />
-
-        {onGoHome && (
-          <button
-            onClick={onGoHome}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors text-xs font-medium text-zinc-400 mt-4 border border-zinc-800"
-          >
-            <div className="w-4 h-4 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-            </div>
-            Voltar ao Início
-          </button>
-        )}
-
+      <div className="p-3 space-y-1.5 border-t border-zinc-800 relative bg-zinc-900/50">
         {/* Mass Production Quick Access */}
         {isConfigComplete && onStartMassProduction && (
           <div className="space-y-1">
@@ -678,7 +738,7 @@ export default function Sidebar({
       </div>
 
       <div className="p-2 text-[10px] text-zinc-500 text-center">
-        V3.0.0 • Gemini & Veo
+        V6.0.0 • Gemini & Veo
       </div>
 
       <ApiKeyModal

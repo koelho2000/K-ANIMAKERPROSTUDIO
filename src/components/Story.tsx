@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Project } from "../types";
 import { generateText } from "../services/geminiService";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Trash2 } from "lucide-react";
 import ProgressBar from "./ProgressBar";
 
 interface StoryProps {
@@ -28,6 +28,12 @@ export default function Story({ project, setProject }: StoryProps) {
     }
     return () => clearInterval(interval);
   }, [isGenerating]);
+
+  const handleClear = () => {
+    if (window.confirm('Tem a certeza que deseja apagar toda a História? Esta ação não pode ser desfeita.')) {
+      setProject({ ...project, script: '' });
+    }
+  };
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -68,9 +74,9 @@ export default function Story({ project, setProject }: StoryProps) {
         "És um argumentista premiado de cinema de animação.",
       );
       setProject({ ...project, script });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("Erro ao gerar guião. Verifica a consola.");
+      alert(`Erro ao gerar guião: ${error.message || "Verifica a consola."}`);
     } finally {
       setIsGenerating(false);
     }
@@ -87,18 +93,28 @@ export default function Story({ project, setProject }: StoryProps) {
             Gera ou edita o guião principal para o teu filme.
           </p>
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={isGenerating || !project.idea}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-medium transition-colors disabled:opacity-50"
-        >
-          {isGenerating ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <Sparkles className="w-5 h-5" />
-          )}
-          Gerar Guião
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleClear}
+            disabled={isGenerating || !project.script}
+            className="flex items-center gap-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 px-4 py-3 rounded-xl font-medium transition-colors disabled:opacity-50"
+            title="Limpar conteúdo"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+          <button
+            onClick={handleGenerate}
+            disabled={isGenerating || !project.idea}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-medium transition-colors disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Sparkles className="w-5 h-5" />
+            )}
+            Gerar Guião
+          </button>
+        </div>
       </div>
 
       {isGenerating && (
@@ -113,7 +129,7 @@ export default function Story({ project, setProject }: StoryProps) {
 
       <div className="bg-white p-2 rounded-2xl shadow-sm border border-zinc-100 h-[600px]">
         <textarea
-          value={project.script}
+          value={project.script || ""}
           onChange={(e) => setProject({ ...project, script: e.target.value })}
           placeholder="O teu guião aparecerá aqui..."
           className="w-full h-full p-6 resize-none outline-none font-serif text-lg leading-relaxed text-zinc-800 bg-transparent"

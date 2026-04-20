@@ -70,6 +70,7 @@ export default function Scenes({
   const [storyboardProgress, setStoryboardProgress] = useState(0);
   const [storyboardTimeElapsed, setStoryboardTimeElapsed] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [takesTasks, setTakesTasks] = useState<{ name: string; status: 'pending' | 'active' | 'completed' }[]>([]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -463,6 +464,12 @@ export default function Scenes({
     setIsAutoGeneratingDialogues(false);
   };
 
+  const handleClearScenes = () => {
+    if (window.confirm("Tem a certeza que deseja apagar todas as Cenas e Takes? Esta ação não pode ser desfeita.")) {
+      setProject({ ...project, scenes: [] });
+    }
+  };
+
   const handleGenerateScenes = async () => {
     setIsGeneratingScenes(true);
     try {
@@ -499,12 +506,11 @@ export default function Scenes({
         },
       };
 
-      const result = await generateJSON(
+      const parsed = await generateJSON(
         prompt,
         schema,
         "És um realizador de cinema a planear a estrutura do filme.",
       );
-      const parsed = JSON.parse(result);
 
       const newScenes: Scene[] = parsed.map((s: any) => ({
         id: uuidv4(),
@@ -525,8 +531,20 @@ export default function Scenes({
     }
   };
 
-  const handleGenerateTakes = async (scene: Scene, silent = false) => {
-    if (!silent) setGeneratingTakesId(scene.id);
+  const handleGenerateTakes = async (scene: Scene, silent = false, onProgress?: (progress: number, label: string) => void) => {
+    if (!silent) {
+      setGeneratingTakesId(scene.id);
+      setCurrentOperationLabel(`A planear takes para: ${scene.title}...`);
+      setTakesProgress(10);
+      setTakesTasks([
+        { name: "Analisar contexto e referências da cena", status: 'active' },
+        { name: "Gerar estrutura de takes com Gemini", status: 'pending' },
+        { name: "Processar e validar takes individuais", status: 'pending' }
+      ]);
+    }
+    
+    if (onProgress) onProgress(10, "A planear estrutura...");
+
     try {
       const isPTPT = project.language === "Português (Portugal)";
       const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
@@ -627,28 +645,71 @@ export default function Scenes({
         },
       };
 
-      const result = await generateJSON(
+      if (!silent) {
+        setCurrentOperationLabel(`A gerar estrutura de ${targetTakes} takes...`);
+        setTakesProgress(30);
+        setTakesTasks([
+          { name: "Analisar contexto e referências da cena", status: 'completed' },
+          { name: "Gerar estrutura de takes com Gemini", status: 'active' },
+          { name: "Processar e validar takes individuais", status: 'pending' }
+        ]);
+      }
+      
+      if (onProgress) onProgress(30, "A gerar estrutura...");
+
+      const parsed = await generateJSON(
         prompt,
         schema,
         "És um realizador de cinema a criar uma storyboard detalhada.",
       );
-      const parsed = JSON.parse(result);
 
-      const newTakes: Take[] = parsed.map((t: any) => {
+      if (!silent) {
+        setCurrentOperationLabel(`Estrutura recebida. A processar ${parsed.length} takes...`);
+        setTakesProgress(70);
+        
+        // Dynamic list of takes
+        const takeTasks = parsed.map((_: any, idx: number) => ({
+          name: `Processar Take ${idx + 1}`,
+          status: 'pending' as const
+        }));
+
+        setTakesTasks([
+          { name: "Analisar contexto e referências da cena", status: 'completed' },
+          { name: "Gerar estrutura de takes com Gemini", status: 'completed' },
+          ...takeTasks
+        ]);
+      }
+
+      const newTakes: Take[] = [];
+      
+      for (let i = 0; i < parsed.length; i++) {
+        const t = parsed[i];
+        if (!silent) {
+          setCurrentOperationLabel(`A processar take ${i + 1} de ${parsed.length}...`);
+          setTakesProgress(70 + (i / parsed.length) * 25);
+          setTakesTasks(prev => prev.map((task, idx) => {
+            if (idx < i + 2) return { ...task, status: 'completed' };
+            if (idx === i + 2) return { ...task, status: 'active' };
+            return task;
+          }));
+        }
+        
+        if (onProgress) onProgress(70 + (i / parsed.length) * 25, `Take ${i + 1}/${parsed.length}`);
+
         const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
         const settingId = detectSetting(t.action, t.settingName, project.settings) || project.settings.find((s) => s.name === t.settingName)?.id;
 
         const parsedDialogueLines = t.dialogueLines?.map((dl: any) => ({
           characterId: project.characters.find((c) => 
             c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-            dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+            dl.characterName?.toLowerCase()?.includes(c.name.toLowerCase())
           )?.id || "",
           text: dl.text,
         })).filter((dl: any) => dl.characterId !== "") || [];
 
-        const hasDialogue = (t.dialogue && t.dialogue !== 'Nenhum' && t.dialogue.trim() !== '') || parsedDialogueLines.length > 0;
+        const hasDialogue = (typeof t.dialogue === 'string' && t.dialogue !== 'Nenhum' && t.dialogue.trim() !== '') || parsedDialogueLines.length > 0;
 
-        return {
+        newTakes.push({
           id: uuidv4(),
           action: t.action,
           camera: t.camera,
@@ -659,8 +720,14 @@ export default function Scenes({
           characterIds,
           settingId,
           duration: 5, // Default duration
-        };
-      });
+        });
+      }
+
+      if (!silent) {
+        setTakesProgress(100);
+        setCurrentOperationLabel("Concluído!");
+        setTakesTasks(prev => prev.map(task => ({ ...task, status: 'completed' })));
+      }
 
       return newTakes;
     } catch (error) {
@@ -668,22 +735,48 @@ export default function Scenes({
       if (!silent) alert(`Erro ao gerar takes para a cena: ${scene.title}`);
       return null;
     } finally {
-      if (!silent) setGeneratingTakesId(null);
+      if (!silent) {
+        setGeneratingTakesId(null);
+        setCurrentOperationLabel("");
+      }
     }
   };
 
   const handleGenerateAllTakes = async () => {
     setIsGeneratingAllTakes(true);
+    const initialTasks = project.scenes.map(s => ({ name: `Cena: ${s.title}`, status: 'pending' as const }));
+    setTakesTasks(initialTasks);
+    
     try {
       const updatedScenes = [...project.scenes];
       for (let i = 0; i < updatedScenes.length; i++) {
         setScenesProgress((i / updatedScenes.length) * 100);
-        setCurrentOperationLabel(`A gerar takes para a Cena ${i + 1}: ${updatedScenes[i].title}...`);
-        const takes = await handleGenerateTakes(updatedScenes[i], true);
+        const currentScene = updatedScenes[i];
+        setCurrentOperationLabel(`A gerar takes para a Cena ${i + 1}: ${currentScene.title}...`);
+        
+        // Update tasks status
+        setTakesTasks(prev => prev.map((t, idx) => {
+          if (idx < i) return { ...t, status: 'completed' };
+          if (idx === i) return { ...t, name: `Cena: ${currentScene.title} (A gerar...)`, status: 'active' };
+          return t;
+        }));
+
+        const takes = await handleGenerateTakes(currentScene, true, (p, subLabel) => {
+          setTakesTasks(prev => prev.map((t, idx) => {
+            if (idx === i) return { ...t, name: `Cena: ${currentScene.title} (${subLabel})`, status: 'active' };
+            return t;
+          }));
+        });
         if (takes) {
-          updatedScenes[i] = { ...updatedScenes[i], takes };
+          updatedScenes[i] = { ...currentScene, takes };
         }
       }
+      
+      setTakesTasks(prev => prev.map(t => ({ 
+        ...t, 
+        name: t.name.replace(' (A gerar...)', ''), 
+        status: 'completed' 
+      })));
       setProject({ ...project, scenes: updatedScenes });
       showToast("Todos os takes foram gerados com sucesso!");
     } catch (error) {
@@ -714,6 +807,8 @@ export default function Scenes({
     const numNewTakes = Math.max(1, Math.round(scene.takes.length * (percentage / 100)));
 
     setGeneratingTakesId(sceneId);
+    setCurrentOperationLabel(`A expandir cena: ${scene.title}...`);
+    setTakesProgress(10);
     try {
       const isPTPT = project.language === "Português (Portugal)";
       const langSpec = isPTPT ? "Português de Portugal (PT-PT)" : project.language;
@@ -800,12 +895,11 @@ export default function Scenes({
         },
       };
 
-      const result = await generateJSON(
+      const parsed = await generateJSON(
         prompt,
         schema,
         "És um realizador de cinema a expandir uma storyboard para maior detalhe.",
       );
-      const parsed = JSON.parse(result);
 
       const newTakes: Take[] = parsed.map((t: any) => {
         const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
@@ -814,12 +908,12 @@ export default function Scenes({
         const parsedDialogueLines = t.dialogueLines?.map((dl: any) => ({
           characterId: project.characters.find((c) => 
             c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-            dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+            dl.characterName?.toLowerCase()?.includes(c.name.toLowerCase())
           )?.id || "",
           text: dl.text,
         })).filter((dl: any) => dl.characterId !== "") || [];
 
-        const hasDialogue = (t.dialogue && t.dialogue !== 'Nenhum' && t.dialogue.trim() !== '') || parsedDialogueLines.length > 0;
+        const hasDialogue = (typeof t.dialogue === 'string' && t.dialogue !== 'Nenhum' && t.dialogue.trim() !== '') || parsedDialogueLines.length > 0;
 
         return {
           id: uuidv4(),
@@ -852,11 +946,14 @@ export default function Scenes({
       alert("Erro ao estender a cena.");
     } finally {
       setGeneratingTakesId(null);
+      setCurrentOperationLabel("");
     }
   };
 
   const onRegenerateTake = async (sceneId: string, takeId: string) => {
     setGeneratingTakesId(takeId);
+    setCurrentOperationLabel("A regenerar take...");
+    setTakesProgress(10);
     try {
       const scene = project.scenes.find((s) => s.id === sceneId);
       const take = scene?.takes.find((t) => t.id === takeId);
@@ -928,24 +1025,23 @@ export default function Scenes({
         required: ["action", "camera", "sound", "dialogue", "narration", "dialogueLines", "characterNames", "settingName"],
       };
 
-      const result = await generateJSON(
+      const t = await generateJSON(
         prompt,
         schema,
         "És um realizador de cinema a aperfeiçoar uma storyboard.",
       );
-      const t = JSON.parse(result);
       const characterIds = detectCharacters(t.action, t.dialogueLines, t.characterNames || [], project.characters);
       const settingId = detectSetting(t.action, t.settingName, project.settings) || project.settings.find((s) => s.name === t.settingName)?.id;
 
       const parsedDialogueLines = t.dialogueLines?.map((dl: any) => ({
         characterId: project.characters.find((c) => 
           c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-          dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+          dl.characterName?.toLowerCase()?.includes(c.name.toLowerCase())
         )?.id || "",
         text: dl.text,
       })).filter((dl: any) => dl.characterId !== "") || [];
 
-      const hasDialogue = (t.dialogue && t.dialogue !== 'Nenhum' && t.dialogue.trim() !== '') || parsedDialogueLines.length > 0;
+      const hasDialogue = (typeof t.dialogue === 'string' && t.dialogue !== 'Nenhum' && (t.dialogue?.trim() || '') !== '') || parsedDialogueLines.length > 0;
 
       const updatedScenes = project.scenes.map((s) => {
         if (s.id === sceneId) {
@@ -978,6 +1074,7 @@ export default function Scenes({
       alert("Erro ao regenerar take.");
     } finally {
       setGeneratingTakesId(null);
+      setCurrentOperationLabel("");
     }
   };
 
@@ -1012,7 +1109,15 @@ export default function Scenes({
             Divide o teu guião em cenas e planos de câmara.
           </p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
+          <button
+            onClick={handleClearScenes}
+            disabled={project.scenes.length === 0}
+            className="flex items-center gap-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 px-4 py-3 rounded-xl font-medium transition-colors disabled:opacity-50"
+            title="Apagar todas as cenas e takes"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
           <button
             onClick={handleGenerateAllTakes}
             disabled={isGeneratingAllTakes || isGeneratingScenes || !project.scenes.length}
@@ -1106,6 +1211,7 @@ export default function Scenes({
               )
             }
             modelName="Gemini"
+            tasks={isGeneratingAllTakes ? takesTasks : undefined}
           />
         </div>
       )}
@@ -1244,8 +1350,9 @@ export default function Scenes({
                   <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200">
                     <ProgressBar
                       progress={takesProgress}
-                      label="A detalhar takes da cena..."
+                      label={currentOperationLabel || "A detalhar takes da cena..."}
                       modelName="Gemini"
+                      tasks={takesTasks}
                     />
                   </div>
                 )}
@@ -1505,7 +1612,7 @@ export default function Scenes({
                                   </select>
                                   <input
                                     type="text"
-                                    value={line.text}
+                                    value={line.text || ""}
                                     onChange={(e) => {
                                       const val = e.target.value;
                                       const newLines = [...(take.dialogueLines || [])];

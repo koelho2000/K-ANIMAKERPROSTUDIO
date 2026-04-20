@@ -288,12 +288,11 @@ export default function Characters({ project, setProject }: CharactersProps) {
         },
       };
 
-      const result = await generateJSON(
+      const parsed = await generateJSON(
         prompt,
         schema,
         "És um character designer de cinema de animação.",
       );
-      const parsed = JSON.parse(result);
 
       const newCharacters: Character[] = parsed.map((c: any) => ({
         id: uuidv4(),
@@ -405,11 +404,11 @@ export default function Characters({ project, setProject }: CharactersProps) {
       const referenceBase64 = await getBase64FromUrl(character.imageUrl);
       
       const viewsToGenerate = [
-        { key: 'frontViewImageUrl', prompt: `${editedPrompt} Front view in "T" pose.` },
-        { key: 'backViewImageUrl', prompt: `${editedPrompt} Back view.` },
-        { key: 'leftViewImageUrl', prompt: `${editedPrompt} Left side view.` },
-        { key: 'rightViewImageUrl', prompt: `${editedPrompt} Right side view.` },
-        { key: 'topViewImageUrl', prompt: `${editedPrompt} Top down view.` }
+        { key: 'frontViewImageUrl', prompt: `${editedPrompt} Full body front view, neutral "T" pose, standing straight, facing camera. High quality character design, consistent style.` },
+        { key: 'backViewImageUrl', prompt: `${editedPrompt} Full body back view, neutral pose, standing straight, facing away from camera. High quality character design, consistent style.` },
+        { key: 'leftViewImageUrl', prompt: `${editedPrompt} Full body left side profile view, neutral pose, standing straight. High quality character design, consistent style.` },
+        { key: 'rightViewImageUrl', prompt: `${editedPrompt} Full body right side profile view, neutral pose, standing straight. High quality character design, consistent style.` },
+        { key: 'topViewImageUrl', prompt: `${editedPrompt} Top-down bird's eye view of the character. High quality character design, consistent style.` }
       ];
 
       const generatedViews: Record<string, string> = {};
@@ -509,13 +508,14 @@ export default function Characters({ project, setProject }: CharactersProps) {
             ? `Physical Attributes: Height ${char.physical.height}, Weight ${char.physical.weight}, Constitution ${char.physical.constitution}.`
             : "";
 
-          const prompt = `Character design for an animated film. 
+          const prompt = `Professional character design concept art for an animated film. 
             Tipo de Filme: ${project.filmType}.
             Estilo Visual: ${styleToUse}. 
+            Character Name: ${char.name}.
             Visual Description: ${char.description}. 
             ${physicalDesc}
             Público Alvo: ${project.targetAudience || 'Adultos'}.
-            One single front-facing view of the character, full body, neutral background.`;
+            Composition: One single front-facing view of the character, full body, neutral solid background, studio lighting, highly detailed.`;
           
           setActivePrompt(prompt);
           const imageUrl = await generateImage(prompt, "1:1");
@@ -537,13 +537,14 @@ export default function Characters({ project, setProject }: CharactersProps) {
             ? char.artisticStyle 
             : project.filmStyle;
 
-          const viewsPrompt = `Character design turnaround sheet based on the provided character image. 
+          const viewsPrompt = `Professional character design turnaround sheet (model sheet) based on the provided character reference. 
             Tipo de Filme: ${project.filmType}.
             Estilo Visual: ${styleToUse}. 
+            Character Name: ${char.name}.
             Público Alvo: ${project.targetAudience || 'Adultos'}.
-            Generate exactly these views: front view in "T" pose, left side view, right side view, top view, and back view. 
-            Maintain perfect consistency with the reference image. 
-            Neutral background, highly detailed.`;
+            Requirement: Generate a clean turnaround sheet with exactly these views: front view in "T" pose, left side profile view, right side profile view, and back view. 
+            CRITICAL: Maintain absolute consistency with the reference image's colors, clothing, and features. 
+            Background: Neutral solid background, highly detailed, professional production quality.`;
           
           setActivePrompt(viewsPrompt);
           const referenceBase64 = await getBase64FromUrl(char.imageUrl);
@@ -719,6 +720,12 @@ export default function Characters({ project, setProject }: CharactersProps) {
     setProject({ ...project, characters: updated, scenes: updatedScenes });
   };
 
+  const handleClearCharacters = () => {
+    if (window.confirm("Tem a certeza que deseja apagar todas as Personagens? Esta ação não pode ser desfeita.")) {
+      setProject({ ...project, characters: [] });
+    }
+  };
+
   const removeCharacter = (id: string) => {
     setProject({
       ...project,
@@ -749,7 +756,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
             Define o elenco do teu filme de animação.
           </p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           {outdatedTakesCount > 0 && (
             <button
               onClick={handleUpdateTakes}
@@ -761,9 +768,17 @@ export default function Characters({ project, setProject }: CharactersProps) {
               ) : (
                 <Zap className="w-5 h-5" />
               )}
-              Update Cenas e Takes ({outdatedTakesCount})
+              Update ({outdatedTakesCount})
             </button>
           )}
+          <button
+            onClick={handleClearCharacters}
+            disabled={project.characters.length === 0}
+            className="flex items-center gap-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 px-3 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
+            title="Apagar todas as personagens"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
           <button
             onClick={handleGenerateAllImages}
             disabled={isGeneratingAllImages || generatingImageId !== null || project.characters.length === 0}
@@ -772,28 +787,28 @@ export default function Characters({ project, setProject }: CharactersProps) {
             {isGeneratingAllImages ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <Sparkles className="w-5 h-5" />
+              <ImageIcon className="w-4 h-4" />
             )}
-            Gerar Todas as Imagens
+            Gerar Imagens
           </button>
           <button
             onClick={handleExportPDF}
             disabled={isExportingPDF || project.characters.length === 0}
-            className="flex items-center gap-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 px-4 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 px-4 py-2 rounded-xl font-medium transition-colors disabled:opacity-50 title='Exportar Report (PDF)'"
           >
             {isExportingPDF ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <FileText className="w-5 h-5 text-indigo-600" />
+              <FileText className="w-4 h-4" />
             )}
-            Exportar Report (PDF)
+            PDF
           </button>
           <button
             onClick={addCharacter}
             className="flex items-center gap-2 bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-200 px-4 py-2 rounded-xl font-medium transition-colors"
           >
-            <Plus className="w-5 h-5" />
-            Adicionar Personagem
+            <Plus className="w-4 h-4" />
+            Adicionar
           </button>
           <button
             onClick={handleGenerateCharacters}
@@ -973,7 +988,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
                 <div className="flex-1 flex items-center gap-2">
                   <input
                     type="text"
-                    value={char.name}
+                    value={char.name || ""}
                     onChange={(e) =>
                       updateCharacter(char.id, "name", e.target.value)
                     }
@@ -1050,7 +1065,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
               )}
 
               <textarea
-                value={char.description}
+                value={char.description || ""}
                 onChange={(e) =>
                   updateCharacter(char.id, "description", e.target.value)
                 }
@@ -1067,7 +1082,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
                     <input
                       type="text"
                       value={char.voice?.language || ""}
-                      onChange={(e) => updateCharacter(char.id, "voice", { language: e.target.value })}
+                      onChange={(e) => updateCharacter(char.id, "voice", { ...char.voice, language: e.target.value })}
                       placeholder="Ex: PT-PT"
                       className="w-full text-[11px] bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded px-2 py-1 outline-none transition-colors"
                     />
@@ -1077,7 +1092,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
                     <input
                       type="text"
                       value={char.voice?.age || ""}
-                      onChange={(e) => updateCharacter(char.id, "voice", { age: e.target.value })}
+                      onChange={(e) => updateCharacter(char.id, "voice", { ...char.voice, age: e.target.value })}
                       placeholder="Ex: 30"
                       className="w-full text-[11px] bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded px-2 py-1 outline-none transition-colors"
                     />
@@ -1088,7 +1103,7 @@ export default function Characters({ project, setProject }: CharactersProps) {
                   <input
                     type="text"
                     value={char.voice?.personality || ""}
-                    onChange={(e) => updateCharacter(char.id, "voice", { personality: e.target.value })}
+                    onChange={(e) => updateCharacter(char.id, "voice", { ...char.voice, personality: e.target.value })}
                     placeholder="Ex: Rouca, Enérgica..."
                     className="w-full text-[11px] bg-zinc-50 border border-transparent hover:border-zinc-200 focus:border-indigo-500 rounded px-2 py-1 outline-none transition-colors"
                   />

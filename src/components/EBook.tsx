@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Project, EBook, EBookPage } from "../types";
 import { Book, Image as ImageIcon, Sparkles, Loader2, ChevronLeft, ChevronRight, Edit3, Save, RefreshCw, Trash2, BookOpen, User, PenTool, Building2, Search, X, Maximize2, Layout, Clock, CheckCircle2, Circle, Type as TypeIcon, AlignLeft, AlignCenter, AlignRight, FileOutput, Download, FileText, Globe, FileJson, Upload } from "lucide-react";
-import { getGenAI, generateImage } from "../services/geminiService";
+import { getGenAI, generateImage, safeParseJSON } from "../services/geminiService";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "framer-motion";
 import jsPDF from "jspdf";
@@ -164,7 +164,7 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
         config: { responseMimeType: "application/json" }
       });
 
-      const result = JSON.parse(response.text || "{}");
+      const result = safeParseJSON(response.text || "{}");
       updateTaskStatus(1, 'completed');
       
       const rawPages = result.pages || [];
@@ -295,7 +295,7 @@ export default function EBookComponent({ project, setProject }: EBookProps) {
         config: { responseMimeType: "application/json" }
       });
 
-      const result = JSON.parse(response.text || "{}");
+      const result = safeParseJSON(response.text || "{}");
       
       setProject(prev => ({
         ...prev,

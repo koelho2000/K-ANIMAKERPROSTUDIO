@@ -1,14 +1,37 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { VideoModel } from "../types";
 
+export const getApiMode = (): 'api' | 'free' => {
+  if (typeof window !== 'undefined') {
+    return (localStorage.getItem('API_MODE') as 'api' | 'free') || 'api';
+  }
+  return 'api';
+};
+
 export const getApiKey = () => {
-  // 1. Try to get from localStorage (manually entered by user)
+  const mode = getApiMode();
   const manualKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY_MANUAL') : null;
-  
-  // 2. Try to get from environment
   const envKey = process.env.GEMINI_API_KEY;
   
-  return manualKey || envKey;
+  // Deteção crucial de segurança: Estamos a correr fora do ambiente de desenvolvimento da plataforma?
+  const isExternalEnvironment = typeof window !== 'undefined' && 
+    !window.location.hostname.includes('ais-dev') && 
+    !window.location.hostname.includes('ais-pre') && 
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1');
+
+  if (isExternalEnvironment) {
+    // A chave embutida do sistema (envKey) está protegida pela Google para não correr em domínios externos.
+    // Ignoramos o modo FREE e a envKey para evitar o erro 403 e forçamos a chave manual do utilizador.
+    return manualKey;
+  }
+
+  if (mode === 'api') {
+    return manualKey || envKey;
+  }
+  
+  // No modo FREE e no ambiente correto (AI Studio / Local): preferimos a chave de Sistema
+  return envKey || manualKey;
 };
 
 // Helper to get the AI instance with the selected API key
@@ -16,6 +39,16 @@ export const getGenAI = () => {
   const apiKey = getApiKey();
   
   if (!apiKey) {
+    const isExternalEnvironment = typeof window !== 'undefined' && 
+      !window.location.hostname.includes('ais-dev') && 
+      !window.location.hostname.includes('ais-pre') && 
+      !window.location.hostname.includes('localhost') &&
+      !window.location.hostname.includes('127.0.0.1');
+
+    if (isExternalEnvironment) {
+       throw new Error("Estás a correr uma versão publicada independente! O Sistema Gratuito do AI Studio está desativado por razões de segurança. Por favor, vai ao Menu Lateral -> Chave API -> Modo 'Manual' e insere a tua chave.");
+    }
+    
     throw new Error("Chave API não encontrada. Por favor, configura a tua chave no menu lateral (Manual) ou seleciona uma chave do sistema.");
   }
   return new GoogleGenAI({ apiKey });
@@ -73,7 +106,7 @@ export const generateText = async (
   return withRetry(async () => {
     const ai = getGenAI();
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-pro",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         systemInstruction,
@@ -83,15 +116,68 @@ export const generateText = async (
   });
 };
 
+export const safeParseJSON = (text: string): any => {
+  if (!text) return null;
+  
+  let cleaned = text.trim();
+  
+  // Remove markdown code blocks if present
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+  }
+  
+  // Try direct parse first
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    // If direct parse fails, try to extract the JSON object or array
+    const firstBrace = cleaned.indexOf('{');
+    const firstBracket = cleaned.indexOf('[');
+    const lastBrace = cleaned.lastIndexOf('}');
+    const lastBracket = cleaned.lastIndexOf(']');
+    
+    let start = -1;
+    let end = -1;
+    
+    // Determine if it's likely an object or an array
+    if (firstBrace !== -1 && (firstBracket === -1 || (firstBrace < firstBracket && firstBrace !== -1))) {
+      start = firstBrace;
+      end = lastBrace;
+    } else if (firstBracket !== -1) {
+      start = firstBracket;
+      end = lastBracket;
+    }
+    
+    if (start !== -1 && end !== -1 && end > start) {
+      try {
+        const extracted = cleaned.substring(start, end + 1);
+        return JSON.parse(extracted);
+      } catch (e2) {
+        console.error("[Gemini] Failed to parse extracted JSON:", e2);
+        throw e2;
+      }
+    }
+    
+    console.error("[Gemini] Could not find JSON structure in text:", cleaned);
+    throw e;
+  }
+};
+
 export const generateJSON = async (
   prompt: string,
   schema: any,
   systemInstruction?: string,
+  modelName: string = "gemini-3.1-pro-preview"
 ) => {
+  if (getApiMode() === 'free') {
+    modelName = "gemini-3-flash-preview"; // Forçar flash no modo livre para reduzir custos de backend
+  }
+  
+  console.log(`[Gemini] Generating JSON with model: ${modelName}`);
   return withRetry(async () => {
     const ai = getGenAI();
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-pro",
+      model: modelName,
       contents: prompt,
       config: {
         systemInstruction,
@@ -99,13 +185,11 @@ export const generateJSON = async (
         responseSchema: schema,
       },
     });
-    let text = response.text || "";
-    if (text.startsWith("```json")) {
-      text = text.replace(/^```json\n?/, "").replace(/\n?```$/, "");
-    } else if (text.startsWith("```")) {
-      text = text.replace(/^```\n?/, "").replace(/\n?```$/, "");
-    }
-    return text;
+    
+    const text = response.text || "";
+    console.log(`[Gemini] Raw response text length: ${text.length}`);
+    
+    return safeParseJSON(text);
   });
 };
 
@@ -308,6 +392,11 @@ export const generateVideo = async (
       config,
     };
 
+    if (getApiMode() === 'free') {
+      console.log("[Veo Lite] A forçar modelo mais leve e gratuito de vídeo.");
+      request.model = 'veo-3.1-lite-generate-preview';
+    }
+
     if (startImageBase64 && startImageBase64.startsWith('data:')) {
       const parts_split = startImageBase64.split(";base64,");
       if (parts_split.length === 2) {
@@ -375,7 +464,7 @@ export const pollVideoOperation = async (operationOrName: any) => {
     : operationOrName;
 
   console.log(`Iniciando polling para operação: ${operation.name}`);
-  
+
   let currentOperation;
   try {
     currentOperation = await withRetry(() => ai.operations.getVideosOperation({
@@ -490,14 +579,13 @@ export async function extractDialogueLines(action: string, characters: any[]): P
   };
 
   try {
-    const resultStr = await generateJSON(prompt, schema, "És um assistente especializado em análise de guiões e extração de diálogos.");
-    const result = JSON.parse(resultStr);
+    const result = await generateJSON(prompt, schema, "És um assistente especializado em análise de guiões e extração de diálogos.");
     if (!result || !Array.isArray(result)) return [];
 
     return result.map((dl: any) => {
       const char = characters.find(c => 
         c.name.toLowerCase() === dl.characterName?.toLowerCase() || 
-        dl.characterName?.toLowerCase().includes(c.name.toLowerCase())
+        dl.characterName?.toLowerCase()?.includes(c.name.toLowerCase())
       );
       return {
         characterId: char?.id || "",
@@ -545,7 +633,7 @@ export const detectCharacters = (action: string, dialogueLines: any[] = [], aiDe
 
 export const detectCharactersForDialogueLines = (dialogueLines: any[], characters: any[]) => {
   return dialogueLines.map(line => {
-    if (line.characterId) return line;
+    if (line.characterId || !line.text) return line;
     
     const parts = line.text.split(':');
     if (parts.length > 1) {
@@ -633,7 +721,7 @@ export const describeCharacterFromImage = async (base64Image: string, filmType?:
     const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-pro",
+      model: "gemini-3.1-pro-preview",
       contents: {
         parts: [
           {
@@ -663,7 +751,7 @@ export const describeSettingFromImage = async (base64Image: string, filmType?: s
     const context = filmType && filmStyle ? `\nContexto do Projeto: Tipo de Filme: ${filmType}, Estilo Visual: ${filmStyle}.` : "";
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-pro",
+      model: "gemini-3.1-pro-preview",
       contents: {
         parts: [
           {
@@ -717,7 +805,7 @@ export const analyzeCoherence = async (
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-pro",
+      model: "gemini-3.1-pro-preview",
       contents: { parts },
       config: {
         responseMimeType: "application/json",
@@ -732,7 +820,7 @@ export const analyzeCoherence = async (
       text = text.replace(/^```\n?/, "").replace(/\n?```$/, "");
     }
 
-    return JSON.parse(text);
+    return safeParseJSON(text);
   });
 };
 
@@ -741,7 +829,7 @@ export const validateApiKey = async (key: string) => {
     const ai = new GoogleGenAI({ apiKey: key });
     // Try a very simple request to check if the key is valid
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: "ping",
       config: { maxOutputTokens: 1 }
     });
@@ -1149,7 +1237,7 @@ export const analyzeProjectForUpdates = async (project: any) => {
       text = text.replace(/^```\n?/, "").replace(/\n?```$/, "");
     }
 
-    return JSON.parse(text);
+    return safeParseJSON(text);
   } catch (error) {
     console.error("Erro ao analisar projeto:", error);
     return [];
